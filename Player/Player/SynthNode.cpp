@@ -4325,7 +4325,7 @@ void SYNTHCALL BOWED_tick(SynthNode* n)
 		// max velocity (attack velocity or aftertouch if available)
 		n->v[4] = s_ifthen(SynthGlobalState.CurrentVoice->Aftertouch != sample_t::zero(), SynthGlobalState.CurrentVoice->Aftertouch, SynthGlobalState.CurrentVoice->AttackVelocity)*SC[S_0_2]+SC[BOWED_VELOFFSET];
 #else
-		n->v[4] = SynthGlobalState.CurrentVoice->AttackVelocity)*SC[S_0_2]+SC[BOWED_VELOFFSET];
+		n->v[4] = SynthGlobalState.CurrentVoice->AttackVelocity*SC[S_0_2]+SC[BOWED_VELOFFSET];
 #endif
 		// friction symmetry offset
 		n->v[5] = INP(BOWED_FRICTIONSYM)*SC[REVERB_RSF];
