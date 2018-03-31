@@ -12,7 +12,12 @@ The repository contains the folders:
 - VSTiPlugin (containing a .zip file with the precompiled VST plugin and example instruments/songs)
 - Player (an example player project for using the exported files by the plugin)
 
-For requirements and how to get the VST plugin running PLEASE check the readme.txt in the .zip file.
+<b>IMPORTANT:</b>
+
+The 64klang2 VSTi plugin is currently 32bit only. If possible use a 32bit DAW, 64bit DAWs and bridging will most likely lead to crashes sooner or later. Also the system PATH environment variable MUST point to the directory where you stored the DLLs, so add that directory to the PATH.
+
+For general requirements and how to get the VST plugin running PLEASE check the readme.txt in the .zip file.
+
 Mostly keep in mind it is targeted for demoscene usage, which is the reason it acts as a singleton plugin managing ALL 16 midi channels in the same instance.
 
 The player project here is based on Visual Studio 2015, so that and above should compile out of the box.
@@ -69,8 +74,6 @@ http://revivalizer.dk/blog/2013/07/28/art-of-softsynth-development-using-sse-in-
 Also 64klang would not be in its current state withou the help and input of many talented friends and demosceners (just to name a few):
 
 pOWL, virgill, xtr1m, muhmac, reed, jco, punqtured, ...
-
-
 
 
 
