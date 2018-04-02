@@ -168,8 +168,8 @@
     <ClInclude Include="Synth.h" />
     <ClInclude Include="SynthAllocator.h" />
     <ClInclude Include="SynthNode.h" />
-    <ClInclude Include="64klangPatch.h" />
-    <ClInclude Include="64klangSong.h" />
+    <ClInclude Include="64k2Patch.h" />
+    <ClInclude Include="64k2Song.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

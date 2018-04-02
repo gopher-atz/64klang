@@ -3489,9 +3489,9 @@ void SYNTHCALL SAMPLEREC_tick(SynthNode* n)
 #ifdef CODE_SECTIONS
 #pragma code_seg(".sn3a")
 #endif
-inline sample_t Sampler_Sample(SynthNode* n, sample_t& index)
+inline sample_t Sampler_Sample(SynthNode* n, const sample_t& index)
 {	
-	sample_t i = s_ifthen(index < sample_t::zero(), index + n->v[10], index);
+	sample_t i = s_ifthen(sample_t::zero() > index, index + n->v[10], index);
 	i = s_ifthen(i >= n->v[10],	i - n->v[10], i);
 	sample_t cur   = s_floor(i);
 	sample_t next  = i + SC[S_1_0];
@@ -5134,29 +5134,32 @@ SynthNode* CreateNodes(DWORD offset, BOOL global)
 		SynthGlobalState.CreatedNodeTicks[offset] = SynthGlobalState.CreateNodeTick;
 	}
 
-	// get the info
-	SYNTH_WORD* values = &(SynthGlobalState.NodeValues[offset]);
-	DWORD info = *values++;
-	// only create nodes of voice/global type depending on global flag
-	if (((info & NODEINFO_GLOBAL) != 0) == global)
+	// scope fix for VS2017 C2362
 	{
-		// type id, number of parametersn, number of required inputs and number of input references
-		DWORD id = info & 0x7f;
-		DWORD refnodes = (info >> 8) & 0x7f;
-		// create and init the new voice node and put the new global node in the global node array to prevent recreation
-		SynthNode* node = CreateNode(id, refnodes, offset, global);
-		// recurse all required input signals
-		id = 0;
-		while (id < refnodes)
-			node->input[id++] = (sample_t*)CreateNodes(*values++, global);
-		// store the pointer to the potential mode value(s)
-		node->modePointer = (DWORD*)values;
-	}
-	else
-	{
-		// global node creation, but no global node, so return a 0 pointer
-		if (global)
-			return 0;
+		// get the info
+		SYNTH_WORD* values = &(SynthGlobalState.NodeValues[offset]);
+		DWORD info = *values++;
+		// only create nodes of voice/global type depending on global flag
+		if (((info & NODEINFO_GLOBAL) != 0) == global)
+		{
+			// type id, number of parametersn, number of required inputs and number of input references
+			DWORD id = info & 0x7f;
+			DWORD refnodes = (info >> 8) & 0x7f;
+			// create and init the new voice node and put the new global node in the global node array to prevent recreation
+			SynthNode* node = CreateNode(id, refnodes, offset, global);
+			// recurse all required input signals
+			id = 0;
+			while (id < refnodes)
+				node->input[id++] = (sample_t*)CreateNodes(*values++, global);
+			// store the pointer to the potential mode value(s)
+			node->modePointer = (DWORD*)values;
+		}
+		else
+		{
+			// global node creation, but no global node, so return a 0 pointer
+			if (global)
+				return 0;
+		}
 	}
 
 CreateNodes_ReturnExisting:
