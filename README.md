@@ -14,9 +14,16 @@ The repository contains the folders:
 
 <b>IMPORTANT:</b>
 
-The 64klang2 VSTi plugin is currently 32bit only. If possible use a 32bit DAW, 64bit DAWs and bridging will most likely lead to crashes sooner or later. Also the system PATH environment variable MUST point to the directory where you stored the DLLs, so add that directory to the PATH.
+You MUST add the directory with the VST DLLs to the system PATH environment variable (if you dont 64klang wont load).<br>
+The 64klang2 VSTi plugin is currently 32bit only, so if possible use a 32bit DAW, 64bit DAWs and bridging will most likely lead to crashes sooner or later.
 
-For general requirements and how to get the VST plugin running PLEASE check the readme.txt in the .zip file.
+32bit DAW compatibibility list:
+- Renoise
+- Cubase
+- Ableton Live
+- Reaper
+
+For additional requirements and usage instructions PLEASE check the readme.txt in the .zip file.
 
 Mostly keep in mind it is targeted for demoscene usage, which is the reason it acts as a singleton plugin managing ALL 16 midi channels in the same instance.
 
