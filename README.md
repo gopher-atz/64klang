@@ -14,7 +14,10 @@ The repository contains the folders:
 
 <b>IMPORTANT:</b>
 
-You MUST add the directory with the VST DLLs to the system PATH environment variable (if you dont 64klang wont load).<br>
+- You MUST add the directory with the VST DLLs to the system PATH environment variable (if you dont 64klang wont load or be listed in your DAW)
+- If 64klang2 is still not listed in your DAW, check the file properties of all 64klang dlls with Windows Explorer. Depending on the Windows security settings the execution might be prevented. So if you see an "Unblock" button in the dll file properties (see image below) please click it.<br>
+![64klang image](https://raw.githubusercontent.com/hzdgopher/64klang/master/FileProperties_Security_Unblock.png)<br>
+
 The 64klang2 VSTi plugin is currently 32bit only, so if possible use a 32bit DAW, 64bit DAWs and bridging will most likely lead to crashes sooner or later.
 
 32bit DAW compatibibility list:
