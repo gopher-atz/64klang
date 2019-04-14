@@ -331,8 +331,13 @@ SynthFunction NodeTickFunctions[MAXIMUM_ID] =
 #else
 	0,
 #endif
+#ifndef OSCSYNC_SKIP
+	OSCSYNC_tick,
+#else
+	0,
+#endif
 	// reserved slots
-	0, 0, 0, 0, 0,
+	0, 0, 0, 0,
 	CONTSTANT_TICK,	
 
 	VOICEPARAM_tick, //VOICE_FREQUENCY_ID,		
@@ -441,8 +446,9 @@ SynthFunction NodeInitFunctions[MAXIMUM_ID] =
 	0,	//WTFOSC_tick,
 	0,	//FORMANT_tick
 	0,	//EQ3_tick
+	0,	//OSCSYNC_tick
 	// reserved slots
-	0, 0, 0, 0, 0,
+	0, 0, 0, 0,
 
 	0,	//CONSTANT_tick,
 
@@ -1340,8 +1346,8 @@ sample_t SYNTHCALL Osc_Tick(SynthNode* n, int mode, int oscindex)
 	if (oscindex > 0)
 	{
 		oscwrk += oscindex * 4;
-		// detune about 50cent when all 7 unison voices are active
-		n->v[0] *= SC[S_OSC_DETUNE];
+		// detune max is about 100cent when all additional 6 unison voices are active
+		n->v[0] *= SC[S_1_0]+(SC[S_0_01] * INP(OSCILLATOR_UDETUNE));
 	}
 
 	// add phase offset to phase and wrap
@@ -1589,6 +1595,7 @@ void SYNTHCALL OSCILLATOR_tick(SynthNode* n)
 	NODE_CALL_INPUT(OSCILLATOR_TRANSPOSE);
 	NODE_CALL_INPUT(OSCILLATOR_DETUNE);	
 	NODE_CALL_INPUT(OSCILLATOR_GAIN);
+	NODE_CALL_INPUT(OSCILLATOR_UDETUNE);	
 	//NODE_CALL_INPUT(OSCILLATOR_MODE); // mode is always a constant
 	
 #ifdef COMPILE_VSTI
@@ -2402,7 +2409,7 @@ void SYNTHCALL LOGIC_tick(SynthNode* n)
 			break;
 		}
 	}	
-	n->out = s_ifthen(mask, SC[S_1_0], sample_t::zero());
+	n->out = n->e = s_ifthen(mask, SC[S_1_0], sample_t::zero());
 }
 #endif
 
@@ -2453,7 +2460,7 @@ void SYNTHCALL COMPARE_tick(SynthNode* n)
 			break;
 		}
 	}
-	n->out = s_ifthen(mask, SC[S_1_0], sample_t::zero());
+	n->out = n->e = s_ifthen(mask, SC[S_1_0], sample_t::zero());
 }
 #endif
 
@@ -2472,7 +2479,7 @@ void SYNTHCALL SELECT_tick(SynthNode* n)
 	NODE_CALL_INPUT(SELECT_CONDITION);
 
 	// process
-	n->out = s_ifthen(INP(SELECT_CONDITION) >= SC[S_0_5], INP(SELECT_IN2), INP(SELECT_IN1));
+	n->out = n->e = s_ifthen(INP(SELECT_CONDITION) >= SC[S_0_5], INP(SELECT_IN2), INP(SELECT_IN1));
 }
 #endif
 
@@ -2491,7 +2498,7 @@ void SYNTHCALL EVENTSIGNAL_tick(SynthNode* n)
 	// process
 
 	// get event signal from input node and set output signal 1 when != 0 
-	n->out = (((SynthNode*)(n->input[EVENTSIGNAL_IN]))->e != sample_t::zero()) & SC[S_1_0];
+	n->out = n->e = (((SynthNode*)(n->input[EVENTSIGNAL_IN]))->e != sample_t::zero()) & SC[S_1_0];
 }
 #endif
 
@@ -3056,42 +3063,50 @@ void SYNTHCALL REVERB_tick(SynthNode* n)
 			{ (1933.0 / DEFAULT_SRATE), 0.0006, 3.221, 14417.0 }
 	};*/
 
-	// a try to provide variable feedback er comb delay. didnt sound that much different
-	//// update values
-	//NODE_UPDATE_BEGIN
+	sample_t lroffset = sample_t(0.0, 23.0);
+	sample_t feedback = s_max(INP(REVERB_ROOMSIZE),  sample_t::zero()) * SC[REVERB_RSF] + SC[REVERB_RSO];
 
-	//	// left / right sample offset
-	//	n->v[28] = sample_t(0.0, 23.0);
+	// a test to provide variable feedback gain for comb delays
+	// doesnt make a noticable difference
+//#define REVERB_ADJUST_FBGAIN    
+#ifdef REVERB_ADJUST_FBGAIN
+	// update values
+	NODE_UPDATE_BEGIN
 
-	//	// new way: map roomsize to approximate reverb time	(0.5 to ~12s)
-	//	sample_t rtime = SC[S_SAMPLERATE] * (SC[S_0_5] + INP(REVERB_ROOMSIZE) + INP(REVERB_ROOMSIZE)*s_exp2(INP(REVERB_ROOMSIZE)*SC[S_8_0] * SC[S_2_0])*SC[S_EXP2_0] * SC[S_LOG2E]);
-	//	// calculate individual feedback factor for each comb delay
-	//	sample_t log_na = SC[ADSR_LOG2]; // log(non_audible) = -11
+		if (!_mm_testz_si128((feedback != n->v[NODE_MAX_WORKVARS-2]).pi, (feedback != n->v[NODE_MAX_WORKVARS-2]).pi))    
+		{
+			// calculate reverbaration time based on shortest comb delay and the feedback gain (base is the t60 criteria, which is time to reach -60db))
+			sample_t t60loops = s_log2(SC[S_0_001]) / s_log2(feedback);
+			sample_t t60time = s_dupleft(SC[REVERB_COMB0] * t60loops);
 
-	//	int i = 8;
-	//	while (i--)
-	//	{
-	//		//sample_t loops = rtime / (SC[REVERB_COMB0+i] + sample_t(0.0, 23.0)); 	// num loops for comb based on rtime
-	//		//n->v[20+i] = s_exp(log_na  / loops); 									// new factor to go to non audiable level in loops iterations
-	//		n->v[20 + i] = s_exp(log_na * (SC[REVERB_COMB0 + i] + n->v[28]) / rtime);
-	//		n->v[28] = s_shuffle(n->v[28], n->v[28]);
-	//	}
+			int i = 8;
+			while (i--)
+			{
+				// number of loops the current combs get
+				t60loops = t60time / (SC[REVERB_COMB0 + i] + lroffset);            
+				// the derived feedback gain factors
+				n->v[20 + i] = s_pow(SC[S_0_001], SC[S_1_0] / t60loops);
+				// shuffle offset
+				lroffset = s_shuffle(lroffset, lroffset);
+			}
 
-	//NODE_UPDATE_END
+			n->v[NODE_MAX_WORKVARS-2] = feedback;
+		}
+
+	NODE_UPDATE_END
+#endif    
 
 
 	// process
 	sample_t suminput = (s_dupleft(INP(REVERB_IN)) + s_dupright(INP(REVERB_IN))) * s_max(INP(REVERB_GAIN)*INP(REVERB_GAIN)*INP(REVERB_GAIN), sample_t::zero());
-	sample_t feedback = s_max(INP(REVERB_ROOMSIZE),  sample_t::zero()) * SC[REVERB_RSF] + SC[REVERB_RSO];
 	sample_t damp = s_clamp(INP(REVERB_DAMP), SC[S_1_0], sample_t::zero());
 	sample_t sumcomb = sample_t::zero();
 	sample_t bufferoffset = sample_t::zero();
 
-	int i = 12;
-	sample_t lroffset = sample_t(0.0, 23.0);
+	int i = 12;    
 	while (i--)
 	{
-		// get left and right samples from current comb pair	
+		// get left and right samples from current comb pair    
 		sample_t bpos = s_toInt(bufferoffset + n->v[i]);
 		sample_t combout = sample_t((((sample_t*)n->customMem)[bpos.i[0]]).d[0], (((sample_t*)n->customMem)[bpos.i[1]]).d[1]);
 		sample_t combin;
@@ -3101,8 +3116,12 @@ void SYNTHCALL REVERB_tick(SynthNode* n)
 			// add comb output to summed output
 			sumcomb += combout;
 			// get damped value and feed back to comb pair
+#ifdef REVERB_ADJUST_FBGAIN            
+			combin = suminput + combout * n->v[i+20-4];
+#else         
 			combin = suminput + combout * feedback;
-			n->v[i+8] = combin + damp*(n->v[i+8] - combin);		
+#endif
+			n->v[i+8] = combin + damp*(n->v[i+8] - combin);
 			combin = n->v[i+8];
 		}
 		// 4 sequential allpass delays
@@ -3304,7 +3323,7 @@ void SYNTHCALL TRIGGER_tick(SynthNode* n)
 	// deactivation on signal < 0.5
 	n->v[0] = s_ifthen( INP(TRIGGER_IN) <  SC[S_0_5], sample_t::zero(), n->v[0]);
 
-	n->out = out;
+	n->out = n->e = out;
 }
 #endif
 
@@ -5039,6 +5058,32 @@ void SYNTHCALL EQ3_tick(SynthNode* n)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#ifndef OSCSYNC_SKIP
+#ifdef CODE_SECTIONS
+#pragma code_seg(".sn51")
+#endif
+void SYNTHCALL OSCSYNC_tick(SynthNode* n)
+{
+	NODE_STATEFUL_PROLOG;
+
+	NODE_CALL_INPUT(OSCSYNC_IN);
+
+	SynthNode* in  = (SynthNode*)(n->input[OSCSYNC_IN]);
+	SynthNode* osc = (SynthNode*)(n->input[OSCSYNC_OSC]);
+	// reset current workphase and previous workphase
+	osc->v[2] = s_ifthen(in->e != sample_t::zero(), sample_t::zero(), osc->v[2]);
+	osc->v[3] = s_ifthen(in->e != sample_t::zero(), sample_t::zero(), osc->v[3]);
+
+	// now call the synced osc
+	NODE_CALL_INPUT(OSCSYNC_OSC);
+
+	// output
+	n->out = INP(OSCSYNC_OSC);  // s_ifthen(in->e != sample_t::zero(), SC[S_1_0], sample_t::zero());
+}
+#endif
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 #ifdef CODE_SECTIONS
 #pragma code_seg(".sn46")
 #endif
@@ -5136,30 +5181,30 @@ SynthNode* CreateNodes(DWORD offset, BOOL global)
 
 	// scope fix for VS2017 C2362
 	{
-		// get the info
-		SYNTH_WORD* values = &(SynthGlobalState.NodeValues[offset]);
-		DWORD info = *values++;
-		// only create nodes of voice/global type depending on global flag
-		if (((info & NODEINFO_GLOBAL) != 0) == global)
-		{
-			// type id, number of parametersn, number of required inputs and number of input references
-			DWORD id = info & 0x7f;
-			DWORD refnodes = (info >> 8) & 0x7f;
-			// create and init the new voice node and put the new global node in the global node array to prevent recreation
-			SynthNode* node = CreateNode(id, refnodes, offset, global);
-			// recurse all required input signals
-			id = 0;
-			while (id < refnodes)
-				node->input[id++] = (sample_t*)CreateNodes(*values++, global);
-			// store the pointer to the potential mode value(s)
-			node->modePointer = (DWORD*)values;
-		}
-		else
-		{
-			// global node creation, but no global node, so return a 0 pointer
-			if (global)
-				return 0;
-		}
+	// get the info
+	SYNTH_WORD* values = &(SynthGlobalState.NodeValues[offset]);
+	DWORD info = *values++;
+	// only create nodes of voice/global type depending on global flag
+	if (((info & NODEINFO_GLOBAL) != 0) == global)
+	{
+		// type id, number of parametersn, number of required inputs and number of input references
+		DWORD id = info & 0x7f;
+		DWORD refnodes = (info >> 8) & 0x7f;
+		// create and init the new voice node and put the new global node in the global node array to prevent recreation
+		SynthNode* node = CreateNode(id, refnodes, offset, global);
+		// recurse all required input signals
+		id = 0;
+		while (id < refnodes)
+			node->input[id++] = (sample_t*)CreateNodes(*values++, global);
+		// store the pointer to the potential mode value(s)
+		node->modePointer = (DWORD*)values;
+	}
+	else
+	{
+		// global node creation, but no global node, so return a 0 pointer
+		if (global)
+			return 0;
+	}
 	}
 
 CreateNodes_ReturnExisting:

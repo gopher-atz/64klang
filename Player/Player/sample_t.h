@@ -175,7 +175,6 @@ enum
 	S_PI2,
 	S_B,
 	S_C,
-	S_OSC_DETUNE,
 
 	S_MAX_CONSTANTS
 };
@@ -244,6 +243,7 @@ extern sample_t	__fastcall	s_log2(const sample_t& x);
 inline sample_t		s_cos	(const sample_t& x)											{ return s_sin(x+SC[S_PI2]); }
 inline sample_t		s_exp	(const sample_t& x)											{ return s_exp2(x*SC[S_LOG2E]); }
 inline sample_t		s_exp10	(const sample_t& x)											{ return s_exp2(x*SC[S_LOG210]); }
+inline sample_t		s_pow	(const sample_t& x, const sample_t& y)						{ return s_exp2(y*s_log2(x)); }
 inline sample_t		s_cerp	(const sample_t& x, const sample_t& y, const sample_t& f)	{ return s_lerp(x, y, (SC[S_1_0]-s_cos(f*SC[S_PI]))*SC[S_0_5]); }
 inline sample_t		s_equalp(const sample_t& x, const sample_t& y, const sample_t& f)	{ return x*s_sin(SC[S_PI2] + SC[S_PI2] * f) + y*s_sin(SC[S_PI2] * f); }
 inline sample_t		s_db2lin(const sample_t& x)											{ return s_exp2(x / SC[S_6_0]); }

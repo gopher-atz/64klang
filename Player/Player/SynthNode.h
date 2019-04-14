@@ -155,6 +155,7 @@ enum NodeIDs
 	WTFOSC_ID,
 	FORMANT_ID,
 	EQ3_ID,
+	OSCSYNC_ID,
 	// reserved slots from here to 63 for future nodes
 	RESERVED_ID,
 
@@ -429,6 +430,7 @@ enum OSCILLATOR_INPUT
 	OSCILLATOR_TRANSPOSE,
 	OSCILLATOR_DETUNE,	
 	OSCILLATOR_GAIN,
+	OSCILLATOR_UDETUNE,
 	OSCILLATOR_MODE,
 	OSCILLATOR_MAX,
 	OSCILLATOR_REQ_GUI_SIGNALS = 0,
@@ -1343,6 +1345,18 @@ enum EQ3_INPUT
 	EQ3_MAX_GUI_SIGNALS = EQ3_MAX
 };
 void SYNTHCALL EQ3_tick(SynthNode* n);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+enum OSCSYNC_INPUT
+{
+	OSCSYNC_IN,
+	OSCSYNC_OSC,
+	OSCSYNC_MAX,
+	OSCSYNC_REQ_GUI_SIGNALS = 2,
+	OSCSYNC_MAX_GUI_SIGNALS = OSCSYNC_MAX
+};
+void SYNTHCALL OSCSYNC_tick(SynthNode* n);
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
