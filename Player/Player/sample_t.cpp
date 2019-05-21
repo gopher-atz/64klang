@@ -16,7 +16,7 @@ int		_RAND_SEED[4]		= {    1,    0,31337,    0 };
 // need to take car of _RAND_MUL there, it needs to be adjusted, if at all possible (might need to manually assign it
 
 // constants source for conversion in sample_t array
-double ConstantList[S_MAX_CONSTANTS] =
+constexpr double ConstantList[S_MAX_CONSTANTS] =
 {
  0, // 3 dummies for 3 integers above to keep indices from enum in sync with this array
  0,
@@ -132,7 +132,7 @@ void sample_t::init()
 	SC[2] = SC[0] == SC[0];
 
 	for (int i = 3; i < S_MAX_CONSTANTS; i++)
-		SC[i] = sample_t((double)ConstantList[i]);
+		SC[i] = sample_t(ConstantList[i]);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
