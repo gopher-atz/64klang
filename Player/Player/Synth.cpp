@@ -7,7 +7,7 @@
 #define MIDICC_NOTE_TRIGGER
 
 // get skip node definitions in exe mode
-#ifndef COMPILE_VSTI
+#if !defined(COMPILE_VSTI) && !defined(USE_BLOBS)
 	#include "64k2Patch.h"
 #endif
 
@@ -71,12 +71,41 @@ struct Instrument
 // 64klang core interface functions
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#ifdef USE_BLOBS
+void _64klang_Init(BYTE* songStream, void* patchData)
+#else
 void _64klang_Init(BYTE* songStream, void* patchData, DWORD const1Offset, DWORD const2Offset, DWORD maxOffset)
+#endif
 {
 	// init sample_t class constants
 	sample_t::init();
-#ifdef COMPILE_VSTI
-	// bss section is zeroed, we would only need this if an exe calls this function several times with different songs
+
+#ifdef USE_BLOBS
+	DWORD* offsets = (DWORD*)patchData;
+	DWORD const1Offset = *offsets++;
+	DWORD const2Offset = *offsets++;
+	DWORD maxOffset = *offsets++;
+	patchData = (void*)offsets;
+	// bss section is zeroed, we only need this if an exe calls this function several times with different songs and if we actually care about memory leaks
+	if (SynthGlobalState.GlobalNodes != NULL && SynthGlobalState.NodeValues != NULL && SynthGlobalState.SongStream != NULL && SynthGlobalState.MaxOffset > 0)
+	{
+		for (int i = 0; i < SynthGlobalState.MaxOffset; i++)
+		{
+			SynthNode* sn = SynthGlobalState.GlobalNodes[i];
+			if (sn != NULL)
+			{
+				if (sn->isGlobal)
+				{
+					if (sn->customMem != NULL)
+						SynthFree(sn->customMem);
+					SynthFree(sn);
+				}
+			}
+		}
+	}	
+#endif
+
+#if defined(COMPILE_VSTI) || defined(USE_BLOBS)	
 	SynthMemSet(&SynthGlobalState, sizeof(SynthGlobalStateStruct), 0);	
 #endif
 	SynthGlobalState.GlobalNodes = (SynthNode**)SynthMalloc(maxOffset*sizeof(SynthNode*));

@@ -1,5 +1,5 @@
 // get skip node definitions in exe mode
-#ifndef COMPILE_VSTI
+#if !defined(COMPILE_VSTI) && !defined(USE_BLOBS)
 	#include "64k2Patch.h"
 #endif
 
@@ -5221,7 +5221,7 @@ void DestroyVoiceNodes(SynthNode* node)
 	// only delete existing nodes, which are not global
 	if (node && !node->isGlobal)
 	{
-#ifdef COMPILE_VSTI
+#if defined(COMPILE_VSTI) || defined(USE_BLOBS)
 		SynthGlobalState.GlobalNodes[node->valueOffset] = NULL;
 #endif
 		// mark processed voice nodes by the global flag, so they wont be processed again

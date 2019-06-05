@@ -7,7 +7,11 @@
 
 #include <windows.h>
 
+#ifdef USE_BLOBS
+void _64klang_Init			(BYTE* songStream, void* patchData);
+#else
 void _64klang_Init			(BYTE* songStream, void* patchData, DWORD const1Offset, DWORD const2Offset, DWORD maxoffset);
+#endif
 int  _64klang_ACMConvert	(void* srcFormat, void* dstFormat, LPBYTE srcBuffer, DWORD srcBufferSize, LPBYTE& dstBuffer, DWORD& dstBufferSize);
 #ifdef COMPILE_VSTI
 void _64klang_NoteOn		(DWORD channel, DWORD note, DWORD velocity);
