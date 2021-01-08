@@ -15,19 +15,20 @@ void* __fastcall SynthMalloc(int size)
 	// step forward 16 bytes
 	ptr += 4;
 	// not 16byte aligned? go back 8 bytes for the pointer to align it and mark the int before that with a 1 to indicate initial 8 byte alignment
-	if ((int)ptr & 0x08)
+	if ((uintptr_t)ptr & 0x08)
 	{		
 		ptr -= 2;
-		*(ptr - 1) = (int)ptr;
+		*(ptr - 1) = (uintptr_t)ptr;
 	}
 	return ptr;
 }
 
 void __fastcall SynthFree(void* ptr)
 {
+	return;
 	int* fptr = (int*)ptr;
 	// check if initial malloc returned an 8 byte aligned address by checking for a 1 the int before (see above)
-	if (*(fptr - 1) == (int)fptr)
+	if (*(fptr - 1) == (uintptr_t)fptr)
 	{
 		fptr -= 2;
 	}
@@ -52,10 +53,23 @@ void __fastcall SynthDeferredFree()
 #endif
 }
 
+#pragma function(memset)
+void* __cdecl memset(void* pTarget, int value, size_t cbTarget) {
+	char* p = reinterpret_cast<char*>(pTarget);
+	while (cbTarget-- > 0) {
+		*p++ = static_cast<char>(value);
+	}
+	return pTarget;
+}
+
+
 void __fastcall SynthMemSet(void* mptr, int s, int v)
 {
 #ifdef _M_X64
 	memset(mptr, v, s);
+	//char* pdst = (char*)mptr;
+	//for (int i = 0; i < s; ++i)
+	//	pdst[i] = v;
 #else
 	__asm
 	{
@@ -70,7 +84,10 @@ void __fastcall SynthMemSet(void* mptr, int s, int v)
 void __fastcall SynthMemCopy(void* dst, void* src, int s)
 {
 #ifdef _M_X64
-	memcpy(dst, src, s);
+	//memcpy(dst, src, s);
+	char* psrc = (char*)src, * pdst = (char*)dst;
+	for (int i = 0; i < s; ++i)
+		pdst[i] = psrc[i];
 #else
 	__asm
 	{

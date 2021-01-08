@@ -3384,8 +3384,13 @@ void SYNTHCALL TRIGGERSEQ_tick(SynthNode* n)
 			n->v[0] = SC[S_1_0];
 			// in intro mode get direct pointers to values (right after the mode word)
 			int* pdata = (int*)(((short*)(n->modePointer))+1);			
-			n->v[2].i[0] = (int)(pdata+0);
-			n->v[3].i[0] = (int)(pdata+4);
+#ifdef _M_X64
+			n->v[2].l[0] = (uintptr_t)(pdata+0);
+			n->v[3].l[0] = (uintptr_t)(pdata+4);
+#else
+			n->v[2].i[0] = (uintptr_t)(pdata+0);
+			n->v[3].i[0] = (uintptr_t)(pdata+4);
+#endif
 		}
 #endif		
 
@@ -3435,10 +3440,17 @@ void SYNTHCALL TRIGGERSEQ_tick(SynthNode* n)
 	if (n->v[3].c[pindex.i[1]] & sindex.i[1])
 		n->out.d[1] = SC[S_1_0].d[0];
 #else
+#ifdef _M_X64
+	if (((char*)(n->v[2].l[0]))[pindex.i[0]] & sindex.i[0])
+		n->out.d[0] = SC[S_1_0].d[0];
+	if (((char*)(n->v[3].l[0]))[pindex.i[1]] & sindex.i[1])
+		n->out.d[1] = SC[S_1_0].d[0];
+#else
 	if (((char*)(n->v[2].i[0]))[pindex.i[0]] & sindex.i[0])
 		n->out.d[0] = SC[S_1_0].d[0];
 	if (((char*)(n->v[3].i[0]))[pindex.i[1]] & sindex.i[1])
 		n->out.d[1] = SC[S_1_0].d[0];
+#endif		
 #endif
 }
 #endif
@@ -4143,7 +4155,7 @@ void SYNTHCALL SAPI_tick(SynthNode* n)
 		if (n->customMem)
 			SynthFree(n->customMem);
 #endif
-		int tlen = strlen(ttsText) + 1;
+		int tlen = (int)strlen(ttsText) + 1;
 		MultiByteToWideChar(0, 0, ttsText, tlen, lpSAPITextBuffer, tlen);
 
 		CoInitialize(NULL);

@@ -32,12 +32,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="64klangPatch.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
-    <ClInclude Include="64klangSong.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="sample_t.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -48,6 +42,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SynthNode.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="64k2Patch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="64k2Song.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
