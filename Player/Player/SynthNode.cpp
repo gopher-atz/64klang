@@ -3388,8 +3388,8 @@ void SYNTHCALL TRIGGERSEQ_tick(SynthNode* n)
 			n->v[2].l[0] = (uintptr_t)(pdata+0);
 			n->v[3].l[0] = (uintptr_t)(pdata+4);
 #else
-			n->v[2].i[0] = (uintptr_t)(pdata+0);
-			n->v[3].i[0] = (uintptr_t)(pdata+4);
+			n->v[2].i[0] = (int)(pdata+0);
+			n->v[3].i[0] = (int)(pdata+4);
 #endif
 		}
 #endif		

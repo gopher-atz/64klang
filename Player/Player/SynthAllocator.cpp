@@ -67,9 +67,6 @@ void __fastcall SynthMemSet(void* mptr, int s, int v)
 {
 #ifdef _M_X64
 	memset(mptr, v, s);
-	//char* pdst = (char*)mptr;
-	//for (int i = 0; i < s; ++i)
-	//	pdst[i] = v;
 #else
 	__asm
 	{
@@ -84,7 +81,6 @@ void __fastcall SynthMemSet(void* mptr, int s, int v)
 void __fastcall SynthMemCopy(void* dst, void* src, int s)
 {
 #ifdef _M_X64
-	//memcpy(dst, src, s);
 	char* psrc = (char*)src, * pdst = (char*)dst;
 	for (int i = 0; i < s; ++i)
 		pdst[i] = psrc[i];
