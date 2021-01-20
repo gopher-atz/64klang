@@ -53,6 +53,7 @@ void __fastcall SynthDeferredFree()
 #endif
 }
 
+#ifdef _M_X64
 #pragma function(memset)
 void* __cdecl memset(void* pTarget, int value, size_t cbTarget) {
 	char* p = reinterpret_cast<char*>(pTarget);
@@ -61,7 +62,7 @@ void* __cdecl memset(void* pTarget, int value, size_t cbTarget) {
 	}
 	return pTarget;
 }
-
+#endif
 
 void __fastcall SynthMemSet(void* mptr, int s, int v)
 {
