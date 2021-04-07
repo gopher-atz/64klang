@@ -1,8 +1,7 @@
 # 64klang
 Official 64klang repository
 
-For discussion or feedback please use our #64klang channel on Slack:
-[https://64klang.slack.com](https://join.slack.com/t/64klang/shared_invite/enQtNDM1NTY5OTE5Njk2LWRlM2NlZDUzNTdkNTZkYzEzMTA0NWJkMWM3NWI0ZTVlODhkM2FlNWFkMTk5YmE4ZGQ2ZWI1ZWQ4YjZjNjgxZDA)
+For discussion or feedback please use our #64klang channel on [Discord](https://discord.gg/bH7QBxq4Ts)
 
 Summary
 -------
