@@ -80,8 +80,8 @@ Credits
 Special thanks go out to Ralph Borson ( https://github.com/revivalizer ).
 I stumbeled upon his blog just at the time where i needed inspiration on how to get the needed performance in the new 64klang. Unfortunately his blog seems to be down nowadays, still, these were the links (Web archive versions) I am grateful for:
 
-https://web.archive.org/web/20160616183917/http://revivalizer.dk/blog/2013/07/26/art-of-softsynth-development-simd-parallelization/
-https://web.archive.org/web/20160616183846/http://revivalizer.dk/blog/2013/07/28/art-of-softsynth-development-using-sse-in-c-plus-plus-without-the-hassle/
+- https://web.archive.org/web/20160616183917/http://revivalizer.dk/blog/2013/07/26/art-of-softsynth-development-simd-parallelization/
+- https://web.archive.org/web/20160616183846/http://revivalizer.dk/blog/2013/07/28/art-of-softsynth-development-using-sse-in-c-plus-plus-without-the-hassle/
 
 Also 64klang would not be in its current state withou the help and input of many talented friends and demosceners (just to name a few):
 
