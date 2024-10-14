@@ -1,0 +1,86 @@
+﻿<UserControl x:Class="_64klang2GUI.ArpeggiatorEdit"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             Height="Auto" Width="Auto">
+		
+	<Grid >
+		<Grid.RowDefinitions>
+			<RowDefinition Height="144"/>
+			<RowDefinition Height="24"/>
+			<RowDefinition Height="24"/>
+		</Grid.RowDefinitions>
+
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="384"/>			
+		</Grid.ColumnDefinitions>
+
+		<Grid Name="StepGrid" Grid.Row="0" Grid.Column="0" MouseLeftButtonDown="StepGrid_MouseLeftButtonDown" MouseMove="StepGrid_MouseMove" MouseLeftButtonUp="StepGrid_MouseLeftButtonUp" Background="Black">
+			
+			<Border Margin="0,  0,0,0" Width="384" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="#FF4EADAD"/>
+			<Border Margin="0, 24,0,0" Width="384" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Gray"/>
+			<Border Margin="0, 48,0,0" Width="384" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Gray"/>
+			<Border Margin="0, 72,0,0" Width="384" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="LightSlateGray" />
+			<Border Margin="0, 96,0,0" Width="384" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Gray"/>
+			<Border Margin="0,120,0,0" Width="384" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Gray"/>
+
+			<Border Margin="  0,0,0,0" Width="12" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="White" Opacity="0.5"/>
+			<Border Margin=" 96,0,0,0" Width="12" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="White" Opacity="0.5"/>
+			<Border Margin="192,0,0,0" Width="12" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="White" Opacity="0.5"/>
+			<Border Margin="288,0,0,0" Width="12" Height="24" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="White" Opacity="0.5"/>
+
+			<Border Margin="  0,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin=" 12,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin=" 24,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin=" 36,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin=" 48,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin=" 60,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin=" 72,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin=" 84,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin=" 96,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="108,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="120,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="132,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="144,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="156,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="168,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="180,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="192,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="204,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="216,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="228,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="240,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="252,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="264,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="276,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="288,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="300,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="312,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="324,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="336,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="348,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="360,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+			<Border Margin="372,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" />
+
+			<Border Name="PlayPos" Margin="  0,0,0,0" Width="12" Height="144" BorderBrush="Black" BorderThickness="0.5" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Black" Opacity="0.3" />
+			<Polygon Name="LoopStart"  Margin="0,  0,0,0" Points="1,1 12,12 1,23" Stroke="Black" Fill="Black" />			
+			
+		</Grid>
+		
+		<Grid Name="TransposeGrid"  Grid.Row="1" Grid.Column="0" Background="Gainsboro">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="24"/>
+			</Grid.RowDefinitions>
+		</Grid>
+		
+		<Grid Name="VelocityGrid" Grid.Row="2" Grid.Column="0" Background="#FFCECECE">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="24"/>
+			</Grid.RowDefinitions>
+		</Grid>
+
+	</Grid>
+
+</UserControl>

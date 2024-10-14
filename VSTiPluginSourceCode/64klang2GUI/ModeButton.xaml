@@ -1,0 +1,19 @@
+﻿<RadioButton x:Class="_64klang2GUI.ModeButton"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             x:Name="TheModeButton">
+    <RadioButton.Style>
+        <Style BasedOn="{StaticResource {x:Type ToggleButton}}" TargetType="{x:Type RadioButton}">
+            <Setter Property="Opacity" Value="0.33"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, ElementName=TheModeButton}" Value="True">
+                    <Setter Property="Opacity" Value="1"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </RadioButton.Style>
+     <!--<Image Source="pack://application:,,,/MIP;component/Images/Market.png"></Image>-->
+</RadioButton>

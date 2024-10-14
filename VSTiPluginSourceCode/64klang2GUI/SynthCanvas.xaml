@@ -1,0 +1,25 @@
+﻿<Canvas x:Class="_64klang2GUI.SynthCanvas"
+			 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+			 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+			 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+			 xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+			 mc:Ignorable="d" 
+			 d:DesignHeight="720" d:DesignWidth="1280" 
+			VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ClipToBounds="False"
+			Background="#FF424142" MouseLeftButtonDown="Canvas_MouseLeftButtonDown" MouseLeftButtonUp="Canvas_PreviewMouseLeftButtonUp" MouseRightButtonDown="Canvas_MouseRightButtonDown" MouseMove="Canvas_MouseMove" >
+	<Canvas.ContextMenu>
+		<ContextMenu>
+
+			<MenuItem Header="Paste Selection" Click="PasteSelection_Click" />
+			<MenuItem Header="Save Selection" Click="SaveSelection_Click" />
+			<MenuItem Header="Load Selection" Click="LoadSelection_Click" />
+			<Separator/>
+			<MenuItem Header="Blocks">
+				<MenuItem Header="Global" Click="MenuItem_Click" />
+				<MenuItem Header="Voice" Click="MenuItem_Click" />
+			</MenuItem>
+			<Separator/>
+
+		</ContextMenu>
+	</Canvas.ContextMenu>    
+</Canvas>

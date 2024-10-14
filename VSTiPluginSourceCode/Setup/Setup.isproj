@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+	<PropertyGroup>
+		<!-- Select a Product Configuration -->
+		<InstallShieldProductConfiguration>Express</InstallShieldProductConfiguration>
+		<!-- Select a Visual Studio Configuration / InstallShield Release -->
+		<Configuration>Debug</Configuration>
+		<InstallShieldRelease>$(Configuration)</InstallShieldRelease>
+	</PropertyGroup>
+	<ItemGroup>
+		<!-- The InstallShieldProject item selects the project to build -->
+		<InstallShieldProject Include="$(MSBuildProjectDirectory)\$(MSBuildProjectName).isl"/>
+		<!-- The InstallShieldReleaseFlags sets Release Flags -->
+		<!--<InstallShieldReleaseFlags Include=""/>-->
+		<!-- The InstallShieldMergeModulePath specifies what directories are
+		searched for Merge Modules -->
+		<!--<InstallShieldMergeModulePath Include=""/>-->
+	</ItemGroup>
+	<ItemGroup>
+		<!-- The ProjectReference items refer to any Visual Studio solutions you want to automatically probe for Project Output Groups.  -->
+	</ItemGroup>
+	<ItemGroup>
+		<!-- The TaggedOutputs items allow you to explicitly add extra files to output groups. Each item must include both Name and OutputGroup, as well as TargetPath metadata values. -->
+		<!--<TaggedOutputs Include="C:\My Test Exe.exe">
+			<Name>My Test Project</Name>
+			<OutputGroup>Primary output</OutputGroup>
+			<TargetPath>My Test Exe.exe</TargetPath>
+		</TaggedOutputs> -->
+	</ItemGroup>
+	<Import Project="$(MSBuildExtensionsPath32)\InstallShield\2013Limited\InstallShield.targets"/>
+	<ItemGroup>
+		<ProjectReference Include="..\64klang2Core\64klang2Core.vcxproj">
+			<Name>64klang2Core</Name>
+			<Project>{CB6CB37D-554C-4A9F-A62F-4D9F998A760F}</Project>
+		</ProjectReference>
+		<ProjectReference Include="..\64klang2GUI\64klang2GUI.csproj">
+			<Name>64klang2GUI</Name>
+			<Project>{3665E5E9-82FD-43B7-AB91-F048C956356A}</Project>
+		</ProjectReference>
+		<ProjectReference Include="..\64klang2VSTi\64klang2VSTi.vcxproj">
+			<Name>64klang2VSTi</Name>
+			<Project>{9DB68E31-E89E-47DB-B17F-CE56F29A2B70}</Project>
+		</ProjectReference>
+		<ProjectReference Include="..\64klang2Wrapper\64klang2Wrapper.vcxproj">
+			<Name>64klang2Wrapper</Name>
+			<Project>{9B0243F9-24C4-46AD-B39A-3D7365825431}</Project>
+		</ProjectReference>
+		<ProjectReference Include="..\CPUCheck\CPUCheck.vcxproj">
+			<Name>CPUCheck</Name>
+			<Project>{44AEF23D-304B-48B5-B451-01819D88A22D}</Project>
+		</ProjectReference>
+	</ItemGroup>
+</Project>

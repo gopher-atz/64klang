@@ -1,0 +1,213 @@
+﻿<Window x:Class="_64klang2GUI.SynthWindow"
+	  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+	  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+	  xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+	  xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+	  xmlns:my="clr-namespace:_64klang2GUI"
+	  mc:Ignorable="d" 
+	  d:DesignHeight="720" d:DesignWidth="1280"
+      MinWidth="800" MinHeight="480" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" ClipToBounds="False" WindowStartupLocation="CenterScreen" Topmost="False" Closing="Window_Closing">
+    <Window.Resources>
+        <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:_64klang2GUI">
+            <!-- Region: WaveformTimeline -->
+            <LinearGradientBrush x:Key="WaveformRightLevelBrush"
+                         EndPoint="1,1"
+                         StartPoint="1,0">
+                <GradientStop Color="#5E0004"
+                      Offset="0" />
+                <GradientStop Color="#EB0017"
+                      Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="WaveformLeftLevelBrush"
+                         EndPoint="1,0"
+                         StartPoint="1,1">
+                <GradientStop Color="#3B6A97"
+                      Offset="0" />
+                <GradientStop Color="#39A9FF"
+                      Offset="1" />
+            </LinearGradientBrush>
+            <Style TargetType="{x:Type local:WaveformTimeline}">
+                <Setter Property="RepeatRegionBrush"
+                Value="#2500FF06" />
+                <Setter Property="TimelineTickBrush"
+                Value="#393939" />
+                <Setter Property="CenterLineBrush"
+                Value="#8A8A8A" />
+                <Setter Property="RightLevelBrush"
+                Value="{StaticResource WaveformRightLevelBrush}" />
+                <Setter Property="LeftLevelBrush"
+                Value="{StaticResource WaveformLeftLevelBrush}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="{x:Type local:WaveformTimeline}">
+                            <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="20" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
+                                    <Canvas Name="PART_Waveform"
+                                    Grid.Row="1"
+                                    ClipToBounds="True" />
+                                    <Border BorderBrush="{TemplateBinding TimelineTickBrush}"
+                                    Grid.Row="0"
+                                    BorderThickness="0,0,0,1"
+                                    Panel.ZIndex="0">
+                                        <Canvas Name="PART_Timeline"
+                                        ClipToBounds="True"
+                                        Height="20" />
+                                    </Border>
+                                    <Canvas Name="PART_Repeat"
+                                    Grid.Row="1"
+                                    ClipToBounds="True" />
+                                    <Canvas Name="PART_Progress"
+                                    Grid.Row="0"
+                                    Grid.RowSpan="2"
+                                    ClipToBounds="True" />
+                                </Grid>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+            <!-- EndRegion: WaveformTimeline -->
+
+            <!-- Region: SpectrumAnalyzer -->
+            <!--<LinearGradientBrush x:Key="SpectrumBarBrush"
+                            EndPoint="0.5,0"
+                            StartPoint="0.5,1">
+            <GradientStop Color="#3c993b"
+                        Offset="0" />
+            <GradientStop Color="#43d33a"
+                        Offset="1" />
+            </LinearGradientBrush>
+            <SolidColorBrush x:Key="SpectrumPeakBrush"
+                        Color="#43d33a" />
+            <Style TargetType="{x:Type local:SpectrumAnalyzer}">
+            <Setter Property="BarStyle">
+            <Setter.Value>
+                <Style TargetType="{x:Type Rectangle}">
+                    <Setter Property="Fill"
+                            Value="{StaticResource SpectrumBarBrush}" />
+                </Style>
+            </Setter.Value>
+            </Setter>
+            <Setter Property="PeakStyle">
+            <Setter.Value>
+                <Style TargetType="{x:Type Rectangle}">
+                    <Setter Property="Fill"
+                            Value="{StaticResource SpectrumPeakBrush}" />
+                </Style>
+            </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type local:SpectrumAnalyzer}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}">
+                        <Canvas Name="PART_SpectrumCanvas"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                ClipToBounds="True" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+            </Setter>
+            </Style>-->
+            <!-- EndRegion: SpectrumAnalyzer -->
+        </ResourceDictionary>
+    </Window.Resources>
+        
+	<Grid Name="EditGrid">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="20" />
+			<RowDefinition Height="680*" />
+		</Grid.RowDefinitions>
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="1280*"/>
+		</Grid.ColumnDefinitions>
+		<Grid Name="HeaderGrid">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="20" />
+			</Grid.RowDefinitions>
+			<Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+				<ColumnDefinition Width="100"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="120"/>				
+			</Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                <Button Name="LoadPatch" Content="Load Patch" FontWeight="Bold" Click="LoadPatch_Click" Padding="2,0"></Button>
+				<Button Name="SavePatch" Content="Save Patch" FontWeight="Bold" Click="SavePatch_Click" Padding="2,0"></Button>
+				<Button Name="ReserPatch" Content="Reset Patch" FontWeight="Bold" Click="ResetPatch_Click" Padding="2,0"></Button>
+				<Button Name="EditWavetables" Content="Edit Wavetables" FontWeight="Bold" Margin="10,0" Click="EditWavetables_Click" Padding="2,0"></Button>
+				<Button Name="ExportPatch" Content="Export Patch" FontWeight="Bold" Click="ExportPatch_Click" Padding="2,0" ToolTip="Export the current patch to .h file"></Button>
+				<ToggleButton Name="ExportSong" Content="Export Song" FontWeight="Bold" Padding="2,0" Checked="ExportSong_Checked" Unchecked="ExportSong_Unchecked" ToolTip="Record the song and export to .h file"></ToggleButton>
+				<Label Content="Export Quant.:" FontWeight="Bold" Margin="0,0,0,0" Padding="2,0"></Label>
+				<ComboBox Name="SongQuantization" Padding="2,0" SelectedIndex="3" ToolTip="Note/Event Quantization for the song recording in number of samples">
+					<ComboBoxItem Content="16" />
+					<ComboBoxItem Content="32" />
+					<ComboBoxItem Content="48" />
+					<ComboBoxItem Content="64" />
+					<ComboBoxItem Content="80" />
+					<ComboBoxItem Content="96" />
+					<ComboBoxItem Content="112" />
+					<ComboBoxItem Content="128" />
+					<ComboBoxItem Content="144" />
+                    <ComboBoxItem Content="160" />
+                    <ComboBoxItem Content="176" />
+                    <ComboBoxItem Content="192" />
+                    <ComboBoxItem Content="208" />
+                    <ComboBoxItem Content="224" />
+                    <ComboBoxItem Content="240" />
+                    <ComboBoxItem Content="256" />
+				</ComboBox>
+				<Label Content="Jump To:" FontWeight="Bold" Margin="10,0,0,0" Padding="2,0"></Label>
+				<ComboBox Name="JumpToChannel" Padding="2,0" SelectionChanged="JumpToChannel_SelectionChanged" SelectedIndex="-1" ToolTip="Bring the selected channel into view">
+                    <ComboBoxItem Content="Channel 1" />
+                    <ComboBoxItem Content="Channel 2" />
+                    <ComboBoxItem Content="Channel 3" />
+                    <ComboBoxItem Content="Channel 4" />
+                    <ComboBoxItem Content="Channel 5" />
+                    <ComboBoxItem Content="Channel 6" />
+                    <ComboBoxItem Content="Channel 7" />
+                    <ComboBoxItem Content="Channel 8" />
+                    <ComboBoxItem Content="Channel 9" />
+                    <ComboBoxItem Content="Channel 10" />
+                    <ComboBoxItem Content="Channel 11" />
+                    <ComboBoxItem Content="Channel 12" />
+                    <ComboBoxItem Content="Channel 13" />
+                    <ComboBoxItem Content="Channel 14" />
+                    <ComboBoxItem Content="Channel 15" />
+					<ComboBoxItem Content="Channel 16" />
+                    <ComboBoxItem Content="Synth Root" />
+                </ComboBox>
+                <Label Content="Search:" FontWeight="Bold" Margin="10,0,0,0" Padding="2,0"></Label>
+                <TextBox Name="SearchBox" Padding="2,0" Width="80" TextChanged="SearchBox_TextChanged"></TextBox>
+            </StackPanel>
+
+			<Button Grid.Column="2" Name="Panic" Content="P.A.N.I.C" Margin="10,0,0,0" Click="Panic_Click" FontWeight="Bold" Padding="0" ToolTip="Clear all buffers and notes currently playing in the synth"></Button>
+			<CheckBox Grid.Column="3" Name="WantTopMost" Content="TopMost" Margin="10,0,0,0" IsChecked="false" Background="White" Foreground="Black" FontWeight="Bold" Padding="0" VerticalContentAlignment="Center" HorizontalContentAlignment="Left" Checked="WantTopMost_Checked" Unchecked="WantTopMost_Unchecked" />
+            <Label Name="VoiceCount" Grid.Column="4" Content="Total Voices: 123" Padding="0" Margin="10,0,0,0" VerticalContentAlignment="Center" FontWeight="Bold" Background="Black" Foreground="White" />
+		</Grid>
+        <ScrollViewer Name="NavigationScrollViewer" Grid.Row="1" Grid.Column="0" VerticalScrollBarVisibility="Visible" HorizontalScrollBarVisibility="Visible" Margin="0" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" MouseEnter="NavigationScrollViewer_MouseEnter" PreviewMouseRightButtonDown="NavigationScrollViewer_PreviewMouseRightButtonDown" PreviewMouseRightButtonUp="NavigationScrollViewer_PreviewMouseRightButtonUp" PreviewMouseWheel="NavigationScrollViewer_PreviewMouseWheel" PreviewMouseMove="NavigationScrollViewer_PreviewMouseMove">
+            <my:SynthCanvas x:Name="MainCanvas" Width="32768" Height="32768"/>
+        </ScrollViewer>
+        <!--<my:WaveformTimeline Grid.Row="1" Grid.Column="0" x:Name="TheWaveformTimeline" Height="200" Width="600" VerticalAlignment="Top" Opacity="0.8" Visibility="Visible" CenterLineThickness="2" CenterLineBrush="White" Background="Black" TimelineTickBrush="White" Foreground="White" AutoScaleWaveformCache="False" ClipToBounds="True" AllowRepeatRegions="True" />-->
+        <ScrollViewer Grid.Row="1" Grid.Column="0" VerticalScrollBarVisibility="Auto" HorizontalAlignment="Left" VerticalAlignment="Top" Opacity="0.9">
+            <StackPanel Name="EditStackPanel" Orientation="Vertical">
+                <StackPanel.LayoutTransform>
+                    <ScaleTransform ScaleX="0.75" ScaleY="0.75" />
+                </StackPanel.LayoutTransform>
+            </StackPanel>
+        </ScrollViewer>        
+	</Grid>
+</Window>
+

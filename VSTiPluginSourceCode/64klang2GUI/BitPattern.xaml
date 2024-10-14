@@ -1,0 +1,41 @@
+﻿<UserControl x:Class="_64klang2GUI.BitPattern"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             >
+	<Grid Name="TickGrid">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+		</Grid.RowDefinitions>
+		<Grid.ColumnDefinitions>
+			<ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="10"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="10"/>
+            <ColumnDefinition Width="Auto"/>
+			<ColumnDefinition Width="10"/>
+		</Grid.ColumnDefinitions>
+
+        <CheckBox Grid.Row="0" Grid.Column="0" Name="L0" Margin="0,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="L_Checked" Unchecked="L_Unchecked" />
+        <CheckBox Grid.Row="0" Grid.Column="0" Name="L1" Margin="13,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="L_Checked" Unchecked="L_Unchecked" />
+        <CheckBox Grid.Row="0" Grid.Column="0" Name="L2" Margin="26,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="L_Checked" Unchecked="L_Unchecked" />
+        <CheckBox Grid.Row="0" Grid.Column="0" Name="L3" Margin="39,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="L_Checked" Unchecked="L_Unchecked" />
+        <CheckBox Grid.Row="0" Grid.Column="0" Name="L4" Margin="52,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="L_Checked" Unchecked="L_Unchecked" />
+        <CheckBox Grid.Row="0" Grid.Column="0" Name="L5" Margin="65,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="L_Checked" Unchecked="L_Unchecked" />
+        <CheckBox Grid.Row="0" Grid.Column="0" Name="L6" Margin="78,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="L_Checked" Unchecked="L_Unchecked" />
+        <CheckBox Grid.Row="0" Grid.Column="0" Name="L7" Margin="91,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="L_Checked" Unchecked="L_Unchecked" />
+
+        <CheckBox Grid.Row="0" Grid.Column="2" Name="R0" Margin="0,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="R_Checked" Unchecked="R_Unchecked" />
+        <CheckBox Grid.Row="0" Grid.Column="2" Name="R1" Margin="13,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="R_Checked" Unchecked="R_Unchecked"/>
+        <CheckBox Grid.Row="0" Grid.Column="2" Name="R2" Margin="26,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="R_Checked" Unchecked="R_Unchecked"/>
+        <CheckBox Grid.Row="0" Grid.Column="2" Name="R3" Margin="39,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="R_Checked" Unchecked="R_Unchecked"/>
+        <CheckBox Grid.Row="0" Grid.Column="2" Name="R4" Margin="52,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="R_Checked" Unchecked="R_Unchecked"/>
+        <CheckBox Grid.Row="0" Grid.Column="2" Name="R5" Margin="65,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="R_Checked" Unchecked="R_Unchecked"/>
+        <CheckBox Grid.Row="0" Grid.Column="2" Name="R6" Margin="78,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="R_Checked" Unchecked="R_Unchecked"/>
+        <CheckBox Grid.Row="0" Grid.Column="2" Name="R7" Margin="91,0,0,0" VerticalAlignment="Center" IsChecked="False" Checked="R_Checked" Unchecked="R_Unchecked"/>
+
+        <CheckBox Grid.Row="0" Grid.Column="4" Name="ValueSync" Content="Sync" VerticalAlignment="Center" IsChecked="True" />
+    </Grid>
+</UserControl>

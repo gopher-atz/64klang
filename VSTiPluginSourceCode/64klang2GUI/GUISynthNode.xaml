@@ -1,0 +1,372 @@
+﻿<UserControl x:Class="_64klang2GUI.GUISynthNode"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:local="clr-namespace:_64klang2GUI"
+             mc:Ignorable="d" 
+             d:DesignHeight="500" d:DesignWidth="300">
+    <Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"></RowDefinition>
+		</Grid.RowDefinitions>
+		<Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" MinWidth="120"></ColumnDefinition>
+		</Grid.ColumnDefinitions>
+        <Border BorderThickness="1" BorderBrush="Black" />
+		<Grid Name="NodeGrid" Margin="1">
+			<Grid.RowDefinitions>
+				<RowDefinition Height="Auto"></RowDefinition>
+                <RowDefinition Height="Auto"></RowDefinition>
+			</Grid.RowDefinitions>
+			<Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" MinWidth="120"></ColumnDefinition>
+			</Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Row="0" Name="NodeVerticalStackPanel" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#FFB7B7B7" ClipToBounds="False" MouseRightButtonDown="NodeVerticalStackPanel_MouseRightButtonDown" MouseLeftButtonDown="NodeVerticalStackPanel_MouseLeftButtonDown">
+				<!--<StackPanel.Background>
+					<LinearGradientBrush EndPoint="1,0.5" StartPoint="0,0.5">
+						<GradientStop Color="#FF878787" Offset="0" />
+						<GradientStop Color="#FFe7e7e7" Offset="0.493" />
+						<GradientStop Color="#FFB7B7B7" Offset="1" />
+					</LinearGradientBrush>
+				</StackPanel.Background>-->
+				<Grid Name="NodeHeaderGrid">
+					<Grid.ColumnDefinitions>
+						<ColumnDefinition Width="Auto" />
+						<ColumnDefinition Width="*" />
+						<ColumnDefinition Width="Auto" />
+					</Grid.ColumnDefinitions>
+					<Grid.RowDefinitions>
+						<RowDefinition Height="2" />
+						<RowDefinition Height="21" />
+						<RowDefinition Height="2" />
+					</Grid.RowDefinitions>
+
+					<!-- A path that renders a cross. -->
+					<Path Name="NodeRemove" Grid.Row="1"  Grid.Column="0" Margin="3" Stroke="Red" StrokeThickness="5" StrokeStartLineCap="Square" StrokeEndLineCap="Square" Stretch="Uniform" VerticalAlignment="Center" HorizontalAlignment="Center" Data="M0,0 L10,10 M0,10 L10,0" MouseLeftButtonDown="NodeRemove_MouseLeftButtonDown">
+						<Path.Style>
+							<Style TargetType="{x:Type Path}">
+								<Setter Property="Opacity" Value="0.25" />
+								<Style.Triggers>
+									<Trigger Property="IsMouseOver" Value="True">
+										<Setter Property="Opacity" Value="1.0"/>
+									</Trigger>
+								</Style.Triggers>
+							</Style>
+						</Path.Style>
+					</Path>
+
+                    <local:VUMeter x:Name="VUMeter" Grid.Row="1" Grid.Column="0" Visibility="Collapsed" Margin="1,0" />
+
+                    <Label Name="NodeName" Grid.Row="1"  Grid.Column="1" Content="NodeName" FontSize="14" HorizontalContentAlignment="Center" VerticalContentAlignment="Top" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Bold" Foreground="Black" Background="{x:Null}" Margin="5,0" MouseDoubleClick="NodeName_MouseDoubleClick"></Label>
+                    <TextBox Name="FreeNodeName" Grid.Row="1"  Grid.Column="1" Text="NodeName" FontSize="14" HorizontalContentAlignment="Center" VerticalContentAlignment="Top" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Bold" Foreground="Black" Background="{x:Null}" Margin="5,0" BorderBrush="{x:Null}" BorderThickness="0" Visibility="Collapsed" LostFocus="FreeNodeName_LostFocus"/>
+
+                    <Ellipse Grid.Row="1" Grid.Column="2" Name="NodeOut" Height="20" Width="20" StrokeThickness="2" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="NodeOut_MouseLeftButtonDown">
+ 						<Ellipse.Fill>
+							<RadialGradientBrush>
+								<GradientStop Color="Red" Offset="0.5" />
+								<GradientStop Color="Black" Offset="1" />
+							</RadialGradientBrush>
+						</Ellipse.Fill>
+                    </Ellipse>
+				</Grid>
+				<Border BorderThickness="0.5" BorderBrush="Black" />
+                
+                <Grid Name="InputGrid0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input0" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName0" Grid.Column="1" Content="InputName0" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input1" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName1" Grid.Column="1" Content="InputName1" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input2" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName2" Grid.Column="1" Content="InputName2" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input3" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName3" Grid.Column="1" Content="InputName3" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input4" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName4" Grid.Column="1" Content="InputName4" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input5" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName5" Grid.Column="1" Content="InputName5" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input6" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName6" Grid.Column="1" Content="InputName6" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid7">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input7" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName7" Grid.Column="1" Content="InputName7" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input8" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName8" Grid.Column="1" Content="InputName8" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid9">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input9" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName9" Grid.Column="1" Content="InputName9" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input10" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName10" Grid.Column="1" Content="InputName10" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid11">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input11" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName11" Grid.Column="1" Content="InputName11" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input12" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName12" Grid.Column="1" Content="InputName12" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid13">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input13" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName13" Grid.Column="1" Content="InputName13" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input14" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName14" Grid.Column="1" Content="InputName14" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Grid Name="InputGrid15" >
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Ellipse Grid.Column="0" Name="Input15" Height="20" Width="20" HorizontalAlignment="Center" VerticalAlignment="Center" MouseLeftButtonDown="Input_MouseLeftButtonDown">
+                        <Ellipse.Fill>
+                            <RadialGradientBrush>
+                                <GradientStop Color="Red" Offset="0.5" />
+                                <GradientStop Color="Black" Offset="1" />
+                            </RadialGradientBrush>
+                        </Ellipse.Fill>
+                    </Ellipse>
+
+                    <Label Name="InputName15" Grid.Column="1" Content="InputName15" FontSize="12" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Padding="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" FontWeight="Normal" Foreground="Black" Background="{x:Null}" Margin="5,0"></Label>
+                </Grid>
+
+                <Button Name="NodeEditButton" Content="Configuration" Click="NodeEditButton_Click"/>
+                
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Name="NodeAdditionalVerticalStackPanel" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="#FFB7B7B7" ClipToBounds="False" >
+            </StackPanel>
+        </Grid>
+	</Grid>
+</UserControl>

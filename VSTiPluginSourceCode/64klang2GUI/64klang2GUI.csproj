@@ -1,0 +1,302 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{3665E5E9-82FD-43B7-AB91-F048C956356A}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>_64klang2GUI</RootNamespace>
+    <AssemblyName>64klang2GUI</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Final|AnyCPU'">
+    <OutputPath>bin\Final\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x86</PlatformTarget>
+    <CodeAnalysisLogFile>bin\Release\64klang2GUI.dll.CodeAnalysisLog.xml</CodeAnalysisLogFile>
+    <CodeAnalysisUseTypeNameInSuppression>true</CodeAnalysisUseTypeNameInSuppression>
+    <CodeAnalysisModuleSuppressionsFile>GlobalSuppressions.cs</CodeAnalysisModuleSuppressionsFile>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <CodeAnalysisRuleSetDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\\Rule Sets</CodeAnalysisRuleSetDirectories>
+    <CodeAnalysisRuleDirectories>;C:\Program Files (x86)\Microsoft Visual Studio 10.0\Team Tools\Static Analysis Tools\FxCop\\Rules</CodeAnalysisRuleDirectories>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
+    <DebugSymbols>true</DebugSymbols>
+    <OutputPath>bin\x64\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <DebugType>full</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Release|x64'">
+    <OutputPath>bin\x64\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Final|x64'">
+    <OutputPath>bin\x64\Final\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <Optimize>true</Optimize>
+    <DebugType>pdbonly</DebugType>
+    <PlatformTarget>x64</PlatformTarget>
+    <ErrorReport>prompt</ErrorReport>
+    <CodeAnalysisRuleSet>MinimumRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="PresentationUI, Version=4.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35" />
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <Reference Include="WindowsBase" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ArpeggiatorEdit.xaml.cs">
+      <DependentUpon>ArpeggiatorEdit.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="BitPattern.xaml.cs">
+      <DependentUpon>BitPattern.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="GUISynthNode.xaml.cs">
+      <DependentUpon>GUISynthNode.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="GUISynthNodeEdit.xaml.cs">
+      <DependentUpon>GUISynthNodeEdit.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="Knob.xaml.cs">
+      <DependentUpon>Knob.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="ModeButton.xaml.cs">
+      <DependentUpon>ModeButton.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="MultiParse\DefaultCasts\MPBooleanCast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPByteCast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPCharCast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPDecimalCast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPDoubleCast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPInt16Cast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPInt32Cast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPInt64Cast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPSByteCast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPSingleCast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPStringCast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPUInt16Cast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPUInt32Cast.cs" />
+    <Compile Include="MultiParse\DefaultCasts\MPUInt64Cast.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPBoolean.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPByte.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPChar.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPDecimal.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPDouble.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPInt16.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPInt32.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPInt64.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPSByte.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPSingle.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPString.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPUInt16.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPUInt32.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPUInt64.cs" />
+    <Compile Include="MultiParse\DefaultDataTypes\MPVariable.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPAbs.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPAcos.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPAsin.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPAtan.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPAtan2.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPCeiling.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPCos.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPCosh.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPExp.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPExp2.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPFloor.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPIfThen.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPIn1.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPIn0.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPLerp.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPLog.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPLog10.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPLog2.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPMax.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPMaxTime.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPMin.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPPi.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPPow.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPPulse.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPRand.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPRound.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPSign.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPSin.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPSqr.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPSqrt.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPTan.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPTanh.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPTau.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPTautime.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPTriSaw.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPTruncate.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPVAftertouch.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPVFrequency.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPVGate.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPVNote.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPVTrigger.cs" />
+    <Compile Include="MultiParse\DefaultFunctions\MPVVelocity.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPAddition.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPAssignment.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPComplement.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPConditionalAnd.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPConditionalOr.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPDivision.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPEquality.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPInequality.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPLeftShift.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPLogicalAnd.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPLogicalOr.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPLogicalXOr.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPModulo.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPMultiplication.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPNegative.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPNot.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPPositive.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPRelationalLarger.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPRelationalLargerEqual.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPRelationalSmaller.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPRelationalSmallerEqual.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPRightShift.cs" />
+    <Compile Include="MultiParse\DefaultOperators\MPSubtraction.cs" />
+    <Compile Include="MultiParse\Expression.cs" />
+    <Compile Include="MultiParse\MPDataType.cs" />
+    <Compile Include="MultiParse\MPDefault.cs" />
+    <Compile Include="MultiParse\MPFunction.cs" />
+    <Compile Include="MultiParse\MPOperator.cs" />
+    <Compile Include="MultiParse\MPSpecialCharacters.cs" />
+    <Compile Include="MultiParse\ParseException.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SynthCanvas.xaml.cs">
+      <DependentUpon>SynthCanvas.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="SynthWindow.xaml.cs">
+      <DependentUpon>SynthWindow.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="TouchScrolling.cs" />
+    <Compile Include="VUMeter.xaml.cs">
+      <DependentUpon>VUMeter.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="WaveFileConfig.xaml.cs">
+      <DependentUpon>WaveFileConfig.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="WaveFileDialog.xaml.cs">
+      <DependentUpon>WaveFileDialog.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="WaveformTimeline.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Include="ArpeggiatorEdit.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="BitPattern.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="GUISynthNode.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="GUISynthNodeEdit.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Knob.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="ModeButton.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="SynthCanvas.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="SynthWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="VUMeter.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="WaveFileConfig.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="WaveFileDialog.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="64klang2Config.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <SubType>Designer</SubType>
+    </Content>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>copy /y $(TargetPath) C:\VST
+copy /y $(TargetDir)64klang2Config.xml C:\VST</PostBuildEvent>
+  </PropertyGroup>
+  <PropertyGroup>
+    <PreBuildEvent>
+    </PreBuildEvent>
+  </PropertyGroup>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

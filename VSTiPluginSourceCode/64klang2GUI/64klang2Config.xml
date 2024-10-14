@@ -1,0 +1,1668 @@
+<?xml version="1.0"?>
+<Config>
+	<Nodes>
+		<Node typeid="0" name="Synth Root" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" >
+			<NodeInput name="In"/>
+			<NodeInput name="Gain" minValue="0" maxValue="128"/>
+		</Node>
+		<Node typeid="1" name="Channel Root" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" >
+			<NodeInput name="In"/>
+			<NodeInput name="Gain" minValue="0" maxValue="128"/>
+		</Node>
+		<Node typeid="2" name="Note Controller" numInputs="-1" numReqGUIInputs="0" numMaxGUIInputs="16" variableInput="1">
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+			<NodeInput name="Voice Manager"/>
+		</Node>
+		<Node typeid="3" name="Voice Manager" numInputs="5" numReqGUIInputs="1" numMaxGUIInputs="4">
+			<NodeInput name="Voice Root"/>
+			<NodeInput name="Transpose" minValue="-64" maxValue="64"/>
+			<NodeInput name="Glide" minValue="0" maxValue="128" mapping="12" singleInput="1"/>			
+			<NodeInput name="ARP Speed" minValue="0" maxValue="128" mapping="7" singleInput="1"/>			
+			<NodeInput name="Mode">				
+				<ModeGroup name="Lowest Note" mask="255" shift="0">
+					<ModeItem name="C -1" value="0"/>
+					<ModeItem name="C#-1" value="1"/>
+					<ModeItem name="D -1" value="2"/>
+					<ModeItem name="D#-1" value="3"/>
+					<ModeItem name="E -1" value="4"/>
+					<ModeItem name="F -1" value="5"/>
+					<ModeItem name="F#-1" value="6"/>
+					<ModeItem name="G -1" value="7"/>
+					<ModeItem name="G#-1" value="8"/>
+					<ModeItem name="A -1" value="9"/>
+					<ModeItem name="A#-1" value="10"/>
+					<ModeItem name="B -1" value="11"/>
+					<ModeItem name="C 0" value="12"/>
+					<ModeItem name="C#0" value="13"/>
+					<ModeItem name="D 0" value="14"/>
+					<ModeItem name="D#0" value="15"/>
+					<ModeItem name="E 0" value="16"/>
+					<ModeItem name="F 0" value="17"/>
+					<ModeItem name="F#0" value="18"/>
+					<ModeItem name="G 0" value="19"/>
+					<ModeItem name="G#0" value="20"/>
+					<ModeItem name="A 0" value="21"/>
+					<ModeItem name="A#0" value="22"/>
+					<ModeItem name="B 0" value="23"/>
+					<ModeItem name="C 1" value="24"/>
+					<ModeItem name="C#1" value="25"/>
+					<ModeItem name="D 1" value="26"/>
+					<ModeItem name="D#1" value="27"/>
+					<ModeItem name="E 1" value="28"/>
+					<ModeItem name="F 1" value="29"/>
+					<ModeItem name="F#1" value="30"/>
+					<ModeItem name="G 1" value="31"/>
+					<ModeItem name="G#1" value="32"/>
+					<ModeItem name="A 1" value="33"/>
+					<ModeItem name="A#1" value="34"/>
+					<ModeItem name="B 1" value="35"/>
+					<ModeItem name="C 2" value="36"/>
+					<ModeItem name="C#2" value="37"/>
+					<ModeItem name="D 2" value="38"/>
+					<ModeItem name="D#2" value="39"/>
+					<ModeItem name="E 2" value="40"/>
+					<ModeItem name="F 2" value="41"/>
+					<ModeItem name="F#2" value="42"/>
+					<ModeItem name="G 2" value="43"/>
+					<ModeItem name="G#2" value="44"/>
+					<ModeItem name="A 2" value="45"/>
+					<ModeItem name="A#2" value="46"/>
+					<ModeItem name="B 2" value="47"/>
+					<ModeItem name="C 3" value="48"/>
+					<ModeItem name="C#3" value="49"/>
+					<ModeItem name="D 3" value="50"/>
+					<ModeItem name="D#3" value="51"/>
+					<ModeItem name="E 3" value="52"/>
+					<ModeItem name="F 3" value="53"/>
+					<ModeItem name="F#3" value="54"/>
+					<ModeItem name="G 3" value="55"/>
+					<ModeItem name="G#3" value="56"/>
+					<ModeItem name="A 3" value="57"/>
+					<ModeItem name="A#3" value="58"/>
+					<ModeItem name="B 3" value="59"/>
+					<ModeItem name="C 4" value="60"/>
+					<ModeItem name="C#4" value="61"/>
+					<ModeItem name="D 4" value="62"/>
+					<ModeItem name="D#4" value="63"/>
+					<ModeItem name="E 4" value="64"/>
+					<ModeItem name="F 4" value="65"/>
+					<ModeItem name="F#4" value="66"/>
+					<ModeItem name="G 4" value="67"/>
+					<ModeItem name="G#4" value="68"/>
+					<ModeItem name="A 4" value="69"/>
+					<ModeItem name="A#4" value="70"/>
+					<ModeItem name="B 4" value="71"/>
+					<ModeItem name="C 5" value="72"/>
+					<ModeItem name="C#5" value="73"/>
+					<ModeItem name="D 5" value="74"/>
+					<ModeItem name="D#5" value="75"/>
+					<ModeItem name="E 5" value="76"/>
+					<ModeItem name="F 5" value="77"/>
+					<ModeItem name="F#5" value="78"/>
+					<ModeItem name="G 5" value="79"/>
+					<ModeItem name="G#5" value="80"/>
+					<ModeItem name="A 5" value="81"/>
+					<ModeItem name="A#5" value="82"/>
+					<ModeItem name="B 5" value="83"/>
+					<ModeItem name="C 6" value="84"/>
+					<ModeItem name="C#6" value="85"/>
+					<ModeItem name="D 6" value="86"/>
+					<ModeItem name="D#6" value="87"/>
+					<ModeItem name="E 6" value="88"/>
+					<ModeItem name="F 6" value="89"/>
+					<ModeItem name="F#6" value="90"/>
+					<ModeItem name="G 6" value="91"/>
+					<ModeItem name="G#6" value="92"/>
+					<ModeItem name="A 6" value="93"/>
+					<ModeItem name="A#6" value="94"/>
+					<ModeItem name="B 6" value="95"/>
+					<ModeItem name="C 7" value="96"/>
+					<ModeItem name="C#7" value="97"/>
+					<ModeItem name="D 7" value="98"/>
+					<ModeItem name="D#7" value="99"/>
+					<ModeItem name="E 7" value="100"/>
+					<ModeItem name="F 7" value="101"/>
+					<ModeItem name="F#7" value="102"/>
+					<ModeItem name="G 7" value="103"/>
+					<ModeItem name="G#7" value="104"/>
+					<ModeItem name="A 7" value="105"/>
+					<ModeItem name="A#7" value="106"/>
+					<ModeItem name="B 7" value="107"/>
+					<ModeItem name="C 8" value="108"/>
+					<ModeItem name="C#8" value="109"/>
+					<ModeItem name="D 8" value="110"/>
+					<ModeItem name="D#8" value="111"/>
+					<ModeItem name="E 8" value="112"/>
+					<ModeItem name="F 8" value="113"/>
+					<ModeItem name="F#8" value="114"/>
+					<ModeItem name="G 8" value="115"/>
+					<ModeItem name="G#8" value="116"/>
+					<ModeItem name="A 8" value="117"/>
+					<ModeItem name="A#8" value="118"/>
+					<ModeItem name="B 8" value="119"/>
+					<ModeItem name="C 9" value="120"/>
+					<ModeItem name="C#9" value="121"/>
+					<ModeItem name="D 9" value="122"/>
+					<ModeItem name="D#9" value="123"/>
+					<ModeItem name="E 9" value="124"/>
+					<ModeItem name="F 9" value="125"/>
+					<ModeItem name="F#9" value="126"/>
+					<ModeItem name="G 9" value="127"/>
+				</ModeGroup>        
+				<ModeGroup name="Highest Note" mask="65280" shift="8">
+					<ModeItem name="C -1" value="0"/>
+					<ModeItem name="C#-1" value="1"/>
+					<ModeItem name="D -1" value="2"/>
+					<ModeItem name="D#-1" value="3"/>
+					<ModeItem name="E -1" value="4"/>
+					<ModeItem name="F -1" value="5"/>
+					<ModeItem name="F#-1" value="6"/>
+					<ModeItem name="G -1" value="7"/>
+					<ModeItem name="G#-1" value="8"/>
+					<ModeItem name="A -1" value="9"/>
+					<ModeItem name="A#-1" value="10"/>
+					<ModeItem name="B -1" value="11"/>
+					<ModeItem name="C 0" value="12"/>
+					<ModeItem name="C#0" value="13"/>
+					<ModeItem name="D 0" value="14"/>
+					<ModeItem name="D#0" value="15"/>
+					<ModeItem name="E 0" value="16"/>
+					<ModeItem name="F 0" value="17"/>
+					<ModeItem name="F#0" value="18"/>
+					<ModeItem name="G 0" value="19"/>
+					<ModeItem name="G#0" value="20"/>
+					<ModeItem name="A 0" value="21"/>
+					<ModeItem name="A#0" value="22"/>
+					<ModeItem name="B 0" value="23"/>
+					<ModeItem name="C 1" value="24"/>
+					<ModeItem name="C#1" value="25"/>
+					<ModeItem name="D 1" value="26"/>
+					<ModeItem name="D#1" value="27"/>
+					<ModeItem name="E 1" value="28"/>
+					<ModeItem name="F 1" value="29"/>
+					<ModeItem name="F#1" value="30"/>
+					<ModeItem name="G 1" value="31"/>
+					<ModeItem name="G#1" value="32"/>
+					<ModeItem name="A 1" value="33"/>
+					<ModeItem name="A#1" value="34"/>
+					<ModeItem name="B 1" value="35"/>
+					<ModeItem name="C 2" value="36"/>
+					<ModeItem name="C#2" value="37"/>
+					<ModeItem name="D 2" value="38"/>
+					<ModeItem name="D#2" value="39"/>
+					<ModeItem name="E 2" value="40"/>
+					<ModeItem name="F 2" value="41"/>
+					<ModeItem name="F#2" value="42"/>
+					<ModeItem name="G 2" value="43"/>
+					<ModeItem name="G#2" value="44"/>
+					<ModeItem name="A 2" value="45"/>
+					<ModeItem name="A#2" value="46"/>
+					<ModeItem name="B 2" value="47"/>
+					<ModeItem name="C 3" value="48"/>
+					<ModeItem name="C#3" value="49"/>
+					<ModeItem name="D 3" value="50"/>
+					<ModeItem name="D#3" value="51"/>
+					<ModeItem name="E 3" value="52"/>
+					<ModeItem name="F 3" value="53"/>
+					<ModeItem name="F#3" value="54"/>
+					<ModeItem name="G 3" value="55"/>
+					<ModeItem name="G#3" value="56"/>
+					<ModeItem name="A 3" value="57"/>
+					<ModeItem name="A#3" value="58"/>
+					<ModeItem name="B 3" value="59"/>
+					<ModeItem name="C 4" value="60"/>
+					<ModeItem name="C#4" value="61"/>
+					<ModeItem name="D 4" value="62"/>
+					<ModeItem name="D#4" value="63"/>
+					<ModeItem name="E 4" value="64"/>
+					<ModeItem name="F 4" value="65"/>
+					<ModeItem name="F#4" value="66"/>
+					<ModeItem name="G 4" value="67"/>
+					<ModeItem name="G#4" value="68"/>
+					<ModeItem name="A 4" value="69"/>
+					<ModeItem name="A#4" value="70"/>
+					<ModeItem name="B 4" value="71"/>
+					<ModeItem name="C 5" value="72"/>
+					<ModeItem name="C#5" value="73"/>
+					<ModeItem name="D 5" value="74"/>
+					<ModeItem name="D#5" value="75"/>
+					<ModeItem name="E 5" value="76"/>
+					<ModeItem name="F 5" value="77"/>
+					<ModeItem name="F#5" value="78"/>
+					<ModeItem name="G 5" value="79"/>
+					<ModeItem name="G#5" value="80"/>
+					<ModeItem name="A 5" value="81"/>
+					<ModeItem name="A#5" value="82"/>
+					<ModeItem name="B 5" value="83"/>
+					<ModeItem name="C 6" value="84"/>
+					<ModeItem name="C#6" value="85"/>
+					<ModeItem name="D 6" value="86"/>
+					<ModeItem name="D#6" value="87"/>
+					<ModeItem name="E 6" value="88"/>
+					<ModeItem name="F 6" value="89"/>
+					<ModeItem name="F#6" value="90"/>
+					<ModeItem name="G 6" value="91"/>
+					<ModeItem name="G#6" value="92"/>
+					<ModeItem name="A 6" value="93"/>
+					<ModeItem name="A#6" value="94"/>
+					<ModeItem name="B 6" value="95"/>
+					<ModeItem name="C 7" value="96"/>
+					<ModeItem name="C#7" value="97"/>
+					<ModeItem name="D 7" value="98"/>
+					<ModeItem name="D#7" value="99"/>
+					<ModeItem name="E 7" value="100"/>
+					<ModeItem name="F 7" value="101"/>
+					<ModeItem name="F#7" value="102"/>
+					<ModeItem name="G 7" value="103"/>
+					<ModeItem name="G#7" value="104"/>
+					<ModeItem name="A 7" value="105"/>
+					<ModeItem name="A#7" value="106"/>
+					<ModeItem name="B 7" value="107"/>
+					<ModeItem name="C 8" value="108"/>
+					<ModeItem name="C#8" value="109"/>
+					<ModeItem name="D 8" value="110"/>
+					<ModeItem name="D#8" value="111"/>
+					<ModeItem name="E 8" value="112"/>
+					<ModeItem name="F 8" value="113"/>
+					<ModeItem name="F#8" value="114"/>
+					<ModeItem name="G 8" value="115"/>
+					<ModeItem name="G#8" value="116"/>
+					<ModeItem name="A 8" value="117"/>
+					<ModeItem name="A#8" value="118"/>
+					<ModeItem name="B 8" value="119"/>
+					<ModeItem name="C 9" value="120"/>
+					<ModeItem name="C#9" value="121"/>
+					<ModeItem name="D 9" value="122"/>
+					<ModeItem name="D#9" value="123"/>
+					<ModeItem name="E 9" value="124"/>
+					<ModeItem name="F 9" value="125"/>
+					<ModeItem name="F#9" value="126"/>
+					<ModeItem name="G 9" value="127"/>
+				</ModeGroup>
+				<ModeGroup name="Max Polyphony" mask="1610612736" shift="29" hidemodetext="1">
+					<ModeItem name=" 64 " value="0"/>
+					<ModeItem name=" 32 " value="1"/>
+					<ModeItem name=" 16 " value="2"/>
+					<ModeItem name="  8  " value="3"/>
+				</ModeGroup>
+				<ModeGroup name="ARP Mode" mask="983040" shift="16">
+					<ModeItem name="ARP Off " value="0"/>
+					<ModeItem name="ARP Up  " value="1"/>
+					<ModeItem name="ARP Down" value="2"/>
+					<ModeItem name="ARP Poly" value="3"/>
+				</ModeGroup>
+				<ModeGroup name="ARP Octaves" mask="15728640" shift="20" hidemodetext="1">
+					<ModeItem name="  1  " value="1"/>
+					<ModeItem name="  2  " value="2"/>
+					<ModeItem name="  3  " value="3"/>
+					<ModeItem name="  4  " value="4"/>
+				</ModeGroup>
+				<ModeFlag name="ARP Retrigger" value="-2147483648"/>				
+			</NodeInput>
+		</Node>
+		<Node typeid="4" name="Voice Root" numInputs="3" numReqGUIInputs="3" numMaxGUIInputs="3">
+			<NodeInput name="In"/>
+			<NodeInput name="Gain"/>
+			<NodeInput name="GateOut"/>			
+		</Node>
+		<Node typeid="5" name="ADSR" numInputs="8" numReqGUIInputs="2" numMaxGUIInputs="7">
+			<NodeInput name="Trigger"/>
+			<NodeInput name="Gate"/>
+			<NodeInput name="Attack" minValue="0" maxValue="128" mapping="1"/>
+			<NodeInput name="Decay" minValue="0" maxValue="128" mapping="1"/>
+			<NodeInput name="Sustain" minValue="0" maxValue="128"/>
+			<NodeInput name="Release" minValue="0" maxValue="128" mapping="1"/>
+			<NodeInput name="Gain" minValue="0" maxValue="128"/>
+			<NodeInput name="Mode">
+				<ModeFlag name="VTrigger" value="16" visibility="1"/>	
+				<ModeFlag name="VGate" value="32" visibility="1"/>	
+				<ModeFlag name="Exponential" value="64"/>	
+				<ModeFlag name="dBGain" value="128"/>	
+			</NodeInput>
+		</Node>
+		<Node typeid="6" name="LFO" numInputs="5" numReqGUIInputs="0" numMaxGUIInputs="4">
+			<NodeInput name="Frequency" minValue="0" maxValue="128" mapping="2"/>
+			<NodeInput name="Phase" minValue="0" maxValue="128"/>
+			<NodeInput name="Color" minValue="0" maxValue="128"/>
+			<NodeInput name="Gain" minValue="0" maxValue="128"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Waveform" mask="255" shift="0">
+					<ModeItem name="Sine       " value="0"/>
+					<ModeItem name="Saw        " value="1"/>
+					<ModeItem name="Pulse      " value="2"/>
+					<ModeItem name="AATriSaw   " value="3"/>
+					<ModeItem name="AAPulse    " value="4"/>
+					<ModeItem name="AABiTriSaw " value="5"/>
+					<ModeItem name="AABiPulse  " value="6"/>
+					<ModeItem name="RPSine     " value="7"/>
+					<ModeItem name="PNoise     " value="8"/>
+					<ModeItem name="AATriSawSeq" value="9"/>
+					<ModeItem name="SineSeq    " value="10"/>
+					<ModeItem name="Test       " value="11"/>
+				</ModeGroup>
+				<ModeGroup name="Polarity" mask="768" shift="8">
+					<ModeItem name="Unipolar+" value="0"/>
+					<ModeItem name="Unipolar-" value="1"/>
+					<ModeItem name="Bipolar  " value="2"/>
+				</ModeGroup>				
+				<ModeFlag name="BPMSync" value="2048"/>	
+				<ModeFlag name="Random Phase" value="4096"/>				
+			</NodeInput>
+		</Node>
+		<Node typeid="7" name="Oscillator" numInputs="8" numReqGUIInputs="0" numMaxGUIInputs="7">
+			<NodeInput name="Frequency" minValue="0" maxValue="128" mapping="3"/>
+			<NodeInput name="Phase" minValue="0" maxValue="128"/>
+			<NodeInput name="Color" minValue="0" maxValue="128"/>
+			<NodeInput name="Transpose" minValue="-64" maxValue="64"/>
+			<NodeInput name="Detune" minValue="-64" maxValue="64"/>
+			<NodeInput name="Gain" minValue="0" maxValue="128"/>
+			<NodeInput name="Unison Detune" minValue="-128" maxValue="128"/>
+			<NodeInput name="Mode">				
+				<ModeGroup name="Waveform" mask="255" shift="0">
+					<ModeItem name="Sine       " value="0"/>
+					<ModeItem name="Saw        " value="1"/>
+					<ModeItem name="Pulse      " value="2"/>
+					<ModeItem name="AATriSaw   " value="3"/>
+					<ModeItem name="AAPulse    " value="4"/>
+					<ModeItem name="AABiTriSaw " value="5"/>
+					<ModeItem name="AABiPulse  " value="6"/>
+					<ModeItem name="RPSine     " value="7"/>
+					<ModeItem name="PNoise     " value="8"/>
+					<ModeItem name="AATriSawSeq" value="9"/>
+					<ModeItem name="SineSeq    " value="10"/>
+					<ModeItem name="Test       " value="11"/>
+				</ModeGroup>
+				<ModeGroup name="Unison Voices" mask="1792" shift="8">
+					<ModeItem name="1       " value="0"/>
+					<ModeItem name="2       " value="1"/>
+					<ModeItem name="3       " value="2"/>
+					<ModeItem name="4       " value="3"/>
+					<ModeItem name="5       " value="4"/>
+					<ModeItem name="6       " value="5"/>
+					<ModeItem name="7       " value="6"/>
+				</ModeGroup>
+				<ModeFlag name="Voice Frequency" value="2048"/>
+				<ModeFlag name="Random Phase" value="4096"/>
+			</NodeInput>
+		</Node>
+		<Node typeid="8" name="Noise" numInputs="2" numReqGUIInputs="0" numMaxGUIInputs="2">
+			<NodeInput name="Color" minValue="0" maxValue="128"/>
+			<NodeInput name="Gain" minValue="0" maxValue="128"/>
+		</Node>
+		<Node typeid="9" name="BQ Filter" numInputs="5" numReqGUIInputs="1" numMaxGUIInputs="4" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Frequency" minValue="0" maxValue="128" mapping="4"/>
+			<NodeInput name="Q/BW" minValue="-128" maxValue="128"/>
+			<NodeInput name="dbGain" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="FilterType" mask="15" shift="0">
+					<ModeItem name="LowPass" value="0"/>
+					<ModeItem name="HighPass" value="1"/>
+					<ModeItem name="BandPassQ" value="2"/>
+					<ModeItem name="BandPassBW" value="3"/>
+					<ModeItem name="Notch" value="4"/>
+					<ModeItem name="AllPass" value="5"/>
+					<ModeItem name="Peak" value="6"/>
+					<ModeItem name="LowShelf" value="7"/>
+					<ModeItem name="HighShelf" value="8"/>
+					<ModeItem name="Resonance" value="9"/>
+					<ModeItem name="ResonanceNorm" value="10"/>
+				</ModeGroup>
+				<ModeGroup name="Slope" mask="3840" shift="8">
+					<ModeItem name="12db/oct" value="0"/>
+					<ModeItem name="24db/oct" value="1"/>
+					<ModeItem name="48db/oct" value="2"/>
+					<ModeItem name="96db/oct" value="4"/>
+				</ModeGroup>
+				<ModeFlag name="NoteMap" value="128"/>
+				<ModeFlag name="QuadraticMap" value="64"/>
+			</NodeInput>				
+		</Node>
+		<Node typeid="10" name="1Pole Filter" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Pole" minValue="-128" maxValue="128" mapping="13"/>
+		</Node>
+		<Node typeid="11" name="1Zero Filter" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Zero" minValue="-128" maxValue="128" mapping="13"/>
+		</Node>
+		<Node typeid="12" name="Shaper" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Drive" minValue="-128" maxValue="128"/>
+		</Node>
+		<Node typeid="13" name="Panning" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Pan" minValue="0" maxValue="128" singleInput="1"/>
+		</Node>
+		<Node typeid="14" name="Scale" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Scale" minValue="-128" maxValue="128" mapping="13"/>
+		</Node>
+		<Node typeid="15" name="*" numInputs="2" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="16" name="/" numInputs="2" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="17" name="+" numInputs="2" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="18" name="-" numInputs="2" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="19" name="Clip" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Clip Level" minValue="0" maxValue="128"/>
+		</Node>
+		<Node typeid="20" name="Mix" numInputs="3" numReqGUIInputs="2" numMaxGUIInputs="3" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+			<NodeInput name="Mix" minValue="0" maxValue="128"/>
+		</Node>
+		<Node typeid="21" name="+ Multi" numInputs="-1" numReqGUIInputs="0" numMaxGUIInputs="16" allowSignalInsertion="1" variableInput="1">
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+			<NodeInput name="In"/>
+		</Node>
+		<Node typeid="22" name="Mono" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Channel" mask="15" shift="0">
+					<ModeItem name="Left" value="0"/>
+					<ModeItem name="Right" value="1"/>
+				</ModeGroup>
+			</NodeInput>
+		</Node>
+		<Node typeid="23" name="Envelope Follower" numInputs="3" numReqGUIInputs="1" numMaxGUIInputs="3" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Attack" minValue="0" maxValue="128" mapping="5"/>
+			<NodeInput name="Release" minValue="0" maxValue="128" mapping="6"/>
+		</Node>		
+		<Node typeid="24" name="Boolean Logic" numInputs="3" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Operation" mask="15" shift="0">
+					<ModeItem name="And" value="0"/>
+					<ModeItem name="Or" value="1"/>
+					<ModeItem name="Xor" value="2"/>
+					<ModeItem name="Not" value="3"/>
+				</ModeGroup>
+			</NodeInput>		
+		</Node>
+		<Node typeid="25" name="Compare" numInputs="3" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Operation" mask="15" shift="0">
+					<ModeItem name=">" value="0"/>
+					<ModeItem name=">=" value="1"/>
+					<ModeItem name="==" value="2"/>
+					<ModeItem name="!=" value="3"/>
+				</ModeGroup>
+			</NodeInput>	
+		</Node>
+		<Node typeid="26" name="Select" numInputs="3" numReqGUIInputs="3" numMaxGUIInputs="3" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+			<NodeInput name="Condition"/>
+		</Node>
+		<Node typeid="27" name="Event Signal" numInputs="1" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+		</Node>
+		<Node typeid="28" name="ProcessIf" numInputs="2" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="Condition"/>
+		</Node>
+		<Node typeid="29" name="Midi CC" numInputs="2" numReqGUIInputs="0" numMaxGUIInputs="0">
+			<NodeInput name="Scale" minValue="-128" maxValue="128"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Channel" mask="3968" shift="7">
+					<ModeItem name="Channel 1" value="0"/>
+					<ModeItem name="Channel 2" value="1"/>
+					<ModeItem name="Channel 3" value="2"/>
+					<ModeItem name="Channel 4" value="3"/>
+					<ModeItem name="Channel 5" value="4"/>
+					<ModeItem name="Channel 6" value="5"/>
+					<ModeItem name="Channel 7" value="6"/>
+					<ModeItem name="Channel 8" value="7"/>
+					<ModeItem name="Channel 9" value="8"/>
+					<ModeItem name="Channel 10" value="9"/>
+					<ModeItem name="Channel 11" value="10"/>
+					<ModeItem name="Channel 12" value="11"/>
+					<ModeItem name="Channel 13" value="12"/>
+					<ModeItem name="Channel 14" value="13"/>
+					<ModeItem name="Channel 15" value="14"/>
+					<ModeItem name="Channel 16" value="15"/>
+				</ModeGroup>
+				<ModeGroup name="Controller" mask="127" shift="0">
+					<ModeItem name="CC 0" value="0"/>
+					<ModeItem name="CC 1" value="1"/>
+					<ModeItem name="CC 2" value="2"/>
+					<ModeItem name="CC 3" value="3"/>
+					<ModeItem name="CC 4" value="4"/>
+					<ModeItem name="CC 5" value="5"/>
+					<ModeItem name="CC 6" value="6"/>
+					<ModeItem name="CC 7" value="7"/>
+					<ModeItem name="CC 8" value="8"/>
+					<ModeItem name="CC 9" value="9"/>
+					<ModeItem name="CC 10" value="10"/>
+					<ModeItem name="CC 11" value="11"/>
+					<ModeItem name="CC 12" value="12"/>
+					<ModeItem name="CC 13" value="13"/>
+					<ModeItem name="CC 14" value="14"/>
+					<ModeItem name="CC 15" value="15"/>
+					<ModeItem name="CC 16" value="16"/>
+					<ModeItem name="CC 17" value="17"/>
+					<ModeItem name="CC 18" value="18"/>
+					<ModeItem name="CC 19" value="19"/>
+					<ModeItem name="CC 20" value="20"/>
+					<ModeItem name="CC 21" value="21"/>
+					<ModeItem name="CC 22" value="22"/>
+					<ModeItem name="CC 23" value="23"/>
+					<ModeItem name="CC 24" value="24"/>
+					<ModeItem name="CC 25" value="25"/>
+					<ModeItem name="CC 26" value="26"/>
+					<ModeItem name="CC 27" value="27"/>
+					<ModeItem name="CC 28" value="28"/>
+					<ModeItem name="CC 29" value="29"/>
+					<ModeItem name="CC 30" value="30"/>
+					<ModeItem name="CC 31" value="31"/>
+					<ModeItem name="CC 32" value="32"/>
+					<ModeItem name="CC 33" value="33"/>
+					<ModeItem name="CC 34" value="34"/>
+					<ModeItem name="CC 35" value="35"/>
+					<ModeItem name="CC 36" value="36"/>
+					<ModeItem name="CC 37" value="37"/>
+					<ModeItem name="CC 38" value="38"/>
+					<ModeItem name="CC 39" value="39"/>
+					<ModeItem name="CC 40" value="40"/>
+					<ModeItem name="CC 41" value="41"/>
+					<ModeItem name="CC 42" value="42"/>
+					<ModeItem name="CC 43" value="43"/>
+					<ModeItem name="CC 44" value="44"/>
+					<ModeItem name="CC 45" value="45"/>
+					<ModeItem name="CC 46" value="46"/>
+					<ModeItem name="CC 47" value="47"/>
+					<ModeItem name="CC 48" value="48"/>
+					<ModeItem name="CC 49" value="49"/>
+					<ModeItem name="CC 50" value="50"/>
+					<ModeItem name="CC 51" value="51"/>
+					<ModeItem name="CC 52" value="52"/>
+					<ModeItem name="CC 53" value="53"/>
+					<ModeItem name="CC 54" value="54"/>
+					<ModeItem name="CC 55" value="55"/>
+					<ModeItem name="CC 56" value="56"/>
+					<ModeItem name="CC 57" value="57"/>
+					<ModeItem name="CC 58" value="58"/>
+					<ModeItem name="CC 59" value="59"/>
+					<ModeItem name="CC 60" value="60"/>
+					<ModeItem name="CC 61" value="61"/>
+					<ModeItem name="CC 62" value="62"/>
+					<ModeItem name="CC 63" value="63"/>
+					<ModeItem name="CC 64" value="64"/>
+					<ModeItem name="CC 65" value="65"/>
+					<ModeItem name="CC 66" value="66"/>
+					<ModeItem name="CC 67" value="67"/>
+					<ModeItem name="CC 68" value="68"/>
+					<ModeItem name="CC 69" value="69"/>
+					<ModeItem name="CC 70" value="70"/>
+					<ModeItem name="CC 71" value="71"/>
+					<ModeItem name="CC 72" value="72"/>
+					<ModeItem name="CC 73" value="73"/>
+					<ModeItem name="CC 74" value="74"/>
+					<ModeItem name="CC 75" value="75"/>
+					<ModeItem name="CC 76" value="76"/>
+					<ModeItem name="CC 77" value="77"/>
+					<ModeItem name="CC 78" value="78"/>
+					<ModeItem name="CC 79" value="79"/>
+					<ModeItem name="CC 80" value="80"/>
+					<ModeItem name="CC 81" value="81"/>
+					<ModeItem name="CC 82" value="82"/>
+					<ModeItem name="CC 83" value="83"/>
+					<ModeItem name="CC 84" value="84"/>
+					<ModeItem name="CC 85" value="85"/>
+					<ModeItem name="CC 86" value="86"/>
+					<ModeItem name="CC 87" value="87"/>
+					<ModeItem name="CC 88" value="88"/>
+					<ModeItem name="CC 89" value="89"/>
+					<ModeItem name="CC 90" value="90"/>
+					<ModeItem name="CC 91" value="91"/>
+					<ModeItem name="CC 92" value="92"/>
+					<ModeItem name="CC 93" value="93"/>
+					<ModeItem name="CC 94" value="94"/>
+					<ModeItem name="CC 95" value="95"/>
+					<ModeItem name="CC 96" value="96"/>
+					<ModeItem name="CC 97" value="97"/>
+					<ModeItem name="CC 98" value="98"/>
+					<ModeItem name="CC 99" value="99"/>
+					<ModeItem name="CC 100" value="100"/>
+					<ModeItem name="CC 101" value="101"/>
+					<ModeItem name="CC 102" value="102"/>
+					<ModeItem name="CC 103" value="103"/>
+					<ModeItem name="CC 104" value="104"/>
+					<ModeItem name="CC 105" value="105"/>
+					<ModeItem name="CC 106" value="106"/>
+					<ModeItem name="CC 107" value="107"/>
+					<ModeItem name="CC 108" value="108"/>
+					<ModeItem name="CC 109" value="109"/>
+					<ModeItem name="CC 110" value="110"/>
+					<ModeItem name="CC 111" value="111"/>
+					<ModeItem name="CC 112" value="112"/>
+					<ModeItem name="CC 113" value="113"/>
+					<ModeItem name="CC 114" value="114"/>
+					<ModeItem name="CC 115" value="115"/>
+					<ModeItem name="CC 116" value="116"/>
+					<ModeItem name="CC 117" value="117"/>
+					<ModeItem name="CC 118" value="118"/>
+					<ModeItem name="CC 119" value="119"/>
+					<ModeItem name="CC 120" value="120"/>
+					<ModeItem name="CC 121" value="121"/>
+					<ModeItem name="CC 122" value="122"/>
+					<ModeItem name="CC 123" value="123"/>
+					<ModeItem name="CC 124" value="124"/>
+					<ModeItem name="CC 125" value="125"/>
+					<ModeItem name="CC 126" value="126"/>
+					<ModeItem name="CC 127" value="127"/>
+				</ModeGroup>
+			</NodeInput>
+		</Node>
+		<Node typeid="30" name="Distortion" numInputs="4" numReqGUIInputs="1" numMaxGUIInputs="3" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Drive" minValue="0" maxValue="128"/>
+			<NodeInput name="Threshold" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Distortion Type" mask="15" shift="0">
+					<ModeItem name="Overdrive" value="0"/>
+					<ModeItem name="Damp" value="1"/>
+					<ModeItem name="Quantize" value="2"/>
+					<ModeItem name="Limit" value="3"/>
+					<ModeItem name="Asymetric" value="4"/>
+					<ModeItem name="Sin" value="5"/>
+				</ModeGroup>
+			</NodeInput>	
+		</Node>
+		<Node typeid="31" name="CrossMix" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Mix" minValue="0" maxValue="128" singleInput="1"/>
+		</Node>
+		<Node typeid="32" name="ADelay" numInputs="3" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Delay" minValue="0" maxValue="128" mapping="7"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Delay Type" mask="15" shift="0">
+					<ModeItem name="BPM Synced" value="0"/>
+					<ModeItem name="0-37ms" value="1"/>
+					<ModeItem name="0-128ms" value="2"/>
+					<ModeItem name="0-2s" value="3"/>
+					<ModeItem name="Note Synced" value="4"/>
+					<ModeItem name="Note Synced2" value="5"/>
+				</ModeGroup>
+			</NodeInput>
+		</Node>
+		<Node typeid="33" name="FBDelay" numInputs="6" numReqGUIInputs="1" numMaxGUIInputs="5" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Delay" minValue="0" maxValue="128" mapping="7"/>
+			<NodeInput name="Feedback" minValue="0" maxValue="128"/>
+			<NodeInput name="Damp" minValue="0" maxValue="128"/>
+			<NodeInput name="Mix" minValue="0" maxValue="128"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Delay Type" mask="15" shift="0">
+					<ModeItem name="BPM Synced" value="0"/>
+					<ModeItem name="0-37ms" value="1"/>
+					<ModeItem name="0-128ms" value="2"/>
+					<ModeItem name="0-2s" value="3"/>
+					<ModeItem name="Note Synced" value="4"/>
+					<ModeItem name="Note Synced2" value="5"/>
+				</ModeGroup>
+				<ModeFlag name="Cross" value="128"/>
+			</NodeInput>
+		</Node>
+		<Node typeid="34" name="DC Filter" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Pole" minValue="0" maxValue="128"/>
+		</Node>
+		<Node typeid="35" name="OneShot Random" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0">
+			<NodeInput name="Gain" minValue="-128" maxValue="128"/>
+		</Node>
+		<Node typeid="36" name="Reverb" numInputs="6" numReqGUIInputs="1" numMaxGUIInputs="6" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Gain" minValue="0" maxValue="128"/>
+			<NodeInput name="Roomsize" minValue="0" maxValue="128"/>
+			<NodeInput name="Damp" minValue="0" maxValue="128"/>
+			<NodeInput name="Dry/Wet Mix" minValue="0" maxValue="128"/>
+			<NodeInput name="Width" minValue="0" maxValue="128" singleInput="1"/>
+		</Node>
+		<Node typeid="37" name="Equalizer10" numInputs="11" numReqGUIInputs="1" numMaxGUIInputs="11" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="31hz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="62hz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="125hz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="250hz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="500hz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="1khz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="2kHz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="4kHz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="8kHz" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="16kHz" minValue="0" maxValue="128" mapping="8"/>
+		</Node>
+		<Node typeid="38" name="Compressor/Expander" numInputs="6" numReqGUIInputs="2" numMaxGUIInputs="6" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Control Signal"/>
+			<NodeInput name="Threshold" minValue="0" maxValue="128" mapping="8"/>
+			<NodeInput name="Ratio" minValue="-128" maxValue="128" mapping="9"/>
+			<NodeInput name="Attack" minValue="0" maxValue="128" mapping="5"/>
+			<NodeInput name="Release" minValue="0" maxValue="128" mapping="6"/>
+		</Node>		
+		<Node typeid="39" name="Trigger" numInputs="1" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+		</Node>
+		<Node typeid="40" name="Trigger Sequencer" numInputs="13" numReqGUIInputs="4" numMaxGUIInputs="4" allowSignalInsertion="0">
+			<NodeInput name="Step Trigger"/>
+			<NodeInput name="Step Reset"/>
+			<NodeInput name="Pattern Reset"/>
+			<NodeInput name="Random Pattern"/>
+			<NodeInput name="Max Patterns" minValue="1" maxValue="16" range="16" singleInput="1"/>
+			<NodeInput name="Pattern0-3L"/>
+			<NodeInput name="Pattern4-7L"/>
+			<NodeInput name="Pattern8-11L"/>
+			<NodeInput name="Pattern9-15L"/>
+			<NodeInput name="Pattern0-3R"/>
+			<NodeInput name="Pattern4-7R"/>
+			<NodeInput name="Pattern8-11R"/>
+			<NodeInput name="Pattern9-15R"/>								
+		</Node>
+		<Node typeid="41" name="Sample Recorder" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="0">
+			<NodeInput name="In"/>
+			<NodeInput name="Record Time" minValue="0" maxValue="128" singleInput="1" mapping="11" />
+		</Node>	
+		<Node typeid="42" name="Sample Player" numInputs="8" numReqGUIInputs="1" numMaxGUIInputs="7" allowSignalInsertion="0">
+			<NodeInput name="In"/>
+			<NodeInput name="Position" minValue="0" maxValue="128" mapping="13"/>
+			<NodeInput name="Speed" minValue="-64" maxValue="64" mapping="10"/>
+			<NodeInput name="Direction" minValue="0" maxValue="1" range="1"/>
+			<NodeInput name="Loop Start" minValue="0" maxValue="128" mapping="13"/>
+			<NodeInput name="Loop End" minValue="0" maxValue="128" mapping="13"/>
+			<NodeInput name="Crossfade" minValue="0" maxValue="128"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Input Type" mask="7" shift="0">
+					<ModeItem name="Wavetable" value="0"/>
+					<ModeItem name="Input" value="1"/>
+				</ModeGroup>
+				<ModeFlag name="Loop" value="8"/>
+				<ModeGroup name="Wavetable" mask="4080" shift="4">
+					<ModeItem name="Wavetable 1" value="0"/>
+					<ModeItem name="Wavetable 2" value="1"/>
+					<ModeItem name="Wavetable 3" value="2"/>
+					<ModeItem name="Wavetable 4" value="3"/>
+					<ModeItem name="Wavetable 5" value="4"/>
+					<ModeItem name="Wavetable 6" value="5"/>
+					<ModeItem name="Wavetable 7" value="6"/>
+					<ModeItem name="Wavetable 8" value="7"/>
+					<ModeItem name="Wavetable 9" value="8"/>
+					<ModeItem name="Wavetable 10" value="9"/>
+					<ModeItem name="Wavetable 11" value="10"/>
+					<ModeItem name="Wavetable 12" value="11"/>
+					<ModeItem name="Wavetable 13" value="12"/>
+					<ModeItem name="Wavetable 14" value="13"/>
+					<ModeItem name="Wavetable 15" value="14"/>
+					<ModeItem name="Wavetable 16" value="15"/>
+					<ModeItem name="Wavetable 17" value="16"/>
+					<ModeItem name="Wavetable 18" value="17"/>
+					<ModeItem name="Wavetable 19" value="18"/>
+					<ModeItem name="Wavetable 20" value="19"/>
+					<ModeItem name="Wavetable 21" value="20"/>
+					<ModeItem name="Wavetable 22" value="21"/>
+					<ModeItem name="Wavetable 23" value="22"/>
+					<ModeItem name="Wavetable 24" value="23"/>
+					<ModeItem name="Wavetable 25" value="24"/>
+					<ModeItem name="Wavetable 26" value="25"/>
+					<ModeItem name="Wavetable 27" value="26"/>
+					<ModeItem name="Wavetable 28" value="27"/>
+					<ModeItem name="Wavetable 29" value="28"/>
+					<ModeItem name="Wavetable 30" value="29"/>
+					<ModeItem name="Wavetable 31" value="30"/>
+					<ModeItem name="Wavetable 32" value="31"/>
+				</ModeGroup>
+			</NodeInput>
+		</Node>		
+		<Node typeid="43" name="SV Filter" numInputs="4" numReqGUIInputs="1" numMaxGUIInputs="3" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Frequency" minValue="0" maxValue="128" mapping="4"/>
+			<NodeInput name="Q" minValue="0" maxValue="128"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="FilterType" mask="15" shift="0">
+					<ModeItem name="LowPass" value="1"/>
+					<ModeItem name="HighPass" value="2"/>
+					<ModeItem name="BandPass" value="4"/>
+					<ModeItem name="Notch" value="3"/>					
+					<ModeItem name="Peak" value="9"/>
+					<ModeItem name="AllPass" value="7"/>
+				</ModeGroup>
+				<ModeGroup name="Slope" mask="3840" shift="8">
+					<ModeItem name="12db/oct" value="0"/>
+					<ModeItem name="24db/oct" value="1"/>
+					<ModeItem name="48db/oct" value="2"/>
+				</ModeGroup>
+				<ModeFlag name="NoteMap" value="128"/>
+				<ModeFlag name="QuadraticMap" value="64"/>
+			</NodeInput>				
+		</Node>
+		
+		<Node typeid="44" name="Abs" numInputs="1" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="45" name="Neg" numInputs="1" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="46" name="Sqrt" numInputs="1" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="47" name="Min" numInputs="2" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="48" name="Max" numInputs="2" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In1"/>
+			<NodeInput name="In2"/>
+		</Node>
+		<Node typeid="49" name="Glitch" numInputs="7" numReqGUIInputs="1" numMaxGUIInputs="6" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Activate" minValue="0" maxValue="1" range="1" singleInput="1"/>
+			<NodeInput name="Time" minValue="0" maxValue="128" mapping="7"/>
+			<NodeInput name="P1" minValue="0" maxValue="128" singleInput="1"/>
+			<NodeInput name="P2" minValue="0" maxValue="128"/>
+			<NodeInput name="Transpose(Pitch)" minValue="-64" maxValue="64" singleInput="1"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Glitch Type" mask="15" shift="0">
+					<ModeItem name="Tape Stop" value="0"/>
+					<ModeItem name="Retrigger" value="1"/>
+					<ModeItem name="Shuffle" value="2"/>
+					<ModeItem name="Reverse" value="3"/>
+				</ModeGroup>
+			</NodeInput>	
+		</Node>
+		<Node typeid="50" name="TextToSpeech" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0" allowSignalInsertion="0">
+			<NodeInput name="Mode"/>
+		</Node>
+		<Node typeid="51" name="LDelay" numInputs="3" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Delay" minValue="0" maxValue="128" mapping="7"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Delay Type" mask="15" shift="0">
+					<ModeItem name="BPM Synced" value="0"/>
+					<ModeItem name="0-37ms" value="1"/>
+					<ModeItem name="0-128ms" value="2"/>
+					<ModeItem name="0-2s" value="3"/>
+					<ModeItem name="Note Synced" value="4"/>
+					<ModeItem name="Note Synced2" value="5"/>
+				</ModeGroup>
+			</NodeInput>
+		</Node>
+		<Node typeid="52" name="GM.DLS" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0" allowSignalInsertion="0">
+			<NodeInput name="Mode">
+				<ModeGroup name="Sample" mask="65535" shift="0">
+					<ModeItem name="SynthBass101" value="0"/>
+					<ModeItem name="SynthBass101" value="1"/>
+					<ModeItem name="12-str.Gt   " value="2"/>
+					<ModeItem name="12-str.Gt   " value="3"/>
+					<ModeItem name="12-str.Gt   " value="4"/>
+					<ModeItem name="5th Saw Wave" value="5"/>
+					<ModeItem name="60's Organ 1" value="6"/>
+					<ModeItem name="60's Organ 1" value="7"/>
+					<ModeItem name="60's Organ 1" value="8"/>
+					<ModeItem name="60's E.Piano" value="9"/>
+					<ModeItem name="60's E.Piano" value="10"/>
+					<ModeItem name="60's E.Piano" value="11"/>
+					<ModeItem name="60's E.Piano" value="12"/>
+					<ModeItem name="60's E.Piano" value="13"/>
+					<ModeItem name="60's E.Piano" value="14"/>
+					<ModeItem name="60's E.Piano" value="15"/>
+					<ModeItem name="TR-808      " value="16"/>
+					<ModeItem name="Standard    " value="17"/>
+					<ModeItem name="TR-808      " value="18"/>
+					<ModeItem name="TR-808      " value="19"/>
+					<ModeItem name="Accordion Fr" value="20"/>
+					<ModeItem name="Accordion Fr" value="21"/>
+					<ModeItem name="Acoustic Bs." value="22"/>
+					<ModeItem name="Acoustic Bs." value="23"/>
+					<ModeItem name="Acoustic Bs." value="24"/>
+					<ModeItem name="Agogo       " value="25"/>
+					<ModeItem name="Applause    " value="26"/>
+					<ModeItem name="Atmosphere  " value="27"/>
+					<ModeItem name="Atmosphere  " value="28"/>
+					<ModeItem name="Alto Sax    " value="29"/>
+					<ModeItem name="Alto Sax    " value="30"/>
+					<ModeItem name="Alto Sax    " value="31"/>
+					<ModeItem name="Alto Sax    " value="32"/>
+					<ModeItem name="Alto Sax    " value="33"/>
+					<ModeItem name="Alto Sax    " value="34"/>
+					<ModeItem name="Alto Sax    " value="35"/>
+					<ModeItem name="Alto Sax    " value="36"/>
+					<ModeItem name="Bagpipe     " value="37"/>
+					<ModeItem name="Bagpipe     " value="38"/>
+					<ModeItem name="Bagpipe     " value="39"/>
+					<ModeItem name="Bagpipe     " value="40"/>
+					<ModeItem name="Bagpipe     " value="41"/>
+					<ModeItem name="Bandoneon   " value="42"/>
+					<ModeItem name="Bandoneon   " value="43"/>
+					<ModeItem name="Banjo       " value="44"/>
+					<ModeItem name="Banjo       " value="45"/>
+					<ModeItem name="Banjo       " value="46"/>
+					<ModeItem name="Bassoon     " value="47"/>
+					<ModeItem name="Bassoon     " value="48"/>
+					<ModeItem name="Standard    " value="49"/>
+					<ModeItem name="Bird        " value="50"/>
+					<ModeItem name="Bottle Blow " value="51"/>
+					<ModeItem name="Bottle Blow " value="52"/>
+					<ModeItem name="Brass 1     " value="53"/>
+					<ModeItem name="Brass 1     " value="54"/>
+					<ModeItem name="Brass 1     " value="55"/>
+					<ModeItem name="Brass 1     " value="56"/>
+					<ModeItem name="String Slap " value="57"/>
+					<ModeItem name="Brush       " value="58"/>
+					<ModeItem name="Bass &amp; Lead " value="59"/>
+					<ModeItem name="Bass &amp; Lead " value="60"/>
+					<ModeItem name="Bass &amp; Lead " value="61"/>
+					<ModeItem name="Bubble      " value="62"/>
+					<ModeItem name="Burst Noise " value="63"/>
+					<ModeItem name="Baritone Sax" value="64"/>
+					<ModeItem name="Baritone Sax" value="65"/>
+					<ModeItem name="Baritone Sax" value="66"/>
+					<ModeItem name="Baritone Sax" value="67"/>
+					<ModeItem name="Baritone Sax" value="68"/>
+					<ModeItem name="Brush       " value="69"/>
+					<ModeItem name="Standard    " value="70"/>
+					<ModeItem name="Syn.Calliope" value="71"/>
+					<ModeItem name="Syn.Calliope" value="72"/>
+					<ModeItem name="Castanets   " value="73"/>
+					<ModeItem name="Cello       " value="74"/>
+					<ModeItem name="Cello       " value="75"/>
+					<ModeItem name="Cello       " value="76"/>
+					<ModeItem name="Slow Violin " value="77"/>
+					<ModeItem name="Cello       " value="78"/>
+					<ModeItem name="Celesta     " value="79"/>
+					<ModeItem name="Celesta     " value="80"/>
+					<ModeItem name="Chiffer Lead" value="81"/>
+					<ModeItem name="Chiffer Lead" value="82"/>
+					<ModeItem name="Standard    " value="83"/>
+					<ModeItem name="Standard    " value="84"/>
+					<ModeItem name="Choir Aahs  " value="85"/>
+					<ModeItem name="Charang     " value="86"/>
+					<ModeItem name="Charang     " value="87"/>
+					<ModeItem name="Standard    " value="88"/>
+					<ModeItem name="Clav.       " value="89"/>
+					<ModeItem name="Clav.       " value="90"/>
+					<ModeItem name="Clav.       " value="91"/>
+					<ModeItem name="Clav.       " value="92"/>
+					<ModeItem name="Standard    " value="93"/>
+					<ModeItem name="Clean Gt.   " value="94"/>
+					<ModeItem name="Clean Gt.   " value="95"/>
+					<ModeItem name="Clean Gt.   " value="96"/>
+					<ModeItem name="Clean Gt.   " value="97"/>
+					<ModeItem name="Clean Gt.   " value="98"/>
+					<ModeItem name="Contrabass  " value="99"/>
+					<ModeItem name="Contrabass  " value="100"/>
+					<ModeItem name="Contrabass  " value="101"/>
+					<ModeItem name="808 Tom     " value="102"/>
+					<ModeItem name="TR-808      " value="103"/>
+					<ModeItem name="Drums Cowbel" value="104"/>
+					<ModeItem name="Car-Pass    " value="105"/>
+					<ModeItem name="Drums Cymbal" value="106"/>
+					<ModeItem name="Car-Crash   " value="107"/>
+					<ModeItem name="DoorCreaking" value="108"/>
+					<ModeItem name="Car-Stop    " value="109"/>
+					<ModeItem name="Church Org.1" value="110"/>
+					<ModeItem name="Church Org.1" value="111"/>
+					<ModeItem name="Church Org.1" value="112"/>
+					<ModeItem name="Church Org.1" value="113"/>
+					<ModeItem name="Church Org.1" value="114"/>
+					<ModeItem name="Detuned EP 1" value="115"/>
+					<ModeItem name="Detuned EP 1" value="116"/>
+					<ModeItem name="Detuned EP 2" value="117"/>
+					<ModeItem name="Doctor Solo " value="118"/>
+					<ModeItem name="Doctor Solo " value="119"/>
+					<ModeItem name="Dog         " value="120"/>
+					<ModeItem name="Detuned Or.1" value="121"/>
+					<ModeItem name="DistortionGt" value="122"/>
+					<ModeItem name="DistortionGt" value="123"/>
+					<ModeItem name="DistortionGt" value="124"/>
+					<ModeItem name="DistortionGt" value="125"/>
+					<ModeItem name="DistortionGt" value="126"/>
+					<ModeItem name="DistortionGt" value="127"/>
+					<ModeItem name="DistortionGt" value="128"/>
+					<ModeItem name="DistortionGt" value="129"/>
+					<ModeItem name="DistortionGt" value="130"/>
+					<ModeItem name="Gt.Cut Noise" value="131"/>
+					<ModeItem name="English Horn" value="132"/>
+					<ModeItem name="English Horn" value="133"/>
+					<ModeItem name="English Horn" value="134"/>
+					<ModeItem name="English Horn" value="135"/>
+					<ModeItem name="Drums E-Toms" value="136"/>
+					<ModeItem name="E.Piano 1   " value="137"/>
+					<ModeItem name="E.Piano 1   " value="138"/>
+					<ModeItem name="E.Piano 1   " value="139"/>
+					<ModeItem name="E.Piano 1   " value="140"/>
+					<ModeItem name="E.Piano 1   " value="141"/>
+					<ModeItem name="E.Piano 2   " value="142"/>
+					<ModeItem name="E.Piano 2   " value="143"/>
+					<ModeItem name="E.Piano 2   " value="144"/>
+					<ModeItem name="E.Piano 2   " value="145"/>
+					<ModeItem name="E.Piano 2   " value="146"/>
+					<ModeItem name="E.Piano 2   " value="147"/>
+					<ModeItem name="E.Piano 2   " value="148"/>
+					<ModeItem name="Car-Engine  " value="149"/>
+					<ModeItem name="Organ 1     " value="150"/>
+					<ModeItem name="Organ 1     " value="151"/>
+					<ModeItem name="Organ 1     " value="152"/>
+					<ModeItem name="Organ 2     " value="153"/>
+					<ModeItem name="Organ 2     " value="154"/>
+					<ModeItem name="Organ 2     " value="155"/>
+					<ModeItem name="Organ 3     " value="156"/>
+					<ModeItem name="Organ 3     " value="157"/>
+					<ModeItem name="Organ 3     " value="158"/>
+					<ModeItem name="Fantasia    " value="159"/>
+					<ModeItem name="Fantasia    " value="160"/>
+					<ModeItem name="Drums Snare1" value="161"/>
+					<ModeItem name="French Horns" value="162"/>
+					<ModeItem name="French Horns" value="163"/>
+					<ModeItem name="Flute       " value="164"/>
+					<ModeItem name="Flute       " value="165"/>
+					<ModeItem name="Flute       " value="166"/>
+					<ModeItem name="Flute       " value="167"/>
+					<ModeItem name="Flute       " value="168"/>
+					<ModeItem name="Flute       " value="169"/>
+					<ModeItem name="Solo Vox    " value="170"/>
+					<ModeItem name="Warm Pad    " value="171"/>
+					<ModeItem name="Crystal     " value="172"/>
+					<ModeItem name="Fretless Bs." value="173"/>
+					<ModeItem name="Fretless Bs." value="174"/>
+					<ModeItem name="Fretless Bs." value="175"/>
+					<ModeItem name="Drums Snare2" value="176"/>
+					<ModeItem name="Gt.FretNoise" value="177"/>
+					<ModeItem name="Glockenspiel" value="178"/>
+					<ModeItem name="Glockenspiel" value="179"/>
+					<ModeItem name="Glockenspiel" value="180"/>
+					<ModeItem name="Goblin      " value="181"/>
+					<ModeItem name="Harmonica   " value="182"/>
+					<ModeItem name="Harmonica   " value="183"/>
+					<ModeItem name="Harmonica   " value="184"/>
+					<ModeItem name="Harmonica   " value="185"/>
+					<ModeItem name="Harmonica   " value="186"/>
+					<ModeItem name="Harmonica   " value="187"/>
+					<ModeItem name="Harp        " value="188"/>
+					<ModeItem name="Harp        " value="189"/>
+					<ModeItem name="Acoustic Bs." value="190"/>
+					<ModeItem name="Acoustic Bs." value="191"/>
+					<ModeItem name="Standard    " value="192"/>
+					<ModeItem name="Drums Clap  " value="193"/>
+					<ModeItem name="Heart Beat  " value="194"/>
+					<ModeItem name="Helicopter  " value="195"/>
+					<ModeItem name="Drums Laser " value="196"/>
+					<ModeItem name="Honky-tonk  " value="197"/>
+					<ModeItem name="Honky-tonk  " value="198"/>
+					<ModeItem name="Honky-tonk  " value="199"/>
+					<ModeItem name="Honky-tonk  " value="200"/>
+					<ModeItem name="Honky-tonk  " value="201"/>
+					<ModeItem name="Horse-Gallop" value="202"/>
+					<ModeItem name="Gt.Harmonics" value="203"/>
+					<ModeItem name="Gt.Harmonics" value="204"/>
+					<ModeItem name="Harpsichord " value="205"/>
+					<ModeItem name="Harpsichord " value="206"/>
+					<ModeItem name="Harpsichord " value="207"/>
+					<ModeItem name="Harpsichord " value="208"/>
+					<ModeItem name="Ice Rain    " value="209"/>
+					<ModeItem name="5th Saw Wave" value="210"/>
+					<ModeItem name="Jazz Gt.    " value="211"/>
+					<ModeItem name="Jazz Gt.    " value="212"/>
+					<ModeItem name="Jazz Gt.    " value="213"/>
+					<ModeItem name="Jazz Gt.    " value="214"/>
+					<ModeItem name="Jazz Gt.    " value="215"/>
+					<ModeItem name="Jazz Gt.    " value="216"/>
+					<ModeItem name="Nylon-str.Gt" value="217"/>
+					<ModeItem name="Standard    " value="218"/>
+					<ModeItem name="Fl.Key Click" value="219"/>
+					<ModeItem name="Drums Base1 " value="220"/>
+					<ModeItem name="Kalimba     " value="221"/>
+					<ModeItem name="Koto        " value="222"/>
+					<ModeItem name="Koto        " value="223"/>
+					<ModeItem name="Clav.       " value="224"/>
+					<ModeItem name="Lasergun    " value="225"/>
+					<ModeItem name="Laughing    " value="226"/>
+					<ModeItem name="Standard    " value="227"/>
+					<ModeItem name="Standard    " value="228"/>
+					<ModeItem name="Standard    " value="229"/>
+					<ModeItem name="Standard    " value="230"/>
+					<ModeItem name="Standard    " value="231"/>
+					<ModeItem name="Standard    " value="232"/>
+					<ModeItem name="Standard    " value="233"/>
+					<ModeItem name="Square      " value="234"/>
+					<ModeItem name="Square      " value="235"/>
+					<ModeItem name="Square      " value="236"/>
+					<ModeItem name="Square      " value="237"/>
+					<ModeItem name="Square      " value="238"/>
+					<ModeItem name="Fingered Bs." value="239"/>
+					<ModeItem name="Fingered Bs." value="240"/>
+					<ModeItem name="Fingered Bs." value="241"/>
+					<ModeItem name="Drums Base2 " value="242"/>
+					<ModeItem name="Marimba     " value="243"/>
+					<ModeItem name="Marimba     " value="244"/>
+					<ModeItem name="Celesta     " value="245"/>
+					<ModeItem name="Muted Gt.   " value="246"/>
+					<ModeItem name="Muted Gt.   " value="247"/>
+					<ModeItem name="Muted Gt.   " value="248"/>
+					<ModeItem name="MutedTrumpet" value="249"/>
+					<ModeItem name="MutedTrumpet" value="250"/>
+					<ModeItem name="MutedTrumpet" value="251"/>
+					<ModeItem name="MutedTrumpet" value="252"/>
+					<ModeItem name="Music Box   " value="253"/>
+					<ModeItem name="Machine Gun " value="254"/>
+					<ModeItem name="Nylon-str.Gt" value="255"/>
+					<ModeItem name="Nylon-str.Gt" value="256"/>
+					<ModeItem name="Nylon-str.Gt" value="257"/>
+					<ModeItem name="Nylon-str.Gt" value="258"/>
+					<ModeItem name="Nylon-str.Gt" value="259"/>
+					<ModeItem name="Nylon-str.Gt" value="260"/>
+					<ModeItem name="Ukulele     " value="261"/>
+					<ModeItem name="Oboe        " value="262"/>
+					<ModeItem name="Oboe        " value="263"/>
+					<ModeItem name="Oboe        " value="264"/>
+					<ModeItem name="Oboe        " value="265"/>
+					<ModeItem name="Oboe        " value="266"/>
+					<ModeItem name="Ocarina     " value="267"/>
+					<ModeItem name="Ocarina     " value="268"/>
+					<ModeItem name="Piccolo     " value="269"/>
+					<ModeItem name="Standard    " value="270"/>
+					<ModeItem name="Standard    " value="271"/>
+					<ModeItem name="Drums HihatO" value="272"/>
+					<ModeItem name="Overdrive Gt" value="273"/>
+					<ModeItem name="Overdrive Gt" value="274"/>
+					<ModeItem name="Overdrive Gt" value="275"/>
+					<ModeItem name="Overdrive Gt" value="276"/>
+					<ModeItem name="Overdrive Gt" value="277"/>
+					<ModeItem name="Overdrive Gt" value="278"/>
+					<ModeItem name="Overdrive Gt" value="279"/>
+					<ModeItem name="Overdrive Gt" value="280"/>
+					<ModeItem name="Overdrive Gt" value="281"/>
+					<ModeItem name="Overdrive Gt" value="282"/>
+					<ModeItem name="OrchestraHit" value="283"/>
+					<ModeItem name="Breath Noise" value="284"/>
+					<ModeItem name="Breath Noise" value="285"/>
+					<ModeItem name="Picked Bs.  " value="286"/>
+					<ModeItem name="Picked Bs.  " value="287"/>
+					<ModeItem name="Picked Bs.  " value="288"/>
+					<ModeItem name="Piano 1     " value="289"/>
+					<ModeItem name="Piano 1     " value="290"/>
+					<ModeItem name="Piano 1     " value="291"/>
+					<ModeItem name="Piano 1     " value="292"/>
+					<ModeItem name="Piano 1     " value="293"/>
+					<ModeItem name="Piano 1     " value="294"/>
+					<ModeItem name="Piano 1     " value="295"/>
+					<ModeItem name="Piano 1     " value="296"/>
+					<ModeItem name="Piano 1     " value="297"/>
+					<ModeItem name="Piano 1     " value="298"/>
+					<ModeItem name="Piccolo     " value="299"/>
+					<ModeItem name="Piccolo     " value="300"/>
+					<ModeItem name="Breath Noise" value="301"/>
+					<ModeItem name="Gun Shot    " value="302"/>
+					<ModeItem name="PizzicatoStr" value="303"/>
+					<ModeItem name="PizzicatoStr" value="304"/>
+					<ModeItem name="Pan Flute   " value="305"/>
+					<ModeItem name="Polysynth   " value="306"/>
+					<ModeItem name="Polysynth   " value="307"/>
+					<ModeItem name="Polysynth   " value="308"/>
+					<ModeItem name="Polysynth   " value="309"/>
+					<ModeItem name="Polysynth   " value="310"/>
+					<ModeItem name="Voice Oohs  " value="311"/>
+					<ModeItem name="Voice Oohs  " value="312"/>
+					<ModeItem name="Voice Oohs  " value="313"/>
+					<ModeItem name="Punch       " value="314"/>
+					<ModeItem name="Drums Ride1 " value="315"/>
+					<ModeItem name="Drums Ride2 " value="316"/>
+					<ModeItem name="Recorder    " value="317"/>
+					<ModeItem name="Recorder    " value="318"/>
+					<ModeItem name="Recorder    " value="319"/>
+					<ModeItem name="Recorder    " value="320"/>
+					<ModeItem name="Recorder    " value="321"/>
+					<ModeItem name="Reed Organ  " value="322"/>
+					<ModeItem name="Reed Organ  " value="323"/>
+					<ModeItem name="Reed Organ  " value="324"/>
+					<ModeItem name="Santur      " value="325"/>
+					<ModeItem name="Saw Wave    " value="326"/>
+					<ModeItem name="Saw Wave    " value="327"/>
+					<ModeItem name="Saw Wave    " value="328"/>
+					<ModeItem name="Saw         " value="329"/>
+					<ModeItem name="Saw         " value="330"/>
+					<ModeItem name="Saw         " value="331"/>
+					<ModeItem name="Saw         " value="332"/>
+					<ModeItem name="Saw         " value="333"/>
+					<ModeItem name="Saw         " value="334"/>
+					<ModeItem name="Violin      " value="335"/>
+					<ModeItem name="Square      " value="336"/>
+					<ModeItem name="Square      " value="337"/>
+					<ModeItem name="Synth Brass1" value="338"/>
+					<ModeItem name="Synth Brass1" value="339"/>
+					<ModeItem name="Synth Brass1" value="340"/>
+					<ModeItem name="Synth Brass1" value="341"/>
+					<ModeItem name="Synth Brass1" value="342"/>
+					<ModeItem name="Synth Brass2" value="343"/>
+					<ModeItem name="Synth Brass2" value="344"/>
+					<ModeItem name="Synth Brass2" value="345"/>
+					<ModeItem name="Voice Oohs  " value="346"/>
+					<ModeItem name="Scratch     " value="347"/>
+					<ModeItem name="Screaming   " value="348"/>
+					<ModeItem name="Door        " value="349"/>
+					<ModeItem name="Seashore    " value="350"/>
+					<ModeItem name="Standard    " value="351"/>
+					<ModeItem name="Shakuhachi  " value="352"/>
+					<ModeItem name="Shakuhachi  " value="353"/>
+					<ModeItem name="Shakuhachi  " value="354"/>
+					<ModeItem name="Shamisen    " value="355"/>
+					<ModeItem name="Shamisen    " value="356"/>
+					<ModeItem name="Shamisen    " value="357"/>
+					<ModeItem name="Shamisen    " value="358"/>
+					<ModeItem name="Standard    " value="359"/>
+					<ModeItem name="Gt. Feedback" value="360"/>
+					<ModeItem name="Gt. Feedback" value="361"/>
+					<ModeItem name="Gt. Feedback" value="362"/>
+					<ModeItem name="Gt. Feedback" value="363"/>
+					<ModeItem name="Gt. Feedback" value="364"/>
+					<ModeItem name="Gt. Feedback" value="365"/>
+					<ModeItem name="Gt. Feedback" value="366"/>
+					<ModeItem name="Siren       " value="367"/>
+					<ModeItem name="Sitar       " value="368"/>
+					<ModeItem name="Sitar       " value="369"/>
+					<ModeItem name="Sitar       " value="370"/>
+					<ModeItem name="Standard    " value="371"/>
+					<ModeItem name="Slap Bass 1 " value="372"/>
+					<ModeItem name="Slap Bass 1 " value="373"/>
+					<ModeItem name="Slap Bass 1 " value="374"/>
+					<ModeItem name="Slap Bass 2 " value="375"/>
+					<ModeItem name="Standard    " value="376"/>
+					<ModeItem name="Soundtrack  " value="377"/>
+					<ModeItem name="Soundtrack  " value="378"/>
+					<ModeItem name="Solo Vox    " value="379"/>
+					<ModeItem name="Standard    " value="380"/>
+					<ModeItem name="Standard    " value="381"/>
+					<ModeItem name="Square Wave " value="382"/>
+					<ModeItem name="Square Wave " value="383"/>
+					<ModeItem name="Square Wave " value="384"/>
+					<ModeItem name="Square Wave " value="385"/>
+					<ModeItem name="Square Wave " value="386"/>
+					<ModeItem name="Square Wave " value="387"/>
+					<ModeItem name="Syn.Strings1" value="388"/>
+					<ModeItem name="Syn.Strings1" value="389"/>
+					<ModeItem name="Syn.Strings1" value="390"/>
+					<ModeItem name="Syn.Strings3" value="391"/>
+					<ModeItem name="Syn.Strings3" value="392"/>
+					<ModeItem name="Star Theme  " value="393"/>
+					<ModeItem name="Star Theme  " value="394"/>
+					<ModeItem name="Footsteps   " value="395"/>
+					<ModeItem name="Standard    " value="396"/>
+					<ModeItem name="Steel Drums " value="397"/>
+					<ModeItem name="Steel-str.Gt" value="398"/>
+					<ModeItem name="Steel-str.Gt" value="399"/>
+					<ModeItem name="Steel-str.Gt" value="400"/>
+					<ModeItem name="Steel-str.Gt" value="401"/>
+					<ModeItem name="Steel-str.Gt" value="402"/>
+					<ModeItem name="Steel-str.Gt" value="403"/>
+					<ModeItem name="Stream      " value="404"/>
+					<ModeItem name="Tremolo Str " value="405"/>
+					<ModeItem name="Tremolo Str " value="406"/>
+					<ModeItem name="Tremolo Str " value="407"/>
+					<ModeItem name="Starship    " value="408"/>
+					<ModeItem name="Taiko       " value="409"/>
+					<ModeItem name="Standard    " value="410"/>
+					<ModeItem name="Synth Bass 1" value="411"/>
+					<ModeItem name="Synth Bass 1" value="412"/>
+					<ModeItem name="Synth Bass 1" value="413"/>
+					<ModeItem name="Synth Bass 1" value="414"/>
+					<ModeItem name="Synth Bass 2" value="415"/>
+					<ModeItem name="Synth Bass 2" value="416"/>
+					<ModeItem name="Synth Bass 2" value="417"/>
+					<ModeItem name="Synth Bass 3" value="418"/>
+					<ModeItem name="Synth Bass 4" value="419"/>
+					<ModeItem name="Clarinet    " value="420"/>
+					<ModeItem name="Clarinet    " value="421"/>
+					<ModeItem name="Clarinet    " value="422"/>
+					<ModeItem name="Clarinet    " value="423"/>
+					<ModeItem name="Clarinet    " value="424"/>
+					<ModeItem name="Synth Drum  " value="425"/>
+					<ModeItem name="SynVox      " value="426"/>
+					<ModeItem name="SynVox      " value="427"/>
+					<ModeItem name="Soprano Sax " value="428"/>
+					<ModeItem name="Soprano Sax " value="429"/>
+					<ModeItem name="Soprano Sax " value="430"/>
+					<ModeItem name="Soprano Sax " value="431"/>
+					<ModeItem name="Soprano Sax " value="432"/>
+					<ModeItem name="Soprano Sax " value="433"/>
+					<ModeItem name="Violin      " value="434"/>
+					<ModeItem name="Standard    " value="435"/>
+					<ModeItem name="Telephone 2 " value="436"/>
+					<ModeItem name="Telephone 1 " value="437"/>
+					<ModeItem name="Thunder     " value="438"/>
+					<ModeItem name="Standard    " value="439"/>
+					<ModeItem name="Taisho Koto " value="440"/>
+					<ModeItem name="Taisho Koto " value="441"/>
+					<ModeItem name="Timpani     " value="442"/>
+					<ModeItem name="Tinkle Bell " value="443"/>
+					<ModeItem name="Melo. Tom 1 " value="444"/>
+					<ModeItem name="Train       " value="445"/>
+					<ModeItem name="Standard    " value="446"/>
+					<ModeItem name="Trumpet     " value="447"/>
+					<ModeItem name="Trumpet     " value="448"/>
+					<ModeItem name="Trumpet     " value="449"/>
+					<ModeItem name="Trombone    " value="450"/>
+					<ModeItem name="Trombone    " value="451"/>
+					<ModeItem name="Trombone    " value="452"/>
+					<ModeItem name="Trombone    " value="453"/>
+					<ModeItem name="Trombone    " value="454"/>
+					<ModeItem name="Trumpet     " value="455"/>
+					<ModeItem name="Trumpet     " value="456"/>
+					<ModeItem name="Trumpet     " value="457"/>
+					<ModeItem name="Trumpet     " value="458"/>
+					<ModeItem name="Trumpet     " value="459"/>
+					<ModeItem name="Trumpet     " value="460"/>
+					<ModeItem name="Trombone 2  " value="461"/>
+					<ModeItem name="Tuba        " value="462"/>
+					<ModeItem name="Tuba        " value="463"/>
+					<ModeItem name="Tubular-bell" value="464"/>
+					<ModeItem name="Tenor Sax   " value="465"/>
+					<ModeItem name="Tenor Sax   " value="466"/>
+					<ModeItem name="Tenor Sax   " value="467"/>
+					<ModeItem name="Tenor Sax   " value="468"/>
+					<ModeItem name="Tenor Sax   " value="469"/>
+					<ModeItem name="Tenor Sax   " value="470"/>
+					<ModeItem name="Tenor Sax   " value="471"/>
+					<ModeItem name="Tenor Sax   " value="472"/>
+					<ModeItem name="Accordion Fr" value="473"/>
+					<ModeItem name="Standard    " value="474"/>
+					<ModeItem name="Gt.Cut Noise" value="475"/>
+					<ModeItem name="Standard    " value="476"/>
+					<ModeItem name="Vibraphone  " value="477"/>
+					<ModeItem name="Vibraphone  " value="478"/>
+					<ModeItem name="Vibraphone  " value="479"/>
+					<ModeItem name="Vibraphone  " value="480"/>
+					<ModeItem name="Vibraphone  " value="481"/>
+					<ModeItem name="Violin      " value="482"/>
+					<ModeItem name="Violin      " value="483"/>
+					<ModeItem name="Violin      " value="484"/>
+					<ModeItem name="Violin      " value="485"/>
+					<ModeItem name="Violin      " value="486"/>
+					<ModeItem name="Violin      " value="487"/>
+					<ModeItem name="Violin      " value="488"/>
+					<ModeItem name="Wind Chimes " value="489"/>
+					<ModeItem name="Wind        " value="490"/>
+					<ModeItem name="Woodblock   " value="491"/>
+					<ModeItem name="Warm Pad    " value="492"/>
+					<ModeItem name="Xylophone   " value="493"/>
+					<ModeItem name="Xylophone   " value="494"/>
+				</ModeGroup>
+			</NodeInput>
+		</Node>
+		<Node typeid="53" name="Bowed String" numInputs="5" numReqGUIInputs="0" numMaxGUIInputs="5" allowSignalInsertion="0">
+			<NodeInput name="Bow Position" minValue="0" maxValue="128"/>
+			<NodeInput name="Bow Pressure" minValue="0" maxValue="128"/>
+			<NodeInput name="Bow Velocity" minValue="0" maxValue="128"/>
+			<NodeInput name="Vibrato" minValue="0" maxValue="128"/>
+			<NodeInput name="Friction Sym" minValue="-128" maxValue="128"/>
+		</Node>
+		<Node typeid="54" name="Formula" numInputs="3" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
+		  <NodeInput name="In0"/>
+		  <NodeInput name="In1"/>
+		  <NodeInput name="Mode"/>
+		</Node>
+		<Node typeid="55" name="SampleAndHold" numInputs="4" numReqGUIInputs="1" numMaxGUIInputs="3" allowSignalInsertion="1">
+		  <NodeInput name="In"/>
+		  <NodeInput name="SNH" minValue="0" maxValue="128" mapping="14"/>
+		  <NodeInput name="SNHSmooth" minValue="0" maxValue="128"/>
+		  <NodeInput name="Mode">
+			<ModeFlag name="SNH by Trigger" value="16"/>
+			<ModeFlag name="NoteMap" value="128"/>
+			<ModeFlag name="QuadraticMap" value="64"/>        
+		  </NodeInput>
+		</Node>	
+		<Node typeid="56" name="WTF Oscillator" numInputs="6" numReqGUIInputs="1" numMaxGUIInputs="5" allowSignalInsertion="0">
+			<NodeInput name="In"/>
+			<NodeInput name="Position" minValue="0" maxValue="128" mapping="13"/>
+			<NodeInput name="Speed" minValue="-64" maxValue="64" mapping="10"/>
+			<NodeInput name="TargetLen/SearchLen" minValue="0" maxValue="1024" range="1024"/>
+			<NodeInput name="MaxTables/SkipLen" minValue="0" maxValue="1024" range="1024"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Input Type" mask="7" shift="0">
+					<ModeItem name="Wavetable" value="0"/>
+					<ModeItem name="Input" value="1"/>
+				</ModeGroup>
+				<ModeGroup name="Wavetable" mask="4080" shift="4">
+					<ModeItem name="Wavetable 1" value="0"/>
+					<ModeItem name="Wavetable 2" value="1"/>
+					<ModeItem name="Wavetable 3" value="2"/>
+					<ModeItem name="Wavetable 4" value="3"/>
+					<ModeItem name="Wavetable 5" value="4"/>
+					<ModeItem name="Wavetable 6" value="5"/>
+					<ModeItem name="Wavetable 7" value="6"/>
+					<ModeItem name="Wavetable 8" value="7"/>
+					<ModeItem name="Wavetable 9" value="8"/>
+					<ModeItem name="Wavetable 10" value="9"/>
+					<ModeItem name="Wavetable 11" value="10"/>
+					<ModeItem name="Wavetable 12" value="11"/>
+					<ModeItem name="Wavetable 13" value="12"/>
+					<ModeItem name="Wavetable 14" value="13"/>
+					<ModeItem name="Wavetable 15" value="14"/>
+					<ModeItem name="Wavetable 16" value="15"/>
+					<ModeItem name="Wavetable 17" value="16"/>
+					<ModeItem name="Wavetable 18" value="17"/>
+					<ModeItem name="Wavetable 19" value="18"/>
+					<ModeItem name="Wavetable 20" value="19"/>
+					<ModeItem name="Wavetable 21" value="20"/>
+					<ModeItem name="Wavetable 22" value="21"/>
+					<ModeItem name="Wavetable 23" value="22"/>
+					<ModeItem name="Wavetable 24" value="23"/>
+					<ModeItem name="Wavetable 25" value="24"/>
+					<ModeItem name="Wavetable 26" value="25"/>
+					<ModeItem name="Wavetable 27" value="26"/>
+					<ModeItem name="Wavetable 28" value="27"/>
+					<ModeItem name="Wavetable 29" value="28"/>
+					<ModeItem name="Wavetable 30" value="29"/>
+					<ModeItem name="Wavetable 31" value="30"/>
+					<ModeItem name="Wavetable 32" value="31"/>
+        </ModeGroup>
+        <ModeFlag name="Reduce Clicks" value="4096"/>
+        <ModeFlag name="Fixed Grainsize" value="8192"/>
+      </NodeInput>
+		</Node>
+    <Node typeid="57" name="FormantFilter" numInputs="3" numReqGUIInputs="1" numMaxGUIInputs="2" allowSignalInsertion="1">
+      <NodeInput name="In"/>
+      <NodeInput name="Gain"/>
+      <NodeInput name="Mode">
+        <ModeGroup name="Vowels" mask="63" shift="0">
+          <ModeItem name="Sopr. A" value="0"/>
+          <ModeItem name="Sopr. E" value="1"/>
+          <ModeItem name="Sopr. I" value="2"/>
+          <ModeItem name="Sopr. O" value="3"/>
+          <ModeItem name="Sopr. U" value="4"/>
+          <ModeItem name="Alto  A" value="5"/>
+          <ModeItem name="Alto  E" value="6"/>
+          <ModeItem name="Alto  I" value="7"/>
+          <ModeItem name="Alto  O" value="8"/>
+          <ModeItem name="Alto  U" value="9"/>
+          <ModeItem name="Tenor A" value="10"/>
+          <ModeItem name="Tenor E" value="11"/>
+          <ModeItem name="Tenor I" value="12"/>
+          <ModeItem name="Tenor O" value="13"/>
+          <ModeItem name="Tenor U" value="14"/>
+          <ModeItem name="CtTen A" value="15"/>
+          <ModeItem name="CtTen E" value="16"/>
+          <ModeItem name="CtTen I" value="17"/>
+          <ModeItem name="CtTen O" value="18"/>
+          <ModeItem name="CtTen U" value="19"/>
+          <ModeItem name="Bass  A" value="20"/>
+          <ModeItem name="Bass  E" value="21"/>
+          <ModeItem name="Bass  I" value="22"/>
+          <ModeItem name="Bass  O" value="23"/>
+          <ModeItem name="Bass  U" value="24"/>
+        </ModeGroup>
+      </NodeInput>
+    </Node>
+    
+    <Node typeid="58" name="Equalizer3" numInputs="4" numReqGUIInputs="1" numMaxGUIInputs="4" allowSignalInsertion="1">
+      <NodeInput name="In"/>
+      <NodeInput name="LowGain" minValue="0" maxValue="128" mapping="8"/>
+      <NodeInput name="MidGain" minValue="0" maxValue="128" mapping="8"/>
+      <NodeInput name="HighGain" minValue="0" maxValue="128" mapping="8"/>
+    </Node>
+	
+	<Node typeid="59" name="OscSync" numInputs="2" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="0">
+      <NodeInput name="Event Node"/>
+      <NodeInput name="Sync Osc/LFO"/>
+    </Node>
+    
+    <Node typeid="64" name="Constant" numInputs="0" numReqGUIInputs="0" numMaxGUIInputs="0">
+		</Node>	
+		
+		<Node typeid="65" name="Voice Frequency" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0">
+			<NodeInput name="Scale" minValue="-128" maxValue="128"/>
+		</Node>
+		<Node typeid="66" name="Voice Note" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0">
+			<NodeInput name="Scale" minValue="-128" maxValue="128"/>
+		</Node>
+		<Node typeid="67" name="Voice Attack Velocity" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0">
+			<NodeInput name="Scale" minValue="-128" maxValue="128"/>		
+		</Node>		
+		<Node typeid="68" name="Voice Trigger" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0">
+			<NodeInput name="Scale" minValue="-128" maxValue="128"/>		
+		</Node>
+		<Node typeid="69" name="Voice Gate" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0">
+			<NodeInput name="Scale" minValue="-128" maxValue="128"/>		
+		</Node>
+		<Node typeid="70" name="Voice Aftertouch" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0">
+			<NodeInput name="Scale" minValue="-128" maxValue="128"/>		
+		</Node>
+	</Nodes>
+	<Menu>
+		<MenuItem Header="Input">
+			<MenuItem id="64" />
+			<MenuItem id="29" />
+			<MenuItem id="65" />
+			<MenuItem id="66" />
+			<MenuItem id="67" />
+			<MenuItem id="68" />
+			<MenuItem id="69" />
+			<MenuItem id="70" />
+		</MenuItem>
+		
+		<MenuItem Header="Generators">
+			<MenuItem id="7" />
+			<MenuItem id="8" />
+			<MenuItem id="5" />
+			<MenuItem id="6" />
+			<MenuItem id="35" />									
+			<MenuItem id="53" />																					
+		</MenuItem>
+		
+		<MenuItem Header="Filters">
+			<MenuItem id="9" />
+			<MenuItem id="43" />
+			<MenuItem id="10" />
+			<MenuItem id="11" />
+			<MenuItem id="37" />
+			<MenuItem id="34" />
+			<MenuItem id="57" />
+			<MenuItem id="58" />
+		</MenuItem>
+		
+		<MenuItem Header="Modifiers">
+			<MenuItem id="30" />      
+			<MenuItem id="12" />
+			<MenuItem id="19" />
+			<MenuItem id="22" />               
+			<MenuItem id="31" />
+			<MenuItem id="23" />
+			<MenuItem id="55" />
+			<MenuItem id="59" />
+		</MenuItem>
+		
+		<MenuItem Header="FX">
+			<MenuItem id="32" />
+			<MenuItem id="51" />
+			<MenuItem id="33" />
+			<MenuItem id="36" />
+			<MenuItem id="38" />
+			<MenuItem id="49" />
+		</MenuItem>
+		
+		<MenuItem Header="Ops">
+			<MenuItem id="14" />
+			<MenuItem id="17" />
+			<MenuItem id="18" />
+			<MenuItem id="15" />
+			<MenuItem id="16" />
+			<MenuItem id="20" />
+			<MenuItem id="13" />
+			<MenuItem id="21" />
+			<MenuItem id="44" />
+			<MenuItem id="45" />
+			<MenuItem id="46" />
+			<MenuItem id="47" />
+			<MenuItem id="48" />
+		</MenuItem>
+		
+		<MenuItem Header="Logic Ops">
+			<MenuItem id="24" />
+			<MenuItem id="25" />
+			<MenuItem id="26" />
+			<MenuItem id="28" />
+			<MenuItem id="27" />
+			<MenuItem id="39" />
+			<MenuItem id="40" />
+		</MenuItem>
+
+		<MenuItem Header="Samples">
+			<MenuItem id="56" />
+			<MenuItem id="42" />			
+			<MenuItem id="50" />			
+			<MenuItem id="52" />
+			<MenuItem id="41" />
+		</MenuItem>	
+		
+		<MenuItem Header="Special">
+			<MenuItem id="3" />
+			<MenuItem id="4" />
+			<MenuItem id="54" />
+		</MenuItem>	
+	</Menu>
+</Config>
