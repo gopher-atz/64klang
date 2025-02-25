@@ -5640,7 +5640,8 @@ void SynthController::exportPatch(const std::string& filename)
 			int type = SAMPLER_ID;
 			if (nt == 1)
 				type = WTFOSC_ID;
-
+			if (groupedNodes.find(type) == groupedNodes.end()) // skip if neither SAMPLER or WTFOSC are used
+				continue;
 			for (int gl = 0; gl < 2; gl++)
 			{
 				std::vector<SynthNode*>* nlist;
