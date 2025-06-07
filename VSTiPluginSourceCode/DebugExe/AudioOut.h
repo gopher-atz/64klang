@@ -5,6 +5,7 @@
 
 // simple WASAPI sound output
 
+#pragma once
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
@@ -12,10 +13,6 @@
 // stuff lifted from Capturinha because I'm lazy
 
 #define CHECK(x) { HRESULT _hr=(x); if(FAILED(_hr)) DebugBreak(); }
-
-typedef unsigned int uint;
-typedef unsigned char uint8;
-typedef unsigned long long uint64;
 
 template <typename T> class RCPtr
 {
@@ -93,46 +90,43 @@ namespace AudioOut {
         waveFormat.dwChannelMask = (1 << waveFormat.Format.nChannels) - 1; // again, very space opera
         waveFormat.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
 
-        // initialize playback client to keep the device running
-        WAVEFORMATEX* outFormat{};
-        uint outBufferSize = 0;
-        BYTE* outBuffer{};
+        // initialize playback client
+        UINT bufferSize = 0;
         RCPtr<IAudioClient> client;
+        HANDLE eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         CHECK(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, NULL, client));
-        CHECK(client->GetMixFormat(&outFormat));
-        CoTaskMemFree(outFormat);
 
+        // let's get the latency as low as we can
         REFERENCE_TIME period = 100000;
         CHECK(client->GetDevicePeriod(NULL, &period));
 
-        HANDLE eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-
         CHECK(client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_EVENTCALLBACK, period, 0, (WAVEFORMATEX*)&waveFormat, NULL));
         CHECK(client->SetEventHandle(eventHandle));
-        CHECK(client->GetBufferSize(&outBufferSize));
+        CHECK(client->GetBufferSize(&bufferSize));
         RCPtr<IAudioRenderClient> renderClient;
         CHECK(client->GetService(__uuidof(IAudioRenderClient), renderClient));
         CHECK(client->Start());
 
         while (running)
         {
-            if (WaitForSingleObject(eventHandle, 1000) < 0)
+            if (WaitForSingleObject(eventHandle, 1000) == 0xffffffff)
                 break; // something is wrong, bail
 
             UINT32 padding;
             client->GetCurrentPadding(&padding);
-            UINT32 framesAvailable = outBufferSize - padding;
+            UINT32 framesAvailable = bufferSize - padding;
 
             if (framesAvailable > 0)
             {
-                CHECK(renderClient->GetBuffer(framesAvailable, &outBuffer));
-                cb((float*)outBuffer, framesAvailable);
+                BYTE* buffer{};
+                CHECK(renderClient->GetBuffer(framesAvailable, &buffer));
+                cb((float*)buffer, framesAvailable);
                 CHECK(renderClient->ReleaseBuffer(framesAvailable, 0));
             }
         }
 
         client->Stop();
-
+        CloseHandle(eventHandle);
         return 0;
     }
 }
@@ -141,6 +135,7 @@ static void StartAudio(int sampleRate, AudioCallback callback)
 {
     AudioOut::rate = sampleRate;
     AudioOut::cb = callback;
+    AudioOut::running = true;
     DWORD tid;
     AudioOut::Thread = CreateThread(0, 0, AudioOut::ThreadFunc, 0, 0, &tid);
 }

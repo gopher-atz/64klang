@@ -232,11 +232,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="Exe.ico" />
-    <None Include="ReadMe.txt" />
     <None Include="small.ico" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Exe.h" />
+    <ClInclude Include="MidiIn.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="AudioOut.h" />

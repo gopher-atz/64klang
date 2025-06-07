@@ -13,14 +13,77 @@
 #include <memory.h>
 #include <tchar.h>
 
-#include "Exe.h"
+#include "resource.h"
 #include "../64klang2Core/SynthController.h"
 #include "../64klang2Wrapper/64klang2Wrapper.h"
 #include "AudioOut.h"
+#include "MidiIn.h"
 
 #define MAX_LOADSTRING 100
 
-// let's have audio
+// MIDI input device name goes here (empty: disable MIDI in)
+static const wchar_t* MidiInName = L"A-PRO 1";
+
+// stolen from vstxsynthproc.cpp
+static void ApplyEvent(MidiEvent midiData)
+{
+    unsigned char status = midiData.cmd & 0xf0;		// status
+    unsigned char channel = midiData.cmd & 0x0f;		// channel
+
+    // note on/off events
+    if (status == 0x90 || status == 0x80)
+    {
+        unsigned char note = midiData.d1 & 0x7f;
+        unsigned char velocity = midiData.d2 & 0x7f;
+        // note off
+        if (status == 0x80 || ((status == 0x90) && (velocity == 0)))
+        {
+            SynthController::instance()->noteOff(channel, note, velocity);
+        }
+        // note on
+        else if (status == 0x90)
+        {
+            SynthController::instance()->noteOn(channel, note, velocity);
+        }
+    }
+    // polyphonic aftertouch
+    else if (status == 0xA)
+    {
+        byte note = midiData.d1 & 0x7f;
+        byte pressure = midiData.d2 & 0x7f;
+        SynthController::instance()->noteAftertouch(channel, note, pressure);
+    }
+    /*	// channel aftertouch
+        else if (status == 0xD)
+        {
+            byte pressure = midiData[1] & 0x7f;
+            Go4kVSTi_ChannelAftertouch(channel, pressure);
+        }
+    */	// Controller Change
+    else if (status == 0xB0)
+    {
+        unsigned char number = midiData.d1 & 0x7f;
+        unsigned char value = midiData.d2 & 0x7f;
+        SynthController::instance()->midiSignal(channel, value, number);
+    }
+    // Pitch Bend
+    else if (status == 0xE0)
+    {
+        unsigned char lsb = midiData.d1 & 0x7f;
+        unsigned char msb = midiData.d2 & 0x7f;
+        int value = (((int)(msb)) << 7) + lsb;
+        // pitch bend precision is 0 - 16383, center 8192
+        // we dont use full precision for the sake of equally sized streams
+        SynthController::instance()->midiSignal(channel, (value >> 6), 0); // 0 - 255, center 128
+    }
+}
+
+// the LO in YOLO stands for "lockless"
+static MidiEvent midiQueue[256];
+static int mqRead = 0;
+static int mqWrite = 0;
+
+// let's have audio out
 static void audioCallback(float* buffer, int samples)
 {
     const int TEMPSIZE = 16384;
@@ -38,8 +101,11 @@ static void audioCallback(float* buffer, int samples)
 
     while (samples > 0)
     {
+        while ((mqWrite - mqRead) > 0)
+            ApplyEvent(midiQueue[(mqRead++ & 0xff)]);
+
         int todo = Min(samples, TEMPSIZE);
-        SynthController::instance()->tick(tempL, tempR, todo);
+        instance->tick(tempL, tempR, todo);
 
         // convert separate stereo to interleaved
         // and while we're at it, clip and fix NaNs, we all know how it goes.
@@ -55,7 +121,7 @@ static void audioCallback(float* buffer, int samples)
     }
 
     // unset data access mutex
-    ReleaseMutex(SynthController::instance()->DataAccessMutex);
+    ReleaseMutex(instance->DataAccessMutex);
     return;
 
 silence:
@@ -63,6 +129,11 @@ silence:
     return;  
 }
 
+// .. and MIDI in 
+static void midiCallback(MidiEvent midiData)
+{
+    midiQueue[mqWrite++ & 0xff] = midiData;
+}
 
 // Global Variables:
 HINSTANCE hInst;								// current instance
@@ -101,6 +172,7 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
     hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_EXE));
 
     StartAudio(44100, audioCallback);
+    StartMidi(MidiInName, midiCallback);
 
     // Main message loop:
     while (GetMessage(&msg, NULL, 0, 0))
@@ -108,9 +180,10 @@ int APIENTRY _tWinMain(HINSTANCE hInstance,
         TranslateMessage(&msg);
         DispatchMessage(&msg);
         if (GetAsyncKeyState(VK_ESCAPE) != 0)
-            return 0;
+            break;
     }
 
+    StopMidi();
     StopAudio();
 
     return (int)msg.wParam;
@@ -173,13 +246,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
     hInst = hInstance; // Store instance handle in our global variable
 
-    SynthController::instance();
-
-#ifdef _DEBUG
     SynthWrapper::instance()->openWindow();
-#else
-    return false;
-#endif
+    SynthController::instance()->setBPM(120);
     return TRUE;
 }
 
