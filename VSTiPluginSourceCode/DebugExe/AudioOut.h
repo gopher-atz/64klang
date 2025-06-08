@@ -100,7 +100,7 @@ namespace AudioOut {
         REFERENCE_TIME period = 100000;
         CHECK(client->GetDevicePeriod(NULL, &period));
 
-        CHECK(client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_EVENTCALLBACK, period, 0, (WAVEFORMATEX*)&waveFormat, NULL));
+        CHECK(client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY | AUDCLNT_STREAMFLAGS_EVENTCALLBACK, period, 0, (WAVEFORMATEX*)&waveFormat, NULL));
         CHECK(client->SetEventHandle(eventHandle));
         CHECK(client->GetBufferSize(&bufferSize));
         RCPtr<IAudioRenderClient> renderClient;
