@@ -11,4 +11,7 @@
 [Bb]in/
 [Oo]bj/
 
-
+# CMake
+build/
+CMakeFiles/
+cmake-build-*/

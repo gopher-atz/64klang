@@ -1,0 +1,80 @@
+#pragma once
+
+#include <string>
+#include <vector>
+#include <map>
+
+// Parses 64klang2Config.xml into in-memory structs for driving the ImGui GUI.
+
+namespace K64GUI {
+
+struct ModeItem
+{
+    std::string name;
+    int value = 0;
+};
+
+struct ModeGroup
+{
+    std::string name;
+    unsigned int mask = 0;
+    int shift = 0;
+    bool hideModeText = false;
+    std::vector<ModeItem> items;
+};
+
+struct ModeFlag
+{
+    std::string name;
+    int value = 0;
+    bool visible = false; // visibility="1" in XML
+};
+
+struct InputDef
+{
+    std::string name;
+    double minVal = 0.0;
+    double maxVal = 1.0;
+    int displayMapping = 0;  // mapping attribute (0-14)
+    bool singleInput = false;
+    int range = 0;
+
+    // Mode input children (only populated for "Mode" inputs)
+    std::vector<ModeGroup> modeGroups;
+    std::vector<ModeFlag> modeFlags;
+
+    bool isMode() const { return !modeGroups.empty() || !modeFlags.empty(); }
+};
+
+struct NodeTypeDef
+{
+    int id = 0;
+    std::string name;
+    std::string category;
+    int numInputs = 0;
+    int numReqGUIInputs = 0;
+    int numMaxGUIInputs = 0;
+    bool variableInput = false;
+    bool allowSignalInsertion = false;
+    std::vector<InputDef> inputs;
+};
+
+class NodeConfig
+{
+public:
+    static NodeConfig& instance();
+
+    bool load();
+
+    const NodeTypeDef* getNodeType(int id) const;
+    const std::vector<std::string>& getCategories() const;
+    const std::vector<const NodeTypeDef*>& getNodesInCategory(const std::string& category) const;
+
+private:
+    NodeConfig() = default;
+    std::map<int, NodeTypeDef> nodeTypes;
+    std::vector<std::string> categories;
+    std::map<std::string, std::vector<const NodeTypeDef*>> categoryNodes;
+};
+
+} // namespace K64GUI
