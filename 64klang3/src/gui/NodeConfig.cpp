@@ -118,7 +118,7 @@ bool NodeConfig::load()
 
                     int vis = 0;
                     if (mfElem->QueryIntAttribute("visibility", &vis) == TIXML_SUCCESS)
-                        mf.visible = (vis != 0);
+                        mf.visible = vis;
 
                     input.modeFlags.push_back(std::move(mf));
                 }

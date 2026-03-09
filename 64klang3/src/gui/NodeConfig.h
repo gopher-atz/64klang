@@ -27,7 +27,7 @@ struct ModeFlag
 {
     std::string name;
     int value = 0;
-    bool visible = false; // visibility="1" in XML
+    int visible = 0; // visibility: 0=always, 1=hide for global, 2=hide for voice
 };
 
 struct InputDef

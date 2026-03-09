@@ -2,6 +2,9 @@
 
 #include "imgui.h"
 #include <unordered_set>
+#include <unordered_map>
+#include <vector>
+#include <string>
 
 namespace K64GUI {
 
@@ -23,6 +26,7 @@ private:
     float zoom = 1.f;
 
     bool isPanning = false;
+    bool didPan = false;
     ImVec2 panStart = {0, 0};
 
     // Selection
@@ -40,6 +44,62 @@ private:
 
     // Mute
     std::unordered_set<int> mutedNodeIDs;
+
+    // Wire drag
+    bool   isWireDragging = false;
+    int    wireDragFromNodeID = -1;
+    ImVec2 wireDragCurrentPos = {0, 0};
+
+    // Context menu
+    bool   showContextMenu = false;
+    ImVec2 contextMenuCanvasPos = {0, 0};
+
+    // Edit panels (multiple can be open)
+    std::unordered_set<int> openEditPanels;
+    bool   mouseOverEditPanel = false;  // set per-frame, blocks canvas interaction
+
+    // Per-parameter sync state: key = (uint64_t)nodeID<<32 | paramIdx
+    // Initialised lazily when a panel opens (from L==R equality).
+    // Stored explicitly so the user can toggle it independently of the values.
+    std::unordered_map<uint64_t, bool> paramSyncState;
+
+    // Knob drag tracking for edit panels
+    int    knobDragNodeID = -1;
+    int    knobDragParam = -1;
+    bool   knobDragIsRight = false;
+
+    // Edit panel layout constants (in canvas/world coords, scaled by zoom)
+    static constexpr float kEditPanelWidth = 280.f;
+    static constexpr float kEditHeaderH = 25.f;
+    static constexpr float kEditLabelH = 16.f;
+    static constexpr float kEditKnobDiam = 36.f;
+    static constexpr float kEditKnobTextH = 14.f;
+    static constexpr float kEditFlagH = 18.f;
+    static constexpr float kEditCheckboxSz = 12.f;
+
+    // VU / live signal cache
+    struct LiveData {
+        float vuL = 0.f, vuR = 0.f;
+        int   voiceCount = 0;
+    };
+    std::unordered_map<int, LiveData> liveDataCache;
+
+    // Tracks which node outputs have at least one wire going out (rebuilt each frame)
+    std::unordered_set<int> connectedOutputIDs;
+
+    // Clipboard for copy/paste
+    struct ClipboardInput {
+        double valL = 0, valR = 0;
+        int mode = 0;
+    };
+    struct ClipboardNode {
+        int typeID = 0, channel = -2;
+        bool isGlobal = false;
+        double relX = 0, relY = 0;
+        std::vector<ClipboardInput> inputs;
+        std::vector<int> internalWires; // per-pin: clipboard index or -1
+    };
+    std::vector<ClipboardNode> clipboard;
 
     // Rename
     bool   isRenaming = false;
@@ -60,17 +120,25 @@ private:
     // Debug overlay toggle (Ctrl+Shift+D)
     bool   showDebugOverlay = false;
 
+    // Toast notifications
+    struct Toast { std::string message; double expireTime; };
+    std::vector<Toast> toasts;
+    void showToast(const char* msg);
+    void drawToasts(const ImVec2& canvasPos, const ImVec2& canvasSize);
+
     // Visual constants matching original WPF GUI
     static constexpr float kNodeWidth = 120.f;
     static constexpr float kHeaderHeight = 25.f;
-    static constexpr float kRowHeight = 20.f;
-    static constexpr float kPinRadius = 6.f;
+    static constexpr float kRowHeight = 18.f;
+    static constexpr float kPinRadius = 5.f;      // matches text line height
+    static constexpr float kPinInset = 5.f;        // pin center inset = radius, circle touches border
     static constexpr float kWireStubLen = 20.f;
     static constexpr float kWireThickness = 3.5f;
-    static constexpr float kOutputPinY = 14.f;   // center of header
-    static constexpr float kFirstPinY = 37.f;     // first input pin Y offset
+    static constexpr float kOutputPinY = 14.f;     // center of header
+    static constexpr float kFirstPinY = 35.f;      // first input pin Y offset
     static constexpr float kDragThreshold = 4.f;
     static constexpr double kDoubleClickTime = 0.3;
+    static constexpr float kDeleteBtnSize = 14.f;  // X button size
 
     // Colors
     static ImU32 colorVoiceNode()     { return IM_COL32(127, 163, 186, 255); }  // #7FA3BA
@@ -83,7 +151,7 @@ private:
     static ImU32 colorSelectedWire()  { return IM_COL32(255, 205, 80, 255);  }  // Amber
     static ImU32 colorPinWired()      { return IM_COL32(144, 238, 144, 255); }  // LightGreen
     static ImU32 colorPinRequired()   { return IM_COL32(255, 60, 60, 255);   }  // Red
-    static ImU32 colorPinOptional()   { return IM_COL32(80, 80, 80, 255);    }  // Dark
+    static ImU32 colorPinOptional()   { return IM_COL32(30, 30, 30, 255);    }  // Black
     static ImU32 colorRubberBandFill(){ return IM_COL32(255, 255, 255, 77);  }  // white 30%
     static ImU32 colorRubberBandBorder(){ return IM_COL32(255, 255, 255, 200); }
 
@@ -94,7 +162,7 @@ private:
         return (col & 0x00FFFFFF) | (a << 24);
     }
 
-    void drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrigin);
+    bool drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrigin); // returns true if node was deleted
     void drawWires(ImDrawList* dl, const ImVec2& canvasOrigin);
     void handlePanZoom(const ImVec2& canvasPos, const ImVec2& canvasSize);
     void handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& canvasSize);
@@ -105,12 +173,24 @@ private:
     void recursiveSelect(int nodeID, std::unordered_set<int>& visited);
     void syncSelectionToCore();
 
+    // Pin hit-testing for wire drag
+    int  hitTestOutputPin(const ImVec2& mousePos, const ImVec2& canvasOrigin) const;
+    struct PinHit { int nodeID; int pinIndex; };
+    PinHit hitTestInputPin(const ImVec2& mousePos, const ImVec2& canvasOrigin) const;
+    void drawGhostWire(ImDrawList* dl, const ImVec2& canvasOrigin);
+
     void drawRubberBand(ImDrawList* dl);
     void drawRenameOverlay(const ImVec2& canvasOrigin);
+    void drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin);
+    void updateMouseOverEditPanel(const ImVec2& canvasOrigin);
     void commitRename();
 
-    float nodeHeight(int numInputs) const;
+    static constexpr float kEditButtonHeight = 20.f;
+
+    float nodeHeight(int numInputs, bool hasEditBtn, bool hasAddInput = false) const;
     int   effectiveInputCount(int guiIndex) const;
+    bool  nodeHasEditButton(int guiIndex) const;
+    std::string buildModeText(int guiIndex) const;
     ImVec2 nodeScreenPos(double nx, double ny, const ImVec2& canvasOrigin) const;
     ImVec2 outputPinPos(const ImVec2& nodePos) const;
     ImVec2 inputPinPos(const ImVec2& nodePos, int pinIndex) const;

@@ -4,10 +4,12 @@
 #include "public.sdk/source/common/pluginview.h"
 
 #ifdef _WIN32
+#include <cstdint>    // uintptr_t
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct IDXGISwapChain;
 struct ID3D11RenderTargetView;
+struct ID3D11Texture2D;
 #endif
 
 namespace Steinberg {
@@ -26,6 +28,10 @@ public:
     tresult PLUGIN_API onSize(ViewRect* newSize) override;
     tresult PLUGIN_API getSize(ViewRect* size) override;
 
+#ifdef _WIN32
+    void renderFrame(); // called by the file-scope CALLBACK timerCallback
+#endif
+
 private:
     void* nativeHandle = nullptr;
     bool guiInitialized = false;
@@ -40,14 +46,19 @@ private:
     IDXGISwapChain*          swapChain = nullptr;
     ID3D11RenderTargetView*  mainRTV = nullptr;
 
+    // MSAA offscreen target
+    ID3D11Texture2D*         msaaTex = nullptr;
+    ID3D11RenderTargetView*  msaaRTV = nullptr;
+    int                      msaaWidth = 0;
+    int                      msaaHeight = 0;
+
     bool createD3D11(void* hwnd);
     void destroyD3D11();
     void resizeSwapChain(int width, int height);
-    void renderFrame();
+    void createMSAATarget(int width, int height);
 
-    // Timer for render loop
-    static void __stdcall timerCallback(void* hwnd, unsigned int msg, unsigned long long id, unsigned long time);
-    unsigned long long timerID = 0;
+    // Timer ID for render loop (UINT_PTR on Win32, stored as uintptr_t to avoid Windows header in this header)
+    uintptr_t timerID = 0;
 #endif
 };
 

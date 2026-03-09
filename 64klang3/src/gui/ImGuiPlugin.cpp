@@ -26,8 +26,10 @@ void render()
     if (!s_initialized || !s_canvas)
         return;
 
-    // Full-window canvas covering the entire editor area
+    // Full-window canvas covering the entire editor area, no padding or border
     ImGuiIO& io = ImGui::GetIO();
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(io.DisplaySize);
     ImGui::Begin("##64klang3Canvas",
@@ -39,6 +41,7 @@ void render()
                  ImGuiWindowFlags_NoScrollWithMouse |
                  ImGuiWindowFlags_NoBringToFrontOnFocus |
                  ImGuiWindowFlags_NoBackground);
+    ImGui::PopStyleVar(2);
 
     s_canvas->render();
 

@@ -15,6 +15,12 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 // Store view pointer for timer callback
 static Steinberg::Vst::K64PluginView* g_activeView = nullptr;
 
+static void CALLBACK timerCallback(HWND, UINT, UINT_PTR, DWORD)
+{
+    if (g_activeView)
+        g_activeView->renderFrame();
+}
+
 // Subclass proc for the host's editor HWND
 static WNDPROC g_originalWndProc = nullptr;
 static LRESULT CALLBACK editorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -80,6 +86,14 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     ImGui_ImplWin32_Init((HWND)parent);
     ImGui_ImplDX11_Init(d3dDevice, d3dContext);
 
+    // Two font sizes: small for zoom ≤ 1.5x, large for zoom > 1.5x.
+    // ImGui renders text sharpest when the requested pixel size is close to
+    // the loaded size.  A single 32 px font looks blurry at the 12-15 px
+    // sizes used at normal (1×) zoom.
+    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 14.0f);  // Fonts[0] – default
+    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 32.0f);  // Fonts[1] – high zoom
+    io.Fonts->Build();
+
     // Subclass the host window to receive input events
     g_originalWndProc = (WNDPROC)SetWindowLongPtr((HWND)parent, GWLP_WNDPROC, (LONG_PTR)editorWndProc);
 
@@ -134,10 +148,16 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
     rect = *newSize;
 
 #ifdef _WIN32
-    if (swapChain)
+    if (swapChain && nativeHandle)
     {
-        int w = newSize->right - newSize->left;
-        int h = newSize->bottom - newSize->top;
+        // Always resize the swap chain to the actual HWND client rect, not the
+        // ViewRect.  The host may add chrome (e.g. a keyboard bar) inside the
+        // same HWND, making the HWND taller than the ViewRect.  Using the HWND
+        // size prevents DWM from stretching the smaller buffer to fit.
+        RECT hwndRect = {};
+        ::GetClientRect((HWND)nativeHandle, &hwndRect);
+        int w = (hwndRect.right  > 0) ? (hwndRect.right  - hwndRect.left) : (newSize->right  - newSize->left);
+        int h = (hwndRect.bottom > 0) ? (hwndRect.bottom - hwndRect.top)  : (newSize->bottom - newSize->top);
         resizeSwapChain(w, h);
     }
 #endif
@@ -158,10 +178,18 @@ tresult PLUGIN_API K64PluginView::getSize(ViewRect* size)
 
 bool K64PluginView::createD3D11(void* hwnd)
 {
+    // Use the actual HWND client size so the swap chain matches exactly.
+    // If the swap chain is smaller than the HWND, DWM stretches the presented
+    // frame, causing a Y-scale mismatch between io.MousePos and rendered pixels.
+    RECT clientRect = {};
+    ::GetClientRect((HWND)hwnd, &clientRect);
+    UINT initW = (clientRect.right  > 0) ? (UINT)(clientRect.right  - clientRect.left) : (UINT)kDefaultWidth;
+    UINT initH = (clientRect.bottom > 0) ? (UINT)(clientRect.bottom - clientRect.top)  : (UINT)kDefaultHeight;
+
     DXGI_SWAP_CHAIN_DESC sd = {};
     sd.BufferCount = 1;
-    sd.BufferDesc.Width = kDefaultWidth;
-    sd.BufferDesc.Height = kDefaultHeight;
+    sd.BufferDesc.Width = initW;
+    sd.BufferDesc.Height = initH;
     sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
     sd.BufferDesc.RefreshRate.Numerator = 60;
     sd.BufferDesc.RefreshRate.Denominator = 1;
@@ -191,11 +219,16 @@ bool K64PluginView::createD3D11(void* hwnd)
     d3dDevice->CreateRenderTargetView(backBuffer, nullptr, &mainRTV);
     backBuffer->Release();
 
+    // Create 4x MSAA offscreen target at the same real size
+    createMSAATarget((int)initW, (int)initH);
+
     return true;
 }
 
 void K64PluginView::destroyD3D11()
 {
+    if (msaaRTV) { msaaRTV->Release(); msaaRTV = nullptr; }
+    if (msaaTex) { msaaTex->Release(); msaaTex = nullptr; }
     if (mainRTV)  { mainRTV->Release();  mainRTV = nullptr; }
     if (swapChain) { swapChain->Release(); swapChain = nullptr; }
     if (d3dContext) { d3dContext->Release(); d3dContext = nullptr; }
@@ -215,6 +248,51 @@ void K64PluginView::resizeSwapChain(int width, int height)
     swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
     d3dDevice->CreateRenderTargetView(backBuffer, nullptr, &mainRTV);
     backBuffer->Release();
+
+    createMSAATarget(width, height);
+}
+
+void K64PluginView::createMSAATarget(int width, int height)
+{
+    if (msaaRTV) { msaaRTV->Release(); msaaRTV = nullptr; }
+    if (msaaTex) { msaaTex->Release(); msaaTex = nullptr; }
+
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width = (UINT)width;
+    td.Height = (UINT)height;
+    td.MipLevels = 1;
+    td.ArraySize = 1;
+    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    td.SampleDesc.Count = 4;
+    td.SampleDesc.Quality = 0;
+    td.Usage = D3D11_USAGE_DEFAULT;
+    td.BindFlags = D3D11_BIND_RENDER_TARGET;
+
+    // Check if 4x MSAA is supported, fall back to 1x if not
+    UINT qualityLevels = 0;
+    d3dDevice->CheckMultisampleQualityLevels(DXGI_FORMAT_R8G8B8A8_UNORM, 4, &qualityLevels);
+    if (qualityLevels == 0)
+    {
+        // 4x not supported, no MSAA
+        msaaWidth = 0;
+        msaaHeight = 0;
+        return;
+    }
+
+    HRESULT hr = d3dDevice->CreateTexture2D(&td, nullptr, &msaaTex);
+    if (FAILED(hr))
+        return;
+
+    hr = d3dDevice->CreateRenderTargetView(msaaTex, nullptr, &msaaRTV);
+    if (FAILED(hr))
+    {
+        msaaTex->Release();
+        msaaTex = nullptr;
+        return;
+    }
+
+    msaaWidth = width;
+    msaaHeight = height;
 }
 
 void K64PluginView::renderFrame()
@@ -224,6 +302,20 @@ void K64PluginView::renderFrame()
 
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
+
+    // The Win32 backend sets io.DisplaySize from GetClientRect, which includes
+    // any host chrome (keyboard bar, etc.) added inside the HWND.  Clamp it to
+    // the plugin's own ViewRect so ImGui's coordinate space matches only the
+    // plugin area.  The swap chain is kept at the full HWND size to prevent DWM
+    // from stretching the buffer.
+    {
+        ImGuiIO& io = ImGui::GetIO();
+        float pluginW = (float)(rect.right  - rect.left);
+        float pluginH = (float)(rect.bottom - rect.top);
+        if (io.DisplaySize.x > pluginW) io.DisplaySize.x = pluginW;
+        if (io.DisplaySize.y > pluginH) io.DisplaySize.y = pluginH;
+    }
+
     ImGui::NewFrame();
 
     // Render the 64klang GUI
@@ -232,19 +324,28 @@ void K64PluginView::renderFrame()
     ImGui::Render();
 
     const float clearColor[4] = { 0.12f, 0.12f, 0.14f, 1.0f };
-    d3dContext->OMSetRenderTargets(1, &mainRTV, nullptr);
-    d3dContext->ClearRenderTargetView(mainRTV, clearColor);
-    ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+    // Render into MSAA target if available, then resolve to back buffer
+    if (msaaRTV)
+    {
+        d3dContext->OMSetRenderTargets(1, &msaaRTV, nullptr);
+        d3dContext->ClearRenderTargetView(msaaRTV, clearColor);
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+        // Resolve MSAA → back buffer
+        ID3D11Texture2D* backBuffer = nullptr;
+        swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
+        d3dContext->ResolveSubresource(backBuffer, 0, msaaTex, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+        backBuffer->Release();
+    }
+    else
+    {
+        d3dContext->OMSetRenderTargets(1, &mainRTV, nullptr);
+        d3dContext->ClearRenderTargetView(mainRTV, clearColor);
+        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+    }
 
     swapChain->Present(1, 0); // vsync
-}
-
-void __stdcall K64PluginView::timerCallback(void* hwnd, unsigned int msg,
-                                             unsigned long long id, unsigned long time)
-{
-    (void)hwnd; (void)msg; (void)id; (void)time;
-    if (g_activeView)
-        g_activeView->renderFrame();
 }
 
 #endif // _WIN32

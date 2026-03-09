@@ -1,31 +1,186 @@
 #include "NodeCanvas.h"
 #include "NodeConfig.h"
+#include "Widgets.h"
+#include "ArpEditor.h"
 #include "core/SynthController.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <chrono>
+#include <cstdio>
+#include <sstream>
 
 namespace K64GUI {
 
 NodeCanvas::NodeCanvas() {}
 NodeCanvas::~NodeCanvas() {}
 
-float NodeCanvas::nodeHeight(int numInputs) const
+// Pick the font whose loaded size is closest to the requested pixel size.
+// Fonts[0] = 14 px (sharp at zoom ≤ 1.5×), Fonts[1] = 32 px (sharp at zoom ≥ 2×).
+static ImFont* pickFont(float desiredPx)
 {
-    return kHeaderHeight + (float)numInputs * kRowHeight;
+    auto& fv = ImGui::GetIO().Fonts->Fonts;
+    if (fv.Size >= 2 && desiredPx >= fv[1]->FontSize * 0.75f)
+        return fv[1];
+    return fv[0];
+}
+
+// Check if a gnInput() return value represents a real connection
+// (not unwired constant0, not 0, not -1)
+static bool isRealConnection(int srcID, SynthController* sc)
+{
+    if (srcID == 0 || srcID == -1)
+        return false;
+    if (sc && sc->constant0() && srcID == (int)sc->constant0()->valueOffset)
+        return false;
+    return true;
+}
+
+float NodeCanvas::nodeHeight(int numInputs, bool hasEditBtn, bool hasAddInput) const
+{
+    float h = kHeaderHeight + (float)numInputs * kRowHeight;
+    if (hasEditBtn)
+        h += kEditButtonHeight;
+    if (hasAddInput)
+        h += kRowHeight; // "Add Input" pill row
+    return h;
 }
 
 int NodeCanvas::effectiveInputCount(int guiIndex) const
 {
     SynthController* sc = SynthController::instance();
     if (!sc) return 0;
-    // For variable-input nodes (NoteController, MultiAdd), gnNodeMaxSignals()
-    // returns 0 (the static type definition). Use gnNodeInputs() which returns
-    // the actual live numInputs count for those nodes.
     int maxSignals = sc->gnNodeMaxSignals(guiIndex);
-    int liveInputs = sc->gnNodeInputs(guiIndex);
-    return (liveInputs > maxSignals) ? liveInputs : maxSignals;
+    // For non-variable-input nodes, maxSignals already excludes mode inputs.
+    // For variable-input nodes (NoteController, MultiAdd), maxSignals is 0;
+    // use gnNodeInputs() which returns the actual live count.
+    if (maxSignals > 0)
+        return maxSignals;
+    return sc->gnNodeInputs(guiIndex);
+}
+
+bool NodeCanvas::nodeHasEditButton(int guiIndex) const
+{
+    SynthController* sc = SynthController::instance();
+    if (!sc) return false;
+
+    int nodeType = sc->gnType(guiIndex);
+
+    // Variable-input nodes with nothing to configure
+    if (nodeType == NOTECONTROLLER_ID || nodeType == MULTIADD_ID)
+        return false;
+
+    // VoiceManager always shows edit button (for arpeggiator editor)
+    if (nodeType == VOICEMANAGER_ID)
+        return true;
+
+    const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
+    if (!typeDef) return false;
+
+    // Has editable parameters (more inputs than required signals)
+    bool hasParams = (typeDef->numMaxGUIInputs > typeDef->numReqGUIInputs);
+
+    // Has mode groups or flags
+    bool hasModes = false;
+    for (const auto& input : typeDef->inputs)
+    {
+        if (input.isMode())
+        {
+            hasModes = true;
+            break;
+        }
+    }
+
+    // Constants/voice params always show edit button for value display
+    if (nodeType >= CONSTANT_ID)
+        return true;
+
+    return hasParams || hasModes;
+}
+
+std::string NodeCanvas::buildModeText(int guiIndex) const
+{
+    SynthController* sc = SynthController::instance();
+    if (!sc) return "";
+
+    int nodeType = sc->gnType(guiIndex);
+    int nodeID = sc->gnID(guiIndex);
+    const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
+    if (!typeDef) return "";
+
+    char buf[64];
+
+    // Constants and OsRand: show L/R values of first parameter
+    if (nodeType == 35 || nodeType >= CONSTANT_ID) // OsRand=35, constants>=64
+    {
+        double l = sc->getInputValue((DWORD)nodeID, 0, 0);
+        double r = sc->getInputValue((DWORD)nodeID, 0, 1);
+        snprintf(buf, sizeof(buf), "%.2f / %.2f", l, r);
+        return buf;
+    }
+
+    // SynthRoot, ChannelRoot, Shaper, Clip, CrossMix, OnePole, OneZero, Scaler
+    if (nodeType < 2 || nodeType == 12 || nodeType == 14 || nodeType == 19 ||
+        nodeType == 10 || nodeType == 11 || nodeType == 31)
+    {
+        double l = sc->getInputValue((DWORD)nodeID, 1, 0);
+        double r = sc->getInputValue((DWORD)nodeID, 1, 1);
+        snprintf(buf, sizeof(buf), "%.2f / %.2f", l, r);
+        return buf;
+    }
+
+    // Mix
+    if (nodeType == 20)
+    {
+        double l = sc->getInputValue((DWORD)nodeID, 2, 0);
+        double r = sc->getInputValue((DWORD)nodeID, 2, 1);
+        snprintf(buf, sizeof(buf), "%.2f / %.2f", l, r);
+        return buf;
+    }
+
+    // Panning
+    if (nodeType == 13)
+    {
+        double l = sc->getInputValue((DWORD)nodeID, 1, 0);
+        snprintf(buf, sizeof(buf), "%.2f", l);
+        return buf;
+    }
+
+    // General mode text from mode input
+    int maxGUISignals = typeDef->numMaxGUIInputs;
+    // MidiSignal needs +1
+    if (nodeType == 29)
+        maxGUISignals++;
+
+    if (maxGUISignals < typeDef->numInputs && maxGUISignals < (int)typeDef->inputs.size())
+    {
+        const InputDef& modeDef = typeDef->inputs[maxGUISignals];
+        int initialBits = sc->getInputMode((DWORD)nodeID, (DWORD)maxGUISignals);
+
+        std::string mode;
+        for (const auto& mg : modeDef.modeGroups)
+        {
+            if (mg.hideModeText)
+                continue;
+            int currentBits = (initialBits & (int)mg.mask) >> mg.shift;
+
+            for (const auto& mi : mg.items)
+            {
+                if (currentBits == mi.value)
+                {
+                    if (!mode.empty()) mode += " ";
+                    mode += mi.name;
+                }
+            }
+        }
+
+        if (mode.empty())
+            mode = "Configuration";
+        return mode;
+    }
+
+    return "Configuration";
 }
 
 ImVec2 NodeCanvas::nodeScreenPos(double nx, double ny, const ImVec2& canvasOrigin) const
@@ -36,12 +191,12 @@ ImVec2 NodeCanvas::nodeScreenPos(double nx, double ny, const ImVec2& canvasOrigi
 
 ImVec2 NodeCanvas::outputPinPos(const ImVec2& nodePos) const
 {
-    return ImVec2(nodePos.x + kNodeWidth * zoom, nodePos.y + kOutputPinY * zoom);
+    return ImVec2(nodePos.x + (kNodeWidth - kPinInset) * zoom, nodePos.y + kOutputPinY * zoom);
 }
 
 ImVec2 NodeCanvas::inputPinPos(const ImVec2& nodePos, int pinIndex) const
 {
-    return ImVec2(nodePos.x, nodePos.y + (kFirstPinY + (float)pinIndex * kRowHeight) * zoom);
+    return ImVec2(nodePos.x + kPinInset * zoom, nodePos.y + (kFirstPinY + (float)pinIndex * kRowHeight) * zoom);
 }
 
 // ── Hit Testing ──────────────────────────────────────────────────────────
@@ -62,10 +217,13 @@ int NodeCanvas::hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) 
         double nx = sc->gnX(i);
         double ny = sc->gnY(i);
         int numSignals = effectiveInputCount(i);
+        bool hasEditBtn = nodeHasEditButton(i);
+        int nodeTypeI = sc->gnType(i);
+        bool hasAddInput = (nodeTypeI == MULTIADD_ID || nodeTypeI == NOTECONTROLLER_ID);
 
         ImVec2 pos = nodeScreenPos(nx, ny, canvasOrigin);
         float w = kNodeWidth * zoom;
-        float h = nodeHeight(numSignals) * zoom;
+        float h = nodeHeight(numSignals, hasEditBtn, hasAddInput) * zoom;
 
         if (mousePos.x >= pos.x && mousePos.x <= pos.x + w &&
             mousePos.y >= pos.y && mousePos.y <= pos.y + h)
@@ -99,10 +257,13 @@ bool NodeCanvas::nodeFullyInsideRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMa
     double nx = sc->gnX(guiIndex);
     double ny = sc->gnY(guiIndex);
     int numSignals = effectiveInputCount(guiIndex);
+    bool hasEditBtn = nodeHasEditButton(guiIndex);
+    int nodeTypeRI = sc->gnType(guiIndex);
+    bool hasAddInputRI = (nodeTypeRI == MULTIADD_ID || nodeTypeRI == NOTECONTROLLER_ID);
 
     ImVec2 pos = nodeScreenPos(nx, ny, canvasOrigin);
     float w = kNodeWidth * zoom;
-    float h = nodeHeight(numSignals) * zoom;
+    float h = nodeHeight(numSignals, hasEditBtn, hasAddInputRI) * zoom;
 
     // Normalize rect
     float rMinX = std::min(rectMin.x, rectMax.x);
@@ -131,7 +292,7 @@ void NodeCanvas::recursiveSelect(int nodeID, std::unordered_set<int>& visited)
     for (int pin = 0; pin < numSignals; pin++)
     {
         int srcID = sc->gnInput(gi, pin);
-        if (srcID != 0 && srcID != -1)
+        if (isRealConnection(srcID, sc))
             recursiveSelect(srcID, visited);
     }
 }
@@ -146,12 +307,112 @@ void NodeCanvas::syncSelectionToCore()
         sc->setSelected((DWORD)id, 1);
 }
 
+// ── Pin Hit Testing ─────────────────────────────────────────────────────
+
+int NodeCanvas::hitTestOutputPin(const ImVec2& mousePos, const ImVec2& canvasOrigin) const
+{
+    SynthController* sc = SynthController::instance();
+    if (!sc) return -1;
+
+    int numNodes = sc->numGUINodes();
+    float hitRadius = kPinRadius * zoom * 1.5f;
+
+    for (int i = 0; i < numNodes; i++)
+    {
+        if (!sc->gnIsVisible(i))
+            continue;
+        double nx = sc->gnX(i);
+        double ny = sc->gnY(i);
+        ImVec2 pos = nodeScreenPos(nx, ny, canvasOrigin);
+        ImVec2 pin = outputPinPos(pos);
+
+        float dx = mousePos.x - pin.x;
+        float dy = mousePos.y - pin.y;
+        if (dx * dx + dy * dy <= hitRadius * hitRadius)
+            return sc->gnID(i);
+    }
+    return -1;
+}
+
+NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImVec2& canvasOrigin) const
+{
+    SynthController* sc = SynthController::instance();
+    if (!sc) return {-1, -1};
+
+    int numNodes = sc->numGUINodes();
+    float hitRadius = kPinRadius * zoom * 1.5f;
+
+    for (int i = 0; i < numNodes; i++)
+    {
+        if (!sc->gnIsVisible(i))
+            continue;
+        double nx = sc->gnX(i);
+        double ny = sc->gnY(i);
+        int numSignals = effectiveInputCount(i);
+        int nodeTypeHT = sc->gnType(i);
+        bool hasEditBtnHT = nodeHasEditButton(i);
+        ImVec2 pos = nodeScreenPos(nx, ny, canvasOrigin);
+        float w = kNodeWidth * zoom;
+
+        // Regular input pins
+        for (int pin = 0; pin < numSignals; pin++)
+        {
+            ImVec2 pinPos = inputPinPos(pos, pin);
+            float dx = mousePos.x - pinPos.x;
+            float dy = mousePos.y - pinPos.y;
+            if (dx * dx + dy * dy <= hitRadius * hitRadius)
+                return {sc->gnID(i), pin};
+        }
+
+        // "Add Input" pill for variable-input nodes (index ignored by connectInput)
+        if ((nodeTypeHT == MULTIADD_ID || nodeTypeHT == NOTECONTROLLER_ID) && numSignals < 16)
+        {
+            float pillBaseY = pos.y + nodeHeight(numSignals, hasEditBtnHT, false) * zoom;
+            float pillH     = kRowHeight * zoom;
+            float pillInset = 8.f * zoom;
+            ImVec2 pillMin(pos.x + pillInset, pillBaseY + 2.f * zoom);
+            ImVec2 pillMax(pos.x + w - pillInset, pillBaseY + pillH - 2.f * zoom);
+            if (mousePos.x >= pillMin.x && mousePos.x <= pillMax.x &&
+                mousePos.y >= pillMin.y && mousePos.y <= pillMax.y)
+                return {sc->gnID(i), numSignals}; // index ignored for variable-input nodes
+        }
+    }
+    return {-1, -1};
+}
+
+void NodeCanvas::drawGhostWire(ImDrawList* dl, const ImVec2& canvasOrigin)
+{
+    if (!isWireDragging || wireDragFromNodeID < 0)
+        return;
+
+    SynthController* sc = SynthController::instance();
+    if (!sc) return;
+
+    int gi = findGuiIndex(wireDragFromNodeID);
+    if (gi < 0) return;
+
+    ImVec2 fromPos = nodeScreenPos(sc->gnX(gi), sc->gnY(gi), canvasOrigin);
+    ImVec2 p0 = outputPinPos(fromPos);
+    ImVec2 p3 = wireDragCurrentPos;
+    ImVec2 p1 = ImVec2(p0.x + kWireStubLen * zoom, p0.y);
+    ImVec2 p2 = ImVec2(p3.x - kWireStubLen * zoom, p3.y);
+
+    ImU32 ghostColor = IM_COL32(255, 50, 50, 200);
+    dl->AddLine(p0, p1, ghostColor, kWireThickness * zoom);
+    dl->AddLine(p1, p2, ghostColor, kWireThickness * zoom);
+    dl->AddLine(p2, p3, ghostColor, kWireThickness * zoom);
+}
+
 // ── Interaction ──────────────────────────────────────────────────────────
 
 void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& canvasSize)
 {
     // While renaming, only handle rename-related input
     if (isRenaming)
+        return;
+
+    // Don't process canvas interactions when mouse is over an edit panel
+    if (mouseOverEditPanel)
         return;
 
     SynthController* sc = SynthController::instance();
@@ -161,9 +422,183 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
     ImGuiIO& io = ImGui::GetIO();
     ImVec2 mousePos = io.MousePos;
 
+    // ── Wire drag follows mouse every frame (click-to-start, click-to-finish) ──
+    if (isWireDragging)
+    {
+        wireDragCurrentPos = mousePos;
+    }
+
     // ── Left mouse press ──
     if (canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
     {
+        // If already wire-dragging: click on input pin connects (stays in drag mode),
+        // click on background cancels, click on node/output is ignored (stays in drag mode)
+        if (isWireDragging)
+        {
+            PinHit target = hitTestInputPin(mousePos, canvasPos);
+            if (target.nodeID != -1)
+            {
+                // Validate connection — self-connections (feedback) are allowed by the engine
+                bool valid = true;
+                int fromGI = findGuiIndex(wireDragFromNodeID);
+                int toGI   = findGuiIndex(target.nodeID);
+
+                if (fromGI >= 0 && toGI >= 0)
+                {
+                    bool fromGlobal = sc->gnIsGlobal(fromGI);
+                    bool toGlobal   = sc->gnIsGlobal(toGI);
+                    int  fromType   = sc->gnType(fromGI);
+                    int  toType     = sc->gnType(toGI);
+
+                    // Case 1: variable-input node at max capacity
+                    if ((toType == NOTECONTROLLER_ID || toType == MULTIADD_ID) &&
+                        sc->gnNodeInputs(toGI) >= 16)
+                    {
+                        showToast("No more than 16 inputs are allowed!");
+                        valid = false;
+                    }
+                    // Case 2: voice node output → global node input
+                    if (valid && !fromGlobal && toGlobal)
+                    {
+                        if (!(fromType == VOICEROOT_ID && toType == VOICEMANAGER_ID))
+                        {
+                            showToast("A voice node output cannot be connected to a global node input!");
+                            valid = false;
+                        }
+                    }
+                    // Case 3: VoiceRoot → VoiceManager but not at pin 0
+                    if (valid && fromType == VOICEROOT_ID && toType == VOICEMANAGER_ID && target.pinIndex != 0)
+                    {
+                        showToast("Voice Root can only be attached to Voice Manager's Voice Root input!");
+                        valid = false;
+                    }
+                    // Case 4: NoteController only accepts VoiceManager
+                    if (valid && toType == NOTECONTROLLER_ID && fromType != VOICEMANAGER_ID)
+                    {
+                        showToast("Only Voice Manager can be input for Note Controller!");
+                        valid = false;
+                    }
+                    // Case 5: SampleRecorder → only SamplePlayer[0], WTFOsc[0], or EventSignal
+                    if (valid && fromType == SAMPLEREC_ID)
+                    {
+                        bool ok = (toType == SAMPLER_ID   && target.pinIndex == 0) ||
+                                  (toType == WTFOSC_ID    && target.pinIndex == 0) ||
+                                  (toType == EVENTSIGNAL_ID);
+                        if (!ok)
+                        {
+                            showToast("Sample Recorder can only be input for Sample Player or WTF Oscillator In input!");
+                            valid = false;
+                        }
+                    }
+                    // Case 6: TextToSpeech → only SamplePlayer[0] or WTFOsc[0]
+                    if (valid && fromType == SAPI_ID)
+                    {
+                        bool ok = (toType == SAMPLER_ID && target.pinIndex == 0) ||
+                                  (toType == WTFOSC_ID  && target.pinIndex == 0);
+                        if (!ok)
+                        {
+                            showToast("TextToSpeech can only be input for Sample Player or WTF Oscillator In input!");
+                            valid = false;
+                        }
+                    }
+                    // Case 7: GM.DLS → only SamplePlayer[0] or WTFOsc[0]
+                    if (valid && fromType == GMDLS_ID)
+                    {
+                        bool ok = (toType == SAMPLER_ID && target.pinIndex == 0) ||
+                                  (toType == WTFOSC_ID  && target.pinIndex == 0);
+                        if (!ok)
+                        {
+                            showToast("GM.DLS can only be input for Sample Player or WTF Oscillator In input!");
+                            valid = false;
+                        }
+                    }
+                    // Case 8: SamplePlayer In[0] only from SampleRecorder, SAPI, or GM.DLS
+                    if (valid && toType == SAMPLER_ID && target.pinIndex == 0)
+                    {
+                        if (fromType != SAMPLEREC_ID && fromType != SAPI_ID && fromType != GMDLS_ID)
+                        {
+                            showToast("Sample Player's In can only be Sample Recorder, TextToSpeech or GM.DLS!");
+                            valid = false;
+                        }
+                    }
+                    // Case 9: WTFOsc In[0] only from SampleRecorder, SAPI, or GM.DLS
+                    if (valid && toType == WTFOSC_ID && target.pinIndex == 0)
+                    {
+                        if (fromType != SAMPLEREC_ID && fromType != SAPI_ID && fromType != GMDLS_ID)
+                        {
+                            showToast("WTF Oscillator's In can only be Sample Recorder, TextToSpeech or GM.DLS!");
+                            valid = false;
+                        }
+                    }
+                    // Case 10: SyncOsc sync input[1] only from Oscillator or LFO
+                    if (valid && toType == OSCSYNC_ID && target.pinIndex == 1)
+                    {
+                        if (fromType != OSCILLATOR_ID && fromType != LFO_ID)
+                        {
+                            showToast("Only Oscillator or LFO can be input for SyncOsc!");
+                            valid = false;
+                        }
+                    }
+                }
+
+                if (valid)
+                {
+                    sc->killVoices();
+                    sc->connectInput((DWORD)wireDragFromNodeID, (DWORD)target.nodeID, (DWORD)target.pinIndex);
+                    sc->numGUINodes();
+                }
+                return; // stay in wire drag mode
+            }
+
+            // Click hit a node body or output pin — just consume the click, stay wiring
+            int nodeHit = hitTestNode(mousePos, canvasPos);
+            if (nodeHit != -1)
+                return;
+
+            // Click on empty background — cancel wire drag
+            isWireDragging = false;
+            wireDragFromNodeID = -1;
+            return;
+        }
+
+        // Test pins BEFORE node body
+        int outputHit = hitTestOutputPin(mousePos, canvasPos);
+        if (outputHit != -1)
+        {
+            // Start wire drag from output pin (click-to-start)
+            isWireDragging = true;
+            wireDragFromNodeID = outputHit;
+            wireDragCurrentPos = mousePos;
+            pressedNodeID = -1;
+            return;
+        }
+
+        PinHit inputHit = hitTestInputPin(mousePos, canvasPos);
+        if (inputHit.nodeID != -1)
+        {
+            // Check if this input is already wired — disconnect it.
+            // Guard: skip the "Add Input" pill (pinIndex == numInputs for variable-input nodes).
+            int gi = findGuiIndex(inputHit.nodeID);
+            if (gi >= 0)
+            {
+                int nodeTypeHit = sc->gnType(gi);
+                bool isAddInputPill =
+                    (nodeTypeHit == MULTIADD_ID || nodeTypeHit == NOTECONTROLLER_ID) &&
+                    (inputHit.pinIndex >= sc->gnNodeInputs(gi));
+                if (!isAddInputPill)
+                {
+                    int srcID = sc->gnInput(gi, inputHit.pinIndex);
+                    if (isRealConnection(srcID, sc))
+                    {
+                        sc->killVoices();
+                        sc->disconnectInput((DWORD)inputHit.nodeID, (DWORD)inputHit.pinIndex);
+                        sc->numGUINodes(); // refresh accessor
+                        return;
+                    }
+                }
+            }
+        }
+
         int hitID = hitTestNode(mousePos, canvasPos);
         double now = ImGui::GetTime();
 
@@ -272,8 +707,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         }
     }
 
-    // ── Left mouse held: dragging or rubber-banding ──
-    if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    // ── Left mouse held: node drag or rubber-banding ──
+    if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !isWireDragging)
     {
         if (pressedNodeID != -1)
         {
@@ -334,6 +769,178 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         isDragging = false;
         pressedNodeID = -1;
         isRubberBanding = false;
+    }
+
+    // ── Right-click: cancel wire drag ──
+    if (canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && isWireDragging)
+    {
+        isWireDragging = false;
+        wireDragFromNodeID = -1;
+        return;
+    }
+
+    // ── Right-button release: open context menu if no panning occurred ──
+    if (canvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+        !isDragging && !isWireDragging && !didPan)
+    {
+        int hitID = hitTestNode(mousePos, canvasPos);
+        if (hitID == -1)
+        {
+            // Right-release on empty canvas → open node creation menu
+            contextMenuCanvasPos = ImVec2(
+                (mousePos.x - canvasPos.x) / zoom - offsetX,
+                (mousePos.y - canvasPos.y) / zoom - offsetY
+            );
+            showContextMenu = true;
+            ImGui::OpenPopup("##nodeMenu");
+        }
+    }
+
+    // ── Delete key ──
+    if (!isRenaming && canvasHovered && ImGui::IsKeyPressed(ImGuiKey_Delete))
+    {
+        sc->killVoices();
+        std::vector<int> toDelete(selectedNodeIDs.begin(), selectedNodeIDs.end());
+        for (int id : toDelete)
+        {
+            int gi = findGuiIndex(id);
+            int type = (gi >= 0) ? sc->gnType(gi) : -1;
+            // Protect structural nodes
+            if (type >= 0 && type <= (int)VOICEROOT_ID)
+                continue;
+            sc->deleteNode((DWORD)id);
+        }
+        selectedNodeIDs.clear();
+        syncSelectionToCore();
+        sc->numGUINodes(); // refresh accessor
+    }
+
+    // ── Copy (Ctrl+C) ──
+    if (!isRenaming && canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
+    {
+        clipboard.clear();
+        if (!selectedNodeIDs.empty())
+        {
+            // Compute centroid
+            double cx = 0, cy = 0;
+            int count = 0;
+            std::vector<int> selIDs(selectedNodeIDs.begin(), selectedNodeIDs.end());
+            for (int id : selIDs)
+            {
+                int gi = findGuiIndex(id);
+                if (gi >= 0)
+                {
+                    cx += sc->gnX(gi);
+                    cy += sc->gnY(gi);
+                    count++;
+                }
+            }
+            if (count > 0) { cx /= count; cy /= count; }
+
+            // Build ID→clipboard index map
+            std::unordered_map<int, int> idToClipIdx;
+            for (int idx = 0; idx < (int)selIDs.size(); idx++)
+                idToClipIdx[selIDs[idx]] = idx;
+
+            for (int id : selIDs)
+            {
+                int gi = findGuiIndex(id);
+                if (gi < 0) continue;
+
+                ClipboardNode cn;
+                cn.typeID = sc->gnType(gi);
+                cn.channel = sc->gnChannel(gi);
+                cn.isGlobal = sc->gnIsGlobal(gi);
+                cn.relX = sc->gnX(gi) - cx;
+                cn.relY = sc->gnY(gi) - cy;
+
+                int numSignals = effectiveInputCount(gi);
+                cn.inputs.resize(numSignals);
+                cn.internalWires.resize(numSignals, -1);
+
+                for (int p = 0; p < numSignals; p++)
+                {
+                    cn.inputs[p].valL = sc->gnInputValue(gi, p, 0);
+                    cn.inputs[p].valR = sc->gnInputValue(gi, p, 1);
+                    cn.inputs[p].mode = sc->gnInputMode(gi, p);
+
+                    int srcID = sc->gnInput(gi, p);
+                    if (isRealConnection(srcID, sc))
+                    {
+                        auto it = idToClipIdx.find(srcID);
+                        if (it != idToClipIdx.end())
+                            cn.internalWires[p] = it->second;
+                    }
+                }
+
+                clipboard.push_back(std::move(cn));
+            }
+        }
+    }
+
+    // ── Paste (Ctrl+V) ──
+    if (!isRenaming && canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V))
+    {
+        if (!clipboard.empty())
+        {
+            // Convert mouse pos to canvas coords
+            double mouseCanvasX = (mousePos.x - canvasPos.x) / zoom - offsetX;
+            double mouseCanvasY = (mousePos.y - canvasPos.y) / zoom - offsetY;
+
+            sc->killVoices();
+
+            std::vector<int> newNodeIDs;
+            for (const auto& cn : clipboard)
+            {
+                double px = mouseCanvasX + cn.relX;
+                double py = mouseCanvasY + cn.relY;
+                SynthNode* newNode = sc->createGUINode((DWORD)cn.typeID, (DWORD)cn.channel,
+                                                        (DWORD)(cn.isGlobal ? 1 : 0), px, py);
+                int newID = newNode ? (int)newNode->valueOffset : -1;
+                newNodeIDs.push_back(newID);
+            }
+
+            // Set values and modes
+            for (int i = 0; i < (int)clipboard.size(); i++)
+            {
+                if (newNodeIDs[i] < 0) continue;
+                const auto& cn = clipboard[i];
+                int numParams = std::min((int)cn.inputs.size(), 16);
+                for (int p = 0; p < numParams; p++)
+                {
+                    sc->setInputValue((DWORD)newNodeIDs[i], (DWORD)p,
+                                      cn.inputs[p].valL, cn.inputs[p].valR);
+                    if (cn.inputs[p].mode != 0)
+                        sc->setInputMode((DWORD)newNodeIDs[i], (DWORD)p,
+                                         (DWORD)cn.inputs[p].mode);
+                }
+            }
+
+            // Reconnect internal wires
+            for (int i = 0; i < (int)clipboard.size(); i++)
+            {
+                if (newNodeIDs[i] < 0) continue;
+                const auto& cn = clipboard[i];
+                for (int p = 0; p < (int)cn.internalWires.size(); p++)
+                {
+                    int srcClipIdx = cn.internalWires[p];
+                    if (srcClipIdx >= 0 && srcClipIdx < (int)newNodeIDs.size() && newNodeIDs[srcClipIdx] >= 0)
+                    {
+                        sc->connectInput((DWORD)newNodeIDs[srcClipIdx], (DWORD)newNodeIDs[i], (DWORD)p);
+                    }
+                }
+            }
+
+            // Select all pasted nodes
+            selectedNodeIDs.clear();
+            for (int id : newNodeIDs)
+            {
+                if (id >= 0)
+                    selectedNodeIDs.insert(id);
+            }
+            syncSelectionToCore();
+            sc->numGUINodes(); // refresh
+        }
     }
 }
 
@@ -415,6 +1022,662 @@ void NodeCanvas::commitRename()
     renamingNodeID = -1;
 }
 
+// ── Edit Panel ──────────────────────────────────────────────────────────
+
+void NodeCanvas::updateMouseOverEditPanel(const ImVec2& canvasOrigin)
+{
+    mouseOverEditPanel = false;
+    if (openEditPanels.empty())
+        return;
+
+    // Also consider mouse captured if a knob is being dragged
+    if (knobDragNodeID >= 0)
+    {
+        mouseOverEditPanel = true;
+        return;
+    }
+
+    SynthController* sc = SynthController::instance();
+    if (!sc || !sc->isInitialized())
+        return;
+
+    ImVec2 mousePos = ImGui::GetIO().MousePos;
+
+    for (int nodeID : openEditPanels)
+    {
+        int gi = findGuiIndex(nodeID);
+        if (gi < 0) continue;
+
+        int nodeType = sc->gnType(gi);
+        const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
+        if (!typeDef) continue;
+
+        double nx = sc->gnX(gi);
+        double ny = sc->gnY(gi);
+        ImVec2 nodePos = nodeScreenPos(nx, ny, canvasOrigin);
+        float nodeW = kNodeWidth * zoom;
+        float px = nodePos.x + nodeW;
+        float py = nodePos.y;
+        float pw = kEditPanelWidth * zoom;
+
+        // Estimate panel height (same formula as in drawEditPanel)
+        int modeInputIdx = typeDef->numMaxGUIInputs;
+        if (!(modeInputIdx < typeDef->numInputs && modeInputIdx < (int)typeDef->inputs.size()))
+            modeInputIdx = -1;
+
+        int paramStart = typeDef->numReqGUIInputs;
+        int paramEnd = typeDef->numMaxGUIInputs;
+        int numParams = 0;
+        for (int i = paramStart; i < paramEnd && i < (int)typeDef->inputs.size(); i++)
+            numParams++;
+
+        float paramRowH = (kEditKnobDiam + 8.f);
+        float flagsH = 0.f;
+        if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
+        {
+            const InputDef& modeDef = typeDef->inputs[modeInputIdx];
+            if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
+            {
+                flagsH = kEditLabelH + kEditFlagH;
+                for (size_t j = 0; j < modeDef.modeGroups.size(); j++)
+                    flagsH += kEditFlagH;
+            }
+        }
+        float totalH = kEditHeaderH + (float)numParams * paramRowH + flagsH + 4.f;
+        float ph = totalH * zoom;
+
+        if (nodeType == VOICEMANAGER_ID)
+        {
+            float arpGridW = (float)ArpEditor::kMaxSteps * ArpEditor::kStepWidth * zoom + 8.f * zoom;
+            float arpGridH = (float)(ArpEditor::kOctaves * ArpEditor::kNotesPerOctave) * ArpEditor::kNoteHeight * zoom;
+            pw = std::max(pw, arpGridW);
+            ph += kEditFlagH * zoom + arpGridH + 6.f * zoom;
+        }
+
+        if (mousePos.x >= px && mousePos.x <= px + pw &&
+            mousePos.y >= py && mousePos.y <= py + ph)
+        {
+            mouseOverEditPanel = true;
+            return;
+        }
+    }
+}
+
+void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
+{
+    if (openEditPanels.empty())
+        return;
+
+    SynthController* sc = SynthController::instance();
+    if (!sc || !sc->isInitialized())
+    {
+        openEditPanels.clear();
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    ImVec2 mousePos = io.MousePos;
+    const float PI = 3.14159265359f;
+    const float sweepDeg = 280.f;
+    const float startAngle = (180.f + (360.f - sweepDeg) * 0.5f);
+
+    // Release knob drag when mouse released
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    {
+        knobDragNodeID = -1;
+        knobDragParam = -1;
+    }
+
+    std::vector<int> panelIDs(openEditPanels.begin(), openEditPanels.end());
+    for (int nodeID : panelIDs)
+    {
+        int gi = findGuiIndex(nodeID);
+        if (gi < 0)
+        {
+            openEditPanels.erase(nodeID);
+            for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
+                it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
+            continue;
+        }
+
+        int nodeType = sc->gnType(gi);
+        const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
+        if (!typeDef)
+        {
+            openEditPanels.erase(nodeID);
+            for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
+                it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
+            continue;
+        }
+
+        double nx = sc->gnX(gi);
+        double ny = sc->gnY(gi);
+        ImVec2 nodePos = nodeScreenPos(nx, ny, canvasOrigin);
+        float nodeW = kNodeWidth * zoom;
+        float z = zoom; // shorthand
+
+        // Panel origin: right edge of node, top-aligned
+        float px = nodePos.x + nodeW;
+        float py = nodePos.y;
+        float pw = kEditPanelWidth * z;
+        float fontSize = 12.f * z;
+        float headerFontSize = 15.f * z;
+
+        // Compute panel height
+        int modeInputIdx = typeDef->numMaxGUIInputs;
+        if (!(modeInputIdx < typeDef->numInputs && modeInputIdx < (int)typeDef->inputs.size()))
+            modeInputIdx = -1;
+        int currentMode = (modeInputIdx >= 0) ? sc->getInputMode((DWORD)nodeID, (DWORD)modeInputIdx) : 0;
+
+        int paramStart = typeDef->numReqGUIInputs;
+        int paramEnd = typeDef->numMaxGUIInputs;
+        int numParams = 0;
+        for (int i = paramStart; i < paramEnd && i < (int)typeDef->inputs.size(); i++)
+            numParams++;
+
+        // Per param row: knob height + padding (label+sync fit in left column at same height)
+        float paramRowH = (kEditKnobDiam + 8.f);
+        float flagsH = 0.f;
+        int numFlags = 0;
+        if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
+        {
+            const InputDef& modeDef = typeDef->inputs[modeInputIdx];
+            if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
+            {
+                flagsH = kEditLabelH; // "Flags" label
+                // Count visible flags for inline layout
+                bool isGlobal = sc->gnIsGlobal(gi);
+                for (const auto& mf : modeDef.modeFlags)
+                {
+                    if (mf.visible != 0 &&
+                        ((mf.visible == 1 && isGlobal) || (mf.visible == 2 && !isGlobal)))
+                        continue;
+                    numFlags++;
+                }
+                flagsH += kEditFlagH; // one row of inline checkboxes
+                for (const auto& mg : modeDef.modeGroups)
+                {
+                    flagsH += kEditFlagH;
+                    (void)mg;
+                }
+            }
+        }
+
+        float totalH = kEditHeaderH + (float)numParams * paramRowH + flagsH + 4.f;
+        float ph = totalH * z;
+
+        // VoiceManager: widen/extend panel to include arpeggiator section below params+modes
+        bool isVoiceManager = (nodeType == VOICEMANAGER_ID);
+        if (isVoiceManager)
+        {
+            float arpGridW = (float)ArpEditor::kMaxSteps * ArpEditor::kStepWidth * z + 8.f * z;
+            float arpGridH = (float)(ArpEditor::kOctaves * ArpEditor::kNotesPerOctave) * ArpEditor::kNoteHeight * z;
+            pw = std::max(pw, arpGridW);
+            ph += kEditFlagH * z + arpGridH + 6.f * z;
+        }
+
+        // ── Draw panel background ──
+        ImU32 panelBg = IM_COL32(180, 180, 180, 255);
+        ImU32 panelBorder = IM_COL32(100, 100, 105, 255);
+        ImU32 headerBg = IM_COL32(160, 160, 165, 255);
+        ImU32 textCol = IM_COL32(0, 0, 0, 255);
+        ImU32 dimTextCol = IM_COL32(50, 50, 55, 255);
+
+        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + ph), panelBg);
+        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + kEditHeaderH * z), headerBg);
+        dl->AddRect(ImVec2(px, py), ImVec2(px + pw, py + ph), panelBorder, 0.f, 0, 1.f);
+
+        // ── Header: title + X button ──
+        if (headerFontSize >= 6.f)
+        {
+            ImVec2 ts = ImGui::CalcTextSize(typeDef->name.c_str());
+            float tscale = headerFontSize / ImGui::GetFontSize();
+            float tx = px + 6.f * z;
+            float ty = py + (kEditHeaderH * z - headerFontSize) * 0.5f;
+            dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(tx, ty), textCol, typeDef->name.c_str());
+            dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(tx + 1.f, ty), textCol, typeDef->name.c_str());
+        }
+
+        // Red X close button (top-right, same style as node delete button)
+        float xbSz = kDeleteBtnSize * z;
+        ImVec2 xbMin(px + pw - xbSz - 2.f * z, py + 2.f * z);
+        ImVec2 xbMax(xbMin.x + xbSz, xbMin.y + xbSz);
+        dl->AddRectFilled(xbMin, xbMax, IM_COL32(200, 40, 40, 255));
+        float xpad = 3.f * z;
+        dl->AddLine(ImVec2(xbMin.x + xpad, xbMin.y + xpad), ImVec2(xbMax.x - xpad, xbMax.y - xpad), IM_COL32(255, 255, 255, 255), 1.5f);
+        dl->AddLine(ImVec2(xbMax.x - xpad, xbMin.y + xpad), ImVec2(xbMin.x + xpad, xbMax.y - xpad), IM_COL32(255, 255, 255, 255), 1.5f);
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+            mousePos.x >= xbMin.x && mousePos.x <= xbMax.x &&
+            mousePos.y >= xbMin.y && mousePos.y <= xbMax.y)
+        {
+            openEditPanels.erase(nodeID);
+            for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
+                it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
+            continue;
+        }
+
+        // Separator line under header
+        float sepY = py + kEditHeaderH * z;
+        dl->AddLine(ImVec2(px, sepY), ImVec2(px + pw, sepY), panelBorder, 1.f);
+
+        // ── Parameter rows ──
+        float curY = sepY;
+        for (int i = paramStart; i < paramEnd && i < (int)typeDef->inputs.size(); i++)
+        {
+            const InputDef& inputDef = typeDef->inputs[i];
+            float range = (float)inputDef.range;
+            if (range <= 0.f) range = 128.f;
+            float minVal = (float)(inputDef.minVal * range);
+            float maxVal = (float)(inputDef.maxVal * range);
+
+            float valL = (float)sc->getInputValue((DWORD)nodeID, (DWORD)i, 0);
+            float valR = (float)sc->getInputValue((DWORD)nodeID, (DWORD)i, 1);
+
+            // Lazy-init sync state from value equality on first encounter
+            uint64_t syncKey = ((uint64_t)(uint32_t)nodeID << 32) | (uint64_t)(uint32_t)i;
+            if (paramSyncState.find(syncKey) == paramSyncState.end())
+                paramSyncState[syncKey] = (std::abs(valL - valR) < 0.0001f);
+            bool synced = paramSyncState[syncKey];
+
+            // Separator line
+            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), panelBorder, 0.5f);
+
+            // Row geometry: left column (label+sync), right area (two knobs)
+            float rowH   = (kEditKnobDiam + 8.f) * z;
+            float knobR  = kEditKnobDiam * 0.5f * z;
+            float leftColW   = 90.f * z;
+            float rightAreaX = px + leftColW;
+            float rightAreaW = pw - leftColW;
+            float knobCY     = curY + rowH * 0.5f;   // knob center Y (vertically centered)
+
+            // ── Left column: label on top, sync checkbox below ──
+            if (fontSize >= 6.f)
+                dl->AddText(pickFont(fontSize), fontSize, ImVec2(px + 6.f * z, curY + 2.f * z), textCol, inputDef.name.c_str());
+
+            if (!inputDef.singleInput && fontSize >= 6.f)
+            {
+                float cbSz = kEditCheckboxSz * z;
+                float cbX  = px + 6.f * z;
+                float cbY  = curY + (kEditLabelH + 2.f) * z;
+                ImVec2 cbMin(cbX, cbY);
+                ImVec2 cbMax(cbX + cbSz, cbY + cbSz);
+                dl->AddRectFilled(cbMin, cbMax, IM_COL32(30, 30, 35, 255));
+                dl->AddRect(cbMin, cbMax, IM_COL32(120, 120, 125, 255), 0.f, 0, 1.f);
+                if (synced)
+                {
+                    dl->AddLine(ImVec2(cbMin.x + 2*z, cbMin.y + cbSz*0.5f),
+                                ImVec2(cbMin.x + cbSz*0.4f, cbMax.y - 2*z), IM_COL32(100, 200, 255, 255), 1.5f);
+                    dl->AddLine(ImVec2(cbMin.x + cbSz*0.4f, cbMax.y - 2*z),
+                                ImVec2(cbMax.x - 2*z, cbMin.y + 2*z), IM_COL32(100, 200, 255, 255), 1.5f);
+                }
+                dl->AddText(pickFont(fontSize * 0.9f), fontSize * 0.9f,
+                            ImVec2(cbMax.x + 3.f * z, cbY), textCol, "Sync");
+
+                // Click to toggle sync
+                if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                    mousePos.x >= cbMin.x && mousePos.x <= cbMax.x + 35.f * z &&
+                    mousePos.y >= cbMin.y && mousePos.y <= cbMax.y)
+                {
+                    bool newSynced = !synced;
+                    paramSyncState[syncKey] = newSynced;
+                    if (newSynced)
+                        sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)valL, (double)valL);
+                }
+            }
+
+            // ── Right area: left knob and right knob side by side ──
+            // Each knob occupies half of the right area; value text to its right
+            float slotW    = rightAreaW * 0.5f;
+            float knobL_cx = rightAreaX + knobR + 4.f * z;
+            float knobR_cx = rightAreaX + slotW + knobR + 4.f * z;
+
+            // ── Left knob ──
+            {
+                ImVec2 center(knobL_cx, knobCY);
+                dl->AddCircleFilled(center, knobR, IM_COL32(40, 40, 45, 255));
+                dl->AddCircle(center, knobR, IM_COL32(80, 80, 85, 255), 0, 1.5f);
+
+                float normL = (maxVal > minVal) ? (valL - minVal) / (maxVal - minVal) : 0.f;
+                normL = std::max(0.f, std::min(1.f, normL));
+                float angleDeg = startAngle + normL * sweepDeg;
+                float angleRad = angleDeg * PI / 180.f;
+                ImVec2 needleEnd(center.x + sinf(angleRad) * (knobR - 4.f * z),
+                                 center.y - cosf(angleRad) * (knobR - 4.f * z));
+                dl->AddLine(center, needleEnd, IM_COL32(255, 255, 255, 255), 2.f * z);
+
+                // Knob drag interaction
+                float dxm = mousePos.x - center.x;
+                float dym = mousePos.y - center.y;
+                if (dxm*dxm + dym*dym <= knobR*knobR)
+                {
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                    {
+                        knobDragNodeID = nodeID;
+                        knobDragParam  = i;
+                        knobDragIsRight = false;
+                    }
+                }
+                if (knobDragNodeID == nodeID && knobDragParam == i && !knobDragIsRight &&
+                    ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+                {
+                    float delta = -io.MouseDelta.y * 0.5f;
+                    if (io.KeyCtrl) delta /= 128.f;
+                    float step = delta / range;
+                    valL += step * (maxVal - minVal);
+                    valL = std::max(minVal, std::min(maxVal, valL));
+                    if (synced)
+                        sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)valL, (double)valL);
+                    else
+                        sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)valL, (double)valR);
+                }
+
+                // Value text to the right of knob, vertically centered
+                if (fontSize >= 6.f)
+                {
+                    std::string vtxt = Widgets::formatKnobValue(valL, range, inputDef.displayMapping, currentMode, nodeType);
+                    float valFontSz = fontSize * 0.85f;
+                    float valX = center.x + knobR + 3.f * z;
+                    float valY = center.y - valFontSz * 0.5f;
+                    dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, valY), dimTextCol, vtxt.c_str());
+                }
+            }
+
+            // ── Right knob (if stereo) ──
+            if (!inputDef.singleInput)
+            {
+                ImVec2 center(knobR_cx, knobCY);
+
+                // 50% transparent when synced, fully opaque when independent
+                unsigned int knobAlpha = synced ? 128 : 255;
+                dl->AddCircleFilled(center, knobR, IM_COL32(40, 40, 45, knobAlpha));
+                dl->AddCircle(center, knobR, IM_COL32(80, 80, 85, knobAlpha), 0, 1.5f);
+
+                float normR = (maxVal > minVal) ? (valR - minVal) / (maxVal - minVal) : 0.f;
+                normR = std::max(0.f, std::min(1.f, normR));
+                float angleDeg = startAngle + normR * sweepDeg;
+                float angleRad = angleDeg * PI / 180.f;
+                ImVec2 needleEnd(center.x + sinf(angleRad) * (knobR - 4.f * z),
+                                 center.y - cosf(angleRad) * (knobR - 4.f * z));
+                dl->AddLine(center, needleEnd, IM_COL32(255, 255, 255, knobAlpha), 2.f * z);
+
+                // Only allow interaction when not synced
+                if (!synced)
+                {
+                    float dxm = mousePos.x - center.x;
+                    float dym = mousePos.y - center.y;
+                    if (dxm*dxm + dym*dym <= knobR*knobR)
+                    {
+                        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                        {
+                            knobDragNodeID  = nodeID;
+                            knobDragParam   = i;
+                            knobDragIsRight = true;
+                        }
+                    }
+                    if (knobDragNodeID == nodeID && knobDragParam == i && knobDragIsRight &&
+                        ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+                    {
+                        float delta = -io.MouseDelta.y * 0.5f;
+                        if (io.KeyCtrl) delta /= 128.f;
+                        float step = delta / range;
+                        valR += step * (maxVal - minVal);
+                        valR = std::max(minVal, std::min(maxVal, valR));
+                        sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)valL, (double)valR);
+                    }
+                }
+
+                if (fontSize >= 6.f)
+                {
+                    std::string vtxt = Widgets::formatKnobValue(valR, range, inputDef.displayMapping, currentMode, nodeType);
+                    float valFontSz  = fontSize * 0.85f;
+                    float valX = center.x + knobR + 3.f * z;
+                    float valY = center.y - valFontSz * 0.5f;
+                    unsigned int txtAlpha = synced ? 128 : 255;
+                    ImU32 valCol = IM_COL32(50, 50, 55, txtAlpha);
+                    dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, valY), valCol, vtxt.c_str());
+                }
+            }
+
+            curY += rowH;
+        }
+
+        // ── Flags section ──
+        if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
+        {
+            const InputDef& modeDef = typeDef->inputs[modeInputIdx];
+            bool isGlobal = sc->gnIsGlobal(gi);
+
+            if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
+            {
+                dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), panelBorder, 0.5f);
+
+                if (fontSize >= 6.f)
+                    dl->AddText(pickFont(fontSize), fontSize, ImVec2(px + 6.f * z, curY + 2.f * z), textCol, "Flags");
+                curY += kEditLabelH * z;
+
+                int currentBits = sc->getInputMode((DWORD)nodeID, (DWORD)modeInputIdx);
+
+                // Mode groups (draw as combo-box / dropdown)
+                int groupIdx = 0;
+                for (const auto& mg : modeDef.modeGroups)
+                {
+                    int groupVal = (currentBits & (int)mg.mask) >> mg.shift;
+                    const char* activeName = "???";
+                    int activeIdx = 0;
+                    for (int j = 0; j < (int)mg.items.size(); j++)
+                    {
+                        if (mg.items[j].value == groupVal)
+                        {
+                            activeName = mg.items[j].name.c_str();
+                            activeIdx = j;
+                        }
+                    }
+
+                    // Draw combo-box button
+                    float btnX = px + 6.f * z;
+                    float btnW = pw - 12.f * z;
+                    float btnH = (kEditFlagH - 2.f) * z;
+                    float btnY = curY + 1.f * z;
+                    ImVec2 btnMin(btnX, btnY);
+                    ImVec2 btnMax(btnX + btnW, btnY + btnH);
+                    bool hov = mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
+                               mousePos.y >= btnMin.y && mousePos.y <= btnMax.y;
+                    dl->AddRectFilled(btnMin, btnMax, hov ? IM_COL32(60, 60, 70, 255) : IM_COL32(40, 40, 48, 255));
+                    dl->AddRect(btnMin, btnMax, IM_COL32(120, 120, 130, 255), 0.f, 0, 1.f);
+
+                    // Label text inside button
+                    if (fontSize >= 6.f)
+                    {
+                        char label[128];
+                        snprintf(label, sizeof(label), "%s: %s", mg.name.c_str(), activeName);
+                        float labelFontSz = fontSize * 0.9f;
+                        float labelY = btnY + (btnH - labelFontSz) * 0.5f;
+                        dl->AddText(pickFont(labelFontSz), labelFontSz, ImVec2(btnX + 4.f * z, labelY),
+                                    IM_COL32(220, 220, 230, 255), label);
+                    }
+
+                    // Drop arrow on right side
+                    {
+                        float arrMidX = btnMax.x - 10.f * z;
+                        float arrMidY = btnY + btnH * 0.5f;
+                        float arrHalf = 4.f * z;
+                        dl->AddTriangleFilled(
+                            ImVec2(arrMidX - arrHalf, arrMidY - arrHalf * 0.5f),
+                            ImVec2(arrMidX + arrHalf, arrMidY - arrHalf * 0.5f),
+                            ImVec2(arrMidX, arrMidY + arrHalf * 0.5f),
+                            IM_COL32(200, 200, 210, 255));
+                    }
+
+                    // Open popup on click
+                    char popupID[64];
+                    snprintf(popupID, sizeof(popupID), "##mg_%d_%d", nodeID, groupIdx);
+
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hov)
+                        ImGui::OpenPopup(popupID);
+
+                    // Popup list
+                    ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y));
+                    if (ImGui::BeginPopup(popupID))
+                    {
+                        ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
+                        for (int j = 0; j < (int)mg.items.size(); j++)
+                        {
+                            bool selected = (j == activeIdx);
+                            if (ImGui::Selectable(mg.items[j].name.c_str(), selected, 0, ImVec2(btnW, 0)))
+                            {
+                                int newBits = (currentBits & ~(int)mg.mask) | (mg.items[j].value << mg.shift);
+                                sc->setInputMode((DWORD)nodeID, (DWORD)modeInputIdx, (DWORD)newBits, (DWORD)mg.mask);
+                                currentBits = newBits;
+                            }
+                            if (selected)
+                                ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndPopup();
+                    }
+
+                    curY += kEditFlagH * z;
+                    groupIdx++;
+                }
+
+                // Mode flags as inline checkboxes
+                float flagX = px + 6.f * z;
+                for (const auto& mf : modeDef.modeFlags)
+                {
+                    if (mf.visible != 0)
+                    {
+                        if ((mf.visible == 1 && isGlobal) || (mf.visible == 2 && !isGlobal))
+                            continue;
+                    }
+
+                    bool flagSet = (currentBits & mf.value) != 0;
+                    float cbSz = kEditCheckboxSz * z;
+
+                    // Wrap to next line if needed
+                    ImVec2 ts = ImGui::CalcTextSize(mf.name.c_str());
+                    float tscale = (fontSize * 0.9f) / ImGui::GetFontSize();
+                    float itemW = cbSz + 4.f * z + ts.x * tscale + 8.f * z;
+                    if (flagX + itemW > px + pw - 4.f * z)
+                    {
+                        flagX = px + 6.f * z;
+                        curY += kEditFlagH * z;
+                    }
+
+                    float cbY = curY + 1.f * z;
+                    ImVec2 cbMin(flagX, cbY);
+                    ImVec2 cbMax(flagX + cbSz, cbY + cbSz);
+                    dl->AddRectFilled(cbMin, cbMax, IM_COL32(30, 30, 35, 255));
+                    dl->AddRect(cbMin, cbMax, IM_COL32(120, 120, 125, 255), 0.f, 0, 1.f);
+                    if (flagSet)
+                    {
+                        dl->AddLine(ImVec2(cbMin.x + 2*z, cbMin.y + cbSz*0.5f),
+                                    ImVec2(cbMin.x + cbSz*0.4f, cbMax.y - 2*z), IM_COL32(100, 200, 255, 255), 1.5f);
+                        dl->AddLine(ImVec2(cbMin.x + cbSz*0.4f, cbMax.y - 2*z),
+                                    ImVec2(cbMax.x - 2*z, cbMin.y + 2*z), IM_COL32(100, 200, 255, 255), 1.5f);
+                    }
+                    if (fontSize >= 6.f)
+                    {
+                        dl->AddText(pickFont(fontSize * 0.9f), fontSize * 0.9f,
+                                    ImVec2(cbMax.x + 2.f * z, cbY), dimTextCol, mf.name.c_str());
+                    }
+
+                    // Click checkbox
+                    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                        mousePos.x >= cbMin.x && mousePos.x <= cbMin.x + itemW &&
+                        mousePos.y >= cbMin.y && mousePos.y <= cbMax.y)
+                    {
+                        int newBits;
+                        if (flagSet)
+                            newBits = currentBits & ~mf.value;
+                        else
+                            newBits = currentBits | mf.value;
+                        sc->setInputMode((DWORD)nodeID, (DWORD)modeInputIdx, (DWORD)newBits, 0xffffffff);
+                        currentBits = newBits;
+                    }
+
+                    flagX += itemW;
+                }
+            }
+        }
+
+        // ── VoiceManager: Arpeggiator grid (DrawList, zoom-aware) ──
+        if (isVoiceManager)
+        {
+            float arpStepW = ArpEditor::kStepWidth * z;
+            float arpNoteH = ArpEditor::kNoteHeight * z;
+            int   kNotes   = ArpEditor::kOctaves * ArpEditor::kNotesPerOctave;
+            int   arpLoopLen = ArpEditor::kMaxSteps;
+
+            curY += kEditFlagH * z + 4.f * z;
+
+            // ── Grid ──
+            float gridW = (float)arpLoopLen * arpStepW;
+            float gridH = (float)kNotes * arpNoteH;
+            ImVec2 gMin(px + 4.f*z, curY);
+            ImVec2 gMax(gMin.x + gridW, gMin.y + gridH);
+
+            dl->AddRectFilled(gMin, gMax, IM_COL32(30, 30, 35, 255));
+
+            // Horizontal note lines
+            for (int n = 0; n <= kNotes; n++)
+            {
+                float ly = gMin.y + (float)n * arpNoteH;
+                ImU32 lc = (n % 12 == 0) ? IM_COL32(100,100,110,255) : IM_COL32(50,50,55,255);
+                dl->AddLine(ImVec2(gMin.x, ly), ImVec2(gMax.x, ly), lc);
+            }
+            // Vertical step lines
+            for (int s = 0; s <= arpLoopLen; s++)
+            {
+                float lx = gMin.x + (float)s * arpStepW;
+                ImU32 lc = (s % 4 == 0) ? IM_COL32(100,100,110,255) : IM_COL32(50,50,55,255);
+                dl->AddLine(ImVec2(lx, gMin.y), ImVec2(lx, gMax.y), lc);
+            }
+
+            // Notes and play cursor
+            int playPos = sc->getArpPlayPos((DWORD)nodeID);
+            for (int s = 0; s < arpLoopLen; s++)
+            {
+                int stepData  = sc->getArpStepData((DWORD)nodeID, (DWORD)s);
+                int transpose = stepData & 0x3F;
+                int velocity  = (stepData >> 8) & 0xFF;
+                if (velocity > 0 && transpose < kNotes)
+                {
+                    float nx2 = gMin.x + (float)s * arpStepW;
+                    float ny2 = gMin.y + (float)(kNotes - 1 - transpose) * arpNoteH;
+                    int alpha = 100 + (velocity * 155 / 255);
+                    dl->AddRectFilled(ImVec2(nx2 + 1, ny2 + 1),
+                                      ImVec2(nx2 + arpStepW - 1, ny2 + arpNoteH - 1),
+                                      IM_COL32(100, 180, 255, alpha));
+                }
+                if (s == playPos)
+                    dl->AddRectFilled(ImVec2(gMin.x + s * arpStepW, gMin.y),
+                                      ImVec2(gMin.x + (s+1) * arpStepW, gMax.y),
+                                      IM_COL32(255, 255, 255, 40));
+            }
+
+            // Mouse click on grid → place/remove note
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                mousePos.x >= gMin.x && mousePos.x < gMax.x &&
+                mousePos.y >= gMin.y && mousePos.y < gMax.y)
+            {
+                int clickStep = (int)((mousePos.x - gMin.x) / arpStepW);
+                int clickNote = kNotes - 1 - (int)((mousePos.y - gMin.y) / arpNoteH);
+                if (clickStep >= 0 && clickStep < arpLoopLen && clickNote >= 0 && clickNote < kNotes)
+                {
+                    int stepData = sc->getArpStepData((DWORD)nodeID, (DWORD)clickStep);
+                    int oldTranspose = stepData & 0x3F;
+                    int oldVelocity  = (stepData >> 8) & 0xFF;
+                    if (ImGui::GetIO().KeyCtrl || (oldVelocity > 0 && oldTranspose == clickNote))
+                        sc->setArpStepData((DWORD)nodeID, (DWORD)clickStep, 0);
+                    else
+                        sc->setArpStepData((DWORD)nodeID, (DWORD)clickStep,
+                                           (DWORD)(clickNote | (1 << 6) | (127 << 8)));
+                }
+            }
+        }
+    }
+}
+
 // ── Rubber Band Drawing ─────────────────────────────────────────────────
 
 void NodeCanvas::drawRubberBand(ImDrawList* dl)
@@ -452,10 +1715,11 @@ void NodeCanvas::handlePanZoom(const ImVec2& canvasPos, const ImVec2& canvasSize
         offsetY = mouseRel.y / zoom - (mouseRel.y / oldZoom - offsetY);
     }
 
-    // Pan with right mouse button drag — guard against node dragging
-    if (canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !isDragging)
+    // Pan with right mouse button drag — guard against node dragging and context menu
+    if (canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && !isDragging && !showContextMenu)
     {
         isPanning = true;
+        didPan = false;
         panStart = io.MousePos;
     }
     if (isPanning)
@@ -463,6 +1727,8 @@ void NodeCanvas::handlePanZoom(const ImVec2& canvasPos, const ImVec2& canvasSize
         if (ImGui::IsMouseDown(ImGuiMouseButton_Right))
         {
             ImVec2 delta = ImVec2(io.MousePos.x - panStart.x, io.MousePos.y - panStart.y);
+            if (std::abs(delta.x) > 2.f || std::abs(delta.y) > 2.f)
+                didPan = true;
             offsetX += delta.x / zoom;
             offsetY += delta.y / zoom;
             panStart = io.MousePos;
@@ -476,10 +1742,10 @@ void NodeCanvas::handlePanZoom(const ImVec2& canvasPos, const ImVec2& canvasSize
 
 // ── Node Drawing ─────────────────────────────────────────────────────────
 
-void NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrigin)
+bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrigin)
 {
     SynthController* sc = SynthController::instance();
-    if (!sc) return;
+    if (!sc) return false;
 
     int nodeID = sc->gnID(guiIndex);
     double nx = sc->gnX(guiIndex);
@@ -488,10 +1754,12 @@ void NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     int numSignals = effectiveInputCount(guiIndex);
     int numReq = sc->gnNodeReqSignals(guiIndex);
     int nodeType = sc->gnType(guiIndex);
+    bool hasEditBtn = nodeHasEditButton(guiIndex);
+    bool hasAddInput = (nodeType == MULTIADD_ID || nodeType == NOTECONTROLLER_ID);
 
     ImVec2 pos = nodeScreenPos(nx, ny, canvasOrigin);
     float w = kNodeWidth * zoom;
-    float h = nodeHeight(numSignals) * zoom;
+    float h = nodeHeight(numSignals, hasEditBtn, hasAddInput) * zoom;
 
     bool isSelected = selectedNodeIDs.count(nodeID) > 0;
     bool isMuted = mutedNodeIDs.count(nodeID) > 0;
@@ -522,7 +1790,60 @@ void NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         dl->AddRect(pos, ImVec2(pos.x + w, pos.y + h), borderColor, 2.f * zoom, 0, 1.f);
     }
 
-    // Header text
+    // Red X delete button (top-left corner)
+    bool isStructural = (nodeType >= 0 && nodeType <= (int)VOICEROOT_ID);
+    if (!isStructural)
+    {
+        float xbtnSz = kDeleteBtnSize * zoom;
+        float xInset = 2.f * zoom;
+        ImVec2 xMin(pos.x + xInset, pos.y + xInset);
+        ImVec2 xMax(pos.x + xInset + xbtnSz, pos.y + xInset + xbtnSz);
+
+        // Red background square
+        ImU32 xBg = isMuted ? withMuteAlpha(IM_COL32(200, 40, 40, 255)) : IM_COL32(200, 40, 40, 255);
+        dl->AddRectFilled(xMin, xMax, xBg);
+
+        // White X lines
+        float pad = 3.f * zoom;
+        ImU32 xLineCol = isMuted ? withMuteAlpha(IM_COL32(255, 255, 255, 255)) : IM_COL32(255, 255, 255, 255);
+        dl->AddLine(ImVec2(xMin.x + pad, xMin.y + pad), ImVec2(xMax.x - pad, xMax.y - pad), xLineCol, 1.5f);
+        dl->AddLine(ImVec2(xMax.x - pad, xMin.y + pad), ImVec2(xMin.x + pad, xMax.y - pad), xLineCol, 1.5f);
+
+        // Hit-test X button
+        ImGuiIO& io = ImGui::GetIO();
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel)
+        {
+            ImVec2 mpos = io.MousePos;
+            if (mpos.x >= xMin.x && mpos.x <= xMax.x &&
+                mpos.y >= xMin.y && mpos.y <= xMax.y)
+            {
+                sc->killVoices();
+                // If this node is selected, delete all selected nodes
+                if (isSelected && !selectedNodeIDs.empty())
+                {
+                    std::vector<int> toDelete(selectedNodeIDs.begin(), selectedNodeIDs.end());
+                    for (int id : toDelete)
+                    {
+                        int gi = findGuiIndex(id);
+                        int tp = (gi >= 0) ? sc->gnType(gi) : -1;
+                        if (tp >= 0 && tp <= (int)VOICEROOT_ID) continue;
+                        sc->deleteNode((DWORD)id);
+                    }
+                    selectedNodeIDs.clear();
+                }
+                else
+                {
+                    // Delete just this node
+                    sc->deleteNode((DWORD)nodeID);
+                    selectedNodeIDs.erase(nodeID);
+                }
+                syncSelectionToCore();
+                return true; // node deleted — outer loop must stop
+            }
+        }
+    }
+
+    // Header text — bold and slightly larger
     const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
     const char* displayName = typeDef ? typeDef->name.c_str() : "???";
 
@@ -531,23 +1852,72 @@ void NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     if (!customName.empty())
         displayName = customName.c_str();
 
-    float fontSize = 14.f * zoom;
-    if (fontSize >= 6.f) // only draw text if readable
+    float fontSize = 12.f * zoom;         // body text size
+    float headerFontSize = 15.f * zoom;   // header is larger
+    if (headerFontSize >= 6.f)
     {
+        // Draw header text twice offset by 1px for faux bold
         ImVec2 textSize = ImGui::CalcTextSize(displayName);
-        float textScale = fontSize / ImGui::GetFontSize();
-        float textX = pos.x + (w - textSize.x * textScale) * 0.5f;
-        float textY = pos.y + 3.f * zoom;
-        dl->AddText(ImGui::GetFont(), fontSize, ImVec2(textX, textY), textColor, displayName);
+        float textScale = headerFontSize / ImGui::GetFontSize();
+        float headerTextW = textSize.x * textScale;
+        // Center in header, leaving room for X button on left
+        float textX = pos.x + (w - headerTextW) * 0.5f;
+        float textY = pos.y + (kHeaderHeight * zoom - headerFontSize) * 0.5f;
+        // Faux bold: draw at +0 and +1 pixel offset
+        dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(textX, textY), textColor, displayName);
+        dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(textX + 1.f, textY), textColor, displayName);
+    }
+
+    // VU meter overlay on header (SynthRoot / ChannelRoot)
+    if (nodeType == SYNTHROOT_ID || nodeType == CHANNELROOT_ID)
+    {
+        auto it = liveDataCache.find(nodeID);
+        if (it != liveDataCache.end())
+        {
+            float vuW = 6.f * zoom;
+            float vuH = (kHeaderHeight - 4.f) * zoom;
+            float vuX = pos.x + w - 18.f * zoom;
+            float vuY = pos.y + 2.f * zoom;
+
+            // Left bar
+            float lvlL = std::min(it->second.vuL, 1.f);
+            float barHL = lvlL * vuH;
+            ImU32 colL = (lvlL < 0.85f) ? IM_COL32(40, 200, 40, 200) : IM_COL32(220, 40, 40, 200);
+            dl->AddRectFilled(ImVec2(vuX, vuY + vuH - barHL), ImVec2(vuX + vuW, vuY + vuH), colL);
+
+            // Right bar
+            float lvlR = std::min(it->second.vuR, 1.f);
+            float barHR = lvlR * vuH;
+            ImU32 colR = (lvlR < 0.85f) ? IM_COL32(40, 200, 40, 200) : IM_COL32(220, 40, 40, 200);
+            dl->AddRectFilled(ImVec2(vuX + vuW + 1.f * zoom, vuY + vuH - barHR),
+                              ImVec2(vuX + 2 * vuW + 1.f * zoom, vuY + vuH), colR);
+        }
+    }
+
+    // Voice count on VoiceManager
+    if (nodeType == VOICEMANAGER_ID && fontSize >= 6.f)
+    {
+        auto it = liveDataCache.find(nodeID);
+        if (it != liveDataCache.end() && it->second.voiceCount > 0)
+        {
+            char vcBuf[16];
+            snprintf(vcBuf, sizeof(vcBuf), "%d", it->second.voiceCount);
+            float vcX = pos.x + w - 20.f * zoom;
+            float vcY = pos.y + 3.f * zoom;
+            dl->AddText(pickFont(fontSize * 0.8f), fontSize * 0.8f, ImVec2(vcX, vcY),
+                        IM_COL32(255, 255, 255, 220), vcBuf);
+        }
     }
 
     // Header separator line
     float sepY = pos.y + kHeaderHeight * zoom;
     dl->AddLine(ImVec2(pos.x, sepY), ImVec2(pos.x + w, sepY), borderColor, 1.f);
 
-    // Output pin (right side of header)
+    // Output pin (right side of header) — green if connected, red if not
     ImVec2 outPin = outputPinPos(pos);
-    ImU32 outPinFill = isMuted ? withMuteAlpha(colorPinWired()) : colorPinWired();
+    bool outputConnected = connectedOutputIDs.count(nodeID) > 0;
+    ImU32 outPinFill = outputConnected ? colorPinWired() : colorPinRequired();
+    if (isMuted) outPinFill = withMuteAlpha(outPinFill);
     ImU32 outPinBorder = isMuted ? withMuteAlpha(colorNodeBorder()) : colorNodeBorder();
     dl->AddCircleFilled(outPin, kPinRadius * zoom, outPinFill);
     dl->AddCircle(outPin, kPinRadius * zoom, outPinBorder, 0, 1.f);
@@ -557,7 +1927,7 @@ void NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     {
         ImVec2 pinPos = inputPinPos(pos, i);
         int srcID = sc->gnInput(guiIndex, i);
-        bool isWired = (srcID != 0 && srcID != -1);
+        bool isWired = isRealConnection(srcID, sc);
 
         ImU32 pinColor;
         if (isWired)
@@ -577,16 +1947,109 @@ void NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         dl->AddCircleFilled(pinPos, kPinRadius * zoom, pinColor);
         dl->AddCircle(pinPos, kPinRadius * zoom, pinBorder, 0, 1.f);
 
-        // Input label
+        // Input label (to the right of the pin, inside the node)
         if (typeDef && i < (int)typeDef->inputs.size() && fontSize >= 6.f)
         {
             const char* label = typeDef->inputs[i].name.c_str();
-            float labelX = pinPos.x + (kPinRadius + 4.f) * zoom;
+            float labelX = pinPos.x + (kPinRadius + 3.f) * zoom;
             float labelY = pinPos.y - fontSize * 0.5f;
-            dl->AddText(ImGui::GetFont(), std::max(fontSize * 0.85f, 8.f),
+            dl->AddText(pickFont(fontSize), fontSize,
                         ImVec2(labelX, labelY), textColor, label);
         }
     }
+
+    // Edit button at bottom of node
+    if (hasEditBtn)
+    {
+        float btnY = pos.y + (kHeaderHeight + (float)numSignals * kRowHeight) * zoom;
+        float btnH = kEditButtonHeight * zoom;
+        ImVec2 btnMin(pos.x, btnY);
+        ImVec2 btnMax(pos.x + w, btnY + btnH);
+
+        // Gray button-like background with slight 3D effect
+        ImU32 btnBg = IM_COL32(180, 180, 180, 255);
+        if (isMuted)
+            btnBg = withMuteAlpha(btnBg);
+        float btnInset = 2.f * zoom;
+        ImVec2 btnInMin(btnMin.x + btnInset, btnMin.y + 1.f * zoom);
+        ImVec2 btnInMax(btnMax.x - btnInset, btnMax.y - 1.f * zoom);
+        dl->AddRectFilled(btnInMin, btnInMax, btnBg, 2.f * zoom);
+        // Light top edge, dark bottom edge for 3D look
+        ImU32 btnHi = isMuted ? withMuteAlpha(IM_COL32(220, 220, 220, 255)) : IM_COL32(220, 220, 220, 255);
+        ImU32 btnLo = isMuted ? withMuteAlpha(IM_COL32(120, 120, 120, 255)) : IM_COL32(120, 120, 120, 255);
+        dl->AddLine(ImVec2(btnInMin.x, btnInMin.y), ImVec2(btnInMax.x, btnInMin.y), btnHi, 1.f);
+        dl->AddLine(ImVec2(btnInMin.x, btnInMax.y), ImVec2(btnInMax.x, btnInMax.y), btnLo, 1.f);
+
+        // Mode text
+        if (fontSize >= 6.f)
+        {
+            std::string modeText = buildModeText(guiIndex);
+            ImVec2 textSize = ImGui::CalcTextSize(modeText.c_str());
+            float textScale = fontSize / ImGui::GetFontSize();
+            float textX = pos.x + (w - textSize.x * textScale) * 0.5f;
+            float textY = btnY + (btnH - fontSize) * 0.5f;
+            dl->AddText(pickFont(fontSize), fontSize,
+                        ImVec2(textX, textY), textColor, modeText.c_str());
+        }
+
+        // Hit-test: detect click on button to open/toggle edit panel
+        ImGuiIO& io = ImGui::GetIO();
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel)
+        {
+            ImVec2 mpos = io.MousePos;
+            if (mpos.x >= btnMin.x && mpos.x <= btnMax.x &&
+                mpos.y >= btnMin.y && mpos.y <= btnMax.y)
+            {
+                if (openEditPanels.count(nodeID))
+                {
+                    openEditPanels.erase(nodeID);
+                    for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
+                        it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
+                }
+                else
+                    openEditPanels.insert(nodeID);
+            }
+        }
+    }
+
+    // ── "Add Input" pill (MultiAdd / NoteController only) ──
+    if (hasAddInput && numSignals < 16)
+    {
+        // Position: immediately below all existing inputs (and edit button if any)
+        float pillBaseY = pos.y + nodeHeight(numSignals, hasEditBtn, false) * zoom;
+        float pillH     = kRowHeight * zoom;
+        float pillInset = 8.f * zoom;
+        ImVec2 pillMin(pos.x + pillInset, pillBaseY + 2.f * zoom);
+        ImVec2 pillMax(pos.x + w - pillInset, pillBaseY + pillH - 2.f * zoom);
+
+        // Highlight when a wire is being dragged toward it
+        bool wireHover = isWireDragging && ImGui::IsMouseHoveringRect(pillMin, pillMax, false);
+        ImU32 pillBg = wireHover
+            ? IM_COL32(50, 180, 80, 200)
+            : IM_COL32(40, 40, 45, 160);
+        ImU32 pillBorder = wireHover
+            ? IM_COL32(100, 255, 130, 255)
+            : IM_COL32(120, 120, 130, 180);
+        ImU32 pillText = wireHover
+            ? IM_COL32(220, 255, 220, 255)
+            : IM_COL32(160, 160, 170, 255);
+
+        float pillRadius = (pillMax.y - pillMin.y) * 0.4f;
+        dl->AddRectFilled(pillMin, pillMax, pillBg, pillRadius);
+        dl->AddRect(pillMin, pillMax, pillBorder, pillRadius, 0, 1.f);
+
+        if (fontSize >= 6.f)
+        {
+            const char* label = "+ Add Input";
+            ImVec2 ts = ImGui::CalcTextSize(label);
+            float tscale = fontSize / ImGui::GetFontSize();
+            float tx = pillMin.x + ((pillMax.x - pillMin.x) - ts.x * tscale) * 0.5f;
+            float ty = pillMin.y + ((pillMax.y - pillMin.y) - fontSize) * 0.5f;
+            dl->AddText(pickFont(fontSize), fontSize, ImVec2(tx, ty), pillText, label);
+        }
+    }
+
+    return false;
 }
 
 // ── Wire Drawing ─────────────────────────────────────────────────────────
@@ -614,7 +2077,7 @@ void NodeCanvas::drawWires(ImDrawList* dl, const ImVec2& canvasOrigin)
         for (int pin = 0; pin < numSignals; pin++)
         {
             int srcID = sc->gnInput(toIdx, pin);
-            if (srcID == 0 || srcID == -1)
+            if (!isRealConnection(srcID, sc))
                 continue;
 
             // Find the source node's GUI index
@@ -670,22 +2133,34 @@ void NodeCanvas::render()
 
     SynthController* sc = SynthController::instance();
 
-    // Patch-load reset: if node count changed, clear interactive state
+    // Patch-load reset: if node count changed drastically, reset view.
+    // Small changes (±1..2 nodes) are normal add/delete — only update the count.
     if (sc && sc->isInitialized())
     {
         int currentCount = sc->numGUINodes();
         if (currentCount != lastNodeCount)
         {
-            selectedNodeIDs.clear();
-            mutedNodeIDs.clear();
-            isRenaming = false;
-            renamingNodeID = -1;
-            isDragging = false;
-            pressedNodeID = -1;
-            isRubberBanding = false;
+            int delta = currentCount - lastNodeCount;
+            if (delta < 0) delta = -delta;
+            bool isPatchLoad = (lastNodeCount == 0) || (delta > 3);
+
+            if (isPatchLoad)
+            {
+                selectedNodeIDs.clear();
+                mutedNodeIDs.clear();
+                isRenaming = false;
+                renamingNodeID = -1;
+                isDragging = false;
+                pressedNodeID = -1;
+                isRubberBanding = false;
+                isWireDragging = false;
+                wireDragFromNodeID = -1;
+                showContextMenu = false;
+                openEditPanels.clear();
+                paramSyncState.clear();
+                syncSelectionToCore();
+            }
             lastNodeCount = currentCount;
-            needsInitialView = true;
-            syncSelectionToCore();
         }
 
         // Center view on the node graph (nodes are placed around 16384,16384)
@@ -703,6 +2178,7 @@ void NodeCanvas::render()
         }
     }
 
+    updateMouseOverEditPanel(canvasPos);
     handlePanZoom(canvasPos, canvasSize);
     handleNodeInteraction(canvasPos, canvasSize);
 
@@ -728,16 +2204,66 @@ void NodeCanvas::render()
 
     if (sc && sc->isInitialized())
     {
+        // Live signal readback (zero-timeout lock to avoid audio glitches)
+        if (SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(0)))
+        {
+            int nNodes = sc->numGUINodes();
+            for (int i = 0; i < nNodes; i++)
+            {
+                if (!sc->gnIsVisible(i))
+                    continue;
+                int nodeType = sc->gnType(i);
+                int nid = sc->gnID(i);
+
+                if (nodeType == SYNTHROOT_ID || nodeType == CHANNELROOT_ID)
+                {
+                    auto& ld = liveDataCache[nid];
+                    float newL = (float)std::abs(sc->getNodeSignal((DWORD)nid, 0, -2));
+                    float newR = (float)std::abs(sc->getNodeSignal((DWORD)nid, 1, -2));
+                    ld.vuL = std::max(ld.vuL * 0.95f, newL);
+                    ld.vuR = std::max(ld.vuR * 0.95f, newR);
+                }
+                else if (nodeType == VOICEMANAGER_ID)
+                {
+                    liveDataCache[nid].voiceCount = sc->getNumActiveVoices((DWORD)nid);
+                }
+            }
+            SynthController::DataAccessMutex.unlock();
+        }
+
+        // Build set of nodes whose output is connected (for output pin coloring)
+        connectedOutputIDs.clear();
+        {
+            int nWireNodes = sc->numGUINodes();
+            for (int i = 0; i < nWireNodes; i++)
+            {
+                if (!sc->gnIsVisible(i)) continue;
+                int nSig = effectiveInputCount(i);
+                for (int p = 0; p < nSig; p++)
+                {
+                    int srcID = sc->gnInput(i, p);
+                    if (isRealConnection(srcID, sc))
+                        connectedOutputIDs.insert(srcID);
+                }
+            }
+        }
+
         // Draw wires first (behind nodes)
         drawWires(dl, canvasPos);
 
+        // Draw ghost wire during wire drag
+        drawGhostWire(dl, canvasPos);
+
         // Draw nodes (skip internal/helper nodes)
+        // drawNode returns true if the node was deleted; stop the loop immediately
+        // to avoid accessing the now-stale numNodes count.
         int numNodes = sc->numGUINodes();
         for (int i = 0; i < numNodes; i++)
         {
             if (!sc->gnIsVisible(i))
                 continue;
-            drawNode(dl, i, canvasPos);
+            if (drawNode(dl, i, canvasPos))
+                break;
         }
 
         // Draw rubber-band overlay on top
@@ -770,26 +2296,163 @@ void NodeCanvas::render()
                 numNodes2 = sc2->numGUINodes();
                 hitID = hitTestNode(io.MousePos, canvasPos);
             }
-            char dbg[512];
-            snprintf(dbg, sizeof(dbg),
-                     "ItemHov=%d WinHov=%d MB0=%d MB1=%d Mouse=%.0f,%.0f Hit=%d Sel=%d Nodes=%d Zoom=%.2f",
+            // Canvas-projected mouse position: inverse of nodeScreenPos
+            float canvasMouseX = (io.MousePos.x - canvasPos.x) / zoom - offsetX;
+            float canvasMouseY = (io.MousePos.y - canvasPos.y) / zoom - offsetY;
+
+            char dbg[3][256];
+            snprintf(dbg[0], sizeof(dbg[0]),
+                     "Mouse=%.1f,%.1f  CanvasOrigin=%.1f,%.1f  DisplaySize=%.0fx%.0f",
+                     io.MousePos.x, io.MousePos.y,
+                     canvasPos.x, canvasPos.y,
+                     io.DisplaySize.x, io.DisplaySize.y);
+            snprintf(dbg[1], sizeof(dbg[1]),
+                     "CanvasXY=%.1f,%.1f  Zoom=%.3f  Offset=%.1f,%.1f",
+                     canvasMouseX, canvasMouseY,
+                     zoom, offsetX, offsetY);
+            snprintf(dbg[2], sizeof(dbg[2]),
+                     "ItemHov=%d WinHov=%d MB0=%d MB1=%d  Hit=%d Sel=%d Nodes=%d",
                      (int)canvasHovered, (int)winHovered,
                      (int)io.MouseDown[0], (int)io.MouseDown[1],
-                     io.MousePos.x, io.MousePos.y,
-                     hitID, (int)selectedNodeIDs.size(), numNodes2, zoom);
-            ImVec2 textSize = ImGui::CalcTextSize(dbg);
+                     hitID, (int)selectedNodeIDs.size(), numNodes2);
+
+            float lineH = ImGui::CalcTextSize("X").y + 2.f;
+            float maxW = 0;
+            for (auto& line : dbg)
+                maxW = std::max(maxW, ImGui::CalcTextSize(line).x);
             ImVec2 dbgPos(canvasPos.x + 4, canvasPos.y + 4);
-            dl->AddRectFilled(dbgPos, ImVec2(dbgPos.x + textSize.x + 8, dbgPos.y + textSize.y + 4),
+            dl->AddRectFilled(dbgPos,
+                              ImVec2(dbgPos.x + maxW + 8, dbgPos.y + lineH * 3 + 6),
                               IM_COL32(0, 0, 0, 200));
-            dl->AddText(ImVec2(dbgPos.x + 4, dbgPos.y + 2),
-                        IM_COL32(255, 255, 0, 255), dbg);
+            for (int li = 0; li < 3; li++)
+                dl->AddText(ImVec2(dbgPos.x + 4, dbgPos.y + 3 + li * lineH),
+                            IM_COL32(255, 255, 0, 255), dbg[li]);
         }
     }
 
+    // Draw edit panels (world-space, inside clip rect)
+    drawEditPanel(dl, canvasPos);
+
     dl->PopClipRect();
+
+    // Context menu popup (must be outside clip rect)
+    if (showContextMenu)
+    {
+        if (ImGui::BeginPopup("##nodeMenu"))
+        {
+            const float menuFontScale = 18.f / ImGui::GetFont()->FontSize;
+            ImGui::SetWindowFontScale(menuFontScale);
+            const auto& cats = NodeConfig::instance().getCategories();
+            for (const auto& cat : cats)
+            {
+                if (ImGui::BeginMenu(cat.c_str()))
+                {
+                    const auto& nodes = NodeConfig::instance().getNodesInCategory(cat);
+                    for (const auto* nodeDef : nodes)
+                    {
+                        if (ImGui::MenuItem(nodeDef->name.c_str()))
+                        {
+                            // Derive channel and isGlobal from first selected node
+                            int channel = -2;
+                            bool isGlobal = false;
+                            if (!selectedNodeIDs.empty() && sc)
+                            {
+                                int firstID = *selectedNodeIDs.begin();
+                                int gi = findGuiIndex(firstID);
+                                if (gi >= 0)
+                                {
+                                    channel = sc->gnChannel(gi);
+                                    isGlobal = sc->gnIsGlobal(gi);
+                                }
+                            }
+                            if (sc)
+                            {
+                                sc->killVoices();
+                                sc->createGUINode((DWORD)nodeDef->id, (DWORD)channel,
+                                                  (DWORD)(isGlobal ? 1 : 0),
+                                                  contextMenuCanvasPos.x, contextMenuCanvasPos.y);
+                                sc->numGUINodes(); // refresh
+                            }
+                        }
+                    }
+                    ImGui::EndMenu();
+                }
+            }
+            ImGui::EndPopup();
+        }
+        else
+        {
+            showContextMenu = false;
+        }
+    }
 
     // Draw rename overlay (uses ImGui windows, must be outside clip rect)
     drawRenameOverlay(canvasPos);
+
+    // Draw toast notifications (screen-centered, on top of everything)
+    drawToasts(canvasPos, canvasSize);
+}
+
+void NodeCanvas::showToast(const char* msg)
+{
+    double now = ImGui::GetTime();
+    // Replace any existing toast with the same message (avoid stacking duplicates)
+    for (auto& t : toasts)
+        if (t.message == msg) { t.expireTime = now + 3.0; return; }
+    toasts.push_back({ msg, now + 3.0 });
+}
+
+void NodeCanvas::drawToasts(const ImVec2& canvasPos, const ImVec2& canvasSize)
+{
+    double now = ImGui::GetTime();
+    toasts.erase(std::remove_if(toasts.begin(), toasts.end(),
+        [now](const Toast& t) { return now >= t.expireTime; }), toasts.end());
+    if (toasts.empty())
+        return;
+
+    const float fontSz  = 18.f;
+    const float padX    = 20.f;
+    const float padY    = 9.f;
+    const float rowGap  = 6.f;
+    const float radius  = 5.f;
+
+    // Measure all toasts and compute total block height
+    float totalH = 0.f;
+    for (const auto& t : toasts)
+        totalH += fontSz + padY * 2.f + rowGap;
+    totalH -= rowGap;
+
+    // Center of the canvas in screen space
+    float cx = canvasPos.x + canvasSize.x * 0.5f;
+    float cy = canvasPos.y + canvasSize.y * 0.5f;
+    float curY = cy - totalH * 0.5f;
+
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+
+    for (const auto& t : toasts)
+    {
+        // Fade out over the last 0.5 s
+        double remaining = t.expireTime - now;
+        float alpha = (float)std::min(1.0, remaining * 2.0);
+        unsigned int a8  = (unsigned int)(alpha * 210);
+        unsigned int ta8 = (unsigned int)(alpha * 255);
+
+        float tw = ImGui::GetFont()->CalcTextSizeA(fontSz, FLT_MAX, 0.f,
+                       t.message.c_str()).x;
+        float rw = tw + padX * 2.f;
+        float rh = fontSz + padY * 2.f;
+        float rx = cx - rw * 0.5f;
+
+        dl->AddRectFilled(ImVec2(rx, curY), ImVec2(rx + rw, curY + rh),
+                          IM_COL32(18, 18, 22, a8), radius);
+        dl->AddRect(ImVec2(rx, curY), ImVec2(rx + rw, curY + rh),
+                    IM_COL32(200, 70, 70, ta8), radius, 0, 1.5f);
+        dl->AddText(pickFont(fontSz), fontSz,
+                    ImVec2(rx + padX, curY + padY),
+                    IM_COL32(255, 230, 230, ta8), t.message.c_str());
+
+        curY += rh + rowGap;
+    }
 }
 
 } // namespace K64GUI

@@ -1,20 +1,27 @@
 #pragma once
 
+#include "imgui.h"
+#include "NodeConfig.h"
+#include <string>
+
 // Custom ImGui widgets for 64klang3
-// Knob, VUMeter, BitPattern, Arp editor, etc.
 
 namespace K64GUI {
 namespace Widgets {
 
 // Stereo knob widget with sync checkbox
 // Returns true if value changed
-bool Knob(const char* label, float* valueL, float* valueR, float minVal, float maxVal, bool* synced = nullptr);
+bool Knob(const char* id, const InputDef& inputDef, float* valueL, float* valueR,
+          float modL, float modR, bool synced, bool singleInput, int nodeTypeID, int currentMode);
 
-// VU meter display
-void VUMeter(const char* label, float levelL, float levelR);
+// VU meter display (two vertical bars L/R)
+void VUMeter(float levelL, float levelR, float width, float height);
 
-// Bit pattern toggle buttons (8 per row)
+// Bit pattern toggle buttons (8 per row for L and R)
 bool BitPattern(const char* label, unsigned int* pattern);
+
+// Format a knob value for display based on mapping type
+std::string formatKnobValue(double normValue, double range, int mapping, int currentMode, int nodeTypeID);
 
 } // namespace Widgets
 } // namespace K64GUI
