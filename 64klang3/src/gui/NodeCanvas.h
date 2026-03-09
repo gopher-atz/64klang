@@ -54,8 +54,8 @@ private:
     bool   showContextMenu = false;
     ImVec2 contextMenuCanvasPos = {0, 0};
 
-    // Edit panels (multiple can be open)
-    std::unordered_set<int> openEditPanels;
+    // Edit panels (multiple can be open); vector preserves open order (back = topmost/last-opened)
+    std::vector<int> openEditPanels;
     bool   mouseOverEditPanel = false;  // set per-frame, blocks canvas interaction
 
     // Per-parameter sync state: key = (uint64_t)nodeID<<32 | paramIdx
@@ -67,6 +67,7 @@ private:
     int    knobDragNodeID = -1;
     int    knobDragParam = -1;
     bool   knobDragIsRight = false;
+    float  knobDragAccum = 0.f;  // sub-step accumulator for integer-quantized dragging
 
     // Edit panel layout constants (in canvas/world coords, scaled by zoom)
     static constexpr float kEditPanelWidth = 280.f;

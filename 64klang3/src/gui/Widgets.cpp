@@ -11,17 +11,25 @@ namespace Widgets {
 
 // ── Display format helpers ───────────────────────────────────────────────
 
-static std::string defaultFormat(double value)
+static KnobLabel defaultFormat(double value)
 {
-    double displayed = value / 128.0;
-    int intPart = (int)displayed;
-    double fracPart = std::abs(displayed - (double)intPart);
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%d.%02d", intPart, (int)(fracPart * 100.0));
-    return buf;
+    // value is already in display units (e.g. 0..128 or -64..64).
+    int intPart = (int)value;
+    double fracPart = std::abs(value - (double)intPart);
+    int fracInt = (int)(fracPart * 100.0);
+    if (fracInt == 0)
+    {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d", intPart);
+        return { buf, "" };
+    }
+    char l1[32], l2[32];
+    snprintf(l1, sizeof(l1), "%d.", intPart);
+    snprintf(l2, sizeof(l2), "%02d", fracInt);
+    return { l1, l2 };
 }
 
-static std::string truncatedMs(double ms)
+static KnobLabel truncatedMs(double ms)
 {
     double tailscale = 10000.0;
     if (ms >= 10.0)  tailscale = 1000.0;
@@ -29,11 +37,11 @@ static std::string truncatedMs(double ms)
     if (ms >= 1000.0) tailscale = 10.0;
     ms = std::floor(ms * tailscale) / tailscale;
     char buf[64];
-    snprintf(buf, sizeof(buf), "%.4g ms", ms);
-    return buf;
+    snprintf(buf, sizeof(buf), "%.4g", ms);
+    return { buf, "ms" };
 }
 
-static std::string truncatedHz(double freq)
+static KnobLabel truncatedHz(double freq)
 {
     double tailscale = 1000.0;
     if (freq >= 100.0)   tailscale = 100.0;
@@ -41,8 +49,8 @@ static std::string truncatedHz(double freq)
     if (freq >= 10000.0) tailscale = 10.0;
     freq = std::floor(freq * tailscale) / tailscale;
     char buf[64];
-    snprintf(buf, sizeof(buf), "%.4g hz", freq);
-    return buf;
+    snprintf(buf, sizeof(buf), "%.4g", freq);
+    return { buf, "hz" };
 }
 
 static const char* DELAY_TIME_NAMES[] = {
@@ -69,7 +77,7 @@ static const char* GLIDE_TIME_NAMES[] = {
     "Instant"
 };
 
-std::string formatKnobValue(double normValue, double range, int mapping, int currentMode, int nodeTypeID)
+KnobLabel formatKnobValue(double normValue, double range, int mapping, int currentMode, int nodeTypeID)
 {
     double norm = normValue / range;
 
@@ -78,7 +86,7 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
     {
         char buf[64];
         snprintf(buf, sizeof(buf), "%.6g", norm);
-        return buf;
+        return { buf, "" };
     }
 
     // Special ADSR Gain with dB mode (bit 128)
@@ -87,8 +95,8 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
         double db = (norm - 0.75) * 128.0;
         db = std::floor(db * 100.0) / 100.0;
         char buf[64];
-        snprintf(buf, sizeof(buf), "%.2f dB", db);
-        return buf;
+        snprintf(buf, sizeof(buf), "%.2f", db);
+        return { buf, "dB" };
     }
 
     switch (mapping)
@@ -112,15 +120,16 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
             if (scale >= 1.0)
             {
                 scale = std::floor(scale * 100.0) / 100.0;
-                snprintf(buf, sizeof(buf), "BPM * %.2f", scale);
+                snprintf(buf, sizeof(buf), "%.2f", scale);
+                return { "BPM *", buf };
             }
             else
             {
                 scale = 1.0 / scale;
                 scale = std::floor(scale * 100.0) / 100.0;
-                snprintf(buf, sizeof(buf), "BPM / %.2f", scale);
+                snprintf(buf, sizeof(buf), "%.2f", scale);
+                return { "BPM /", buf };
             }
-            return buf;
         }
         else
         {
@@ -188,7 +197,7 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
         case 0: // BPM sync
         {
             int i = std::min((int)(norm * 128.0) / 4, 32);
-            return DELAY_TIME_NAMES[i];
+            return { DELAY_TIME_NAMES[i], "" };
         }
         case 1: // Short
         {
@@ -219,8 +228,8 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
         double db = (norm - 0.75) * 128.0;
         db = std::floor(db * 100.0) / 100.0;
         char buf[64];
-        snprintf(buf, sizeof(buf), "%.2f dB", db);
-        return buf;
+        snprintf(buf, sizeof(buf), "%.2f", db);
+        return { buf, "dB" };
     }
 
     case 9: // Ratio
@@ -238,7 +247,7 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
             ratio = std::floor(ratio * 100.0) / 100.0;
             snprintf(buf, sizeof(buf), "1 : %.2f", ratio);
         }
-        return buf;
+        return { buf, "" };
     }
 
     case 10: // Speed
@@ -247,7 +256,7 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
         speed = std::floor(speed * 100.0) / 100.0;
         char buf[64];
         snprintf(buf, sizeof(buf), "%.2f", speed);
-        return buf;
+        return { buf, "" };
     }
 
     case 11: // RecordTime
@@ -256,28 +265,28 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
         double ms = samples / 44.1;
         ms = std::floor(ms * 10.0) / 10.0;
         char buf[64];
-        snprintf(buf, sizeof(buf), "%.1f ms", ms);
-        return buf;
+        snprintf(buf, sizeof(buf), "%.1f", ms);
+        return { buf, "ms" };
     }
 
     case 12: // GlideTime
     {
         int i = std::min((int)(norm * 128.0) / 4, 32);
-        return GLIDE_TIME_NAMES[i];
+        return { GLIDE_TIME_NAMES[i], "" };
     }
 
     case 13: // Normalized
     {
         char buf[64];
         snprintf(buf, sizeof(buf), "%.6g", norm);
-        return buf;
+        return { buf, "" };
     }
 
     case 14: // SNH_Frequency
     {
         if ((currentMode & 16) != 0) // Trigger
         {
-            return (norm < 0.5) ? "0" : "1";
+            return { (norm < 0.5) ? "0" : "1", "" };
         }
         else if ((currentMode & 128) == 0) // Free frequency
         {
@@ -294,7 +303,7 @@ std::string formatKnobValue(double normValue, double range, int mapping, int cur
             val = std::floor(val * 100.0) / 100.0;
             char buf[64];
             snprintf(buf, sizeof(buf), "%.2f", val);
-            return buf;
+            return { buf, "" };
         }
     }
 
@@ -369,7 +378,8 @@ bool Knob(const char* id, const InputDef& inputDef, float* valueL, float* valueR
 
         // Text display below knob
         double normDisplay = *valueL / range;
-        std::string text = formatKnobValue(*valueL, range, inputDef.displayMapping, currentMode, nodeTypeID);
+        KnobLabel lbl = formatKnobValue(*valueL, range, inputDef.displayMapping, currentMode, nodeTypeID);
+        std::string text = lbl.line2.empty() ? lbl.line1 : (lbl.line1 + "\n" + lbl.line2);
         ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
         ImGui::SetCursorScreenPos(ImVec2(pos.x + (knobDiam - textSize.x) * 0.5f, pos.y + knobDiam + 2.f));
         ImGui::TextUnformatted(text.c_str());
@@ -421,7 +431,8 @@ bool Knob(const char* id, const InputDef& inputDef, float* valueL, float* valueR
             }
 
             double normDisplay = *valueR / range;
-            std::string text = formatKnobValue(*valueR, range, inputDef.displayMapping, currentMode, nodeTypeID);
+            KnobLabel lbl = formatKnobValue(*valueR, range, inputDef.displayMapping, currentMode, nodeTypeID);
+            std::string text = lbl.line2.empty() ? lbl.line1 : (lbl.line1 + "\n" + lbl.line2);
             ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
             ImGui::SetCursorScreenPos(ImVec2(pos.x + (knobDiam - textSize.x) * 0.5f, pos.y + knobDiam + 2.f));
             ImGui::TextUnformatted(text.c_str());

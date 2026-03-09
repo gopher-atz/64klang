@@ -94,6 +94,11 @@ public:
 	void setInputMode(DWORD node, DWORD index, DWORD mode, DWORD modemask=0xffffffff);
 	double getInputValue(DWORD node, DWORD inputIndex, DWORD channel);
 	int getInputMode(DWORD node, DWORD inputIndex);
+	// Returns the factory-default raw normalized value (0..1) for a specific input of a node type.
+	// outL and outR may differ for stereo defaults (e.g. WTFOSC search params).
+	void getNodeInputDefault(DWORD typeID, DWORD inputIdx, bool isGlobal, double& outL, double& outR);
+	// Resets all parameter and mode inputs of an existing node back to their factory defaults.
+	void resetNodeToDefaults(DWORD nodeID, DWORD typeID, bool isGlobal);
 	void resetEventSignal(DWORD node);
 	int getArpStepData(DWORD node, DWORD step);
 	int getArpPlayPos(DWORD node);
@@ -134,7 +139,6 @@ public:
 	// misc
 	int		getNumActiveVoices();
 	int		getNumActiveVoices(DWORD node);
-	void	queryCoreProcessingMutex(bool acquire);
 	void	killVoices();
 	void	panic();
 	// deferred synth node deletion

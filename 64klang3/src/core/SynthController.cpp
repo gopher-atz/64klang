@@ -510,300 +510,246 @@ SynthNode* SynthController::createGUINode(DWORD id, DWORD channel, DWORD isGloba
 	}
 	_massDataUpdate = oldMassDataUpdate; // restore massdataupdate flag
 
-	// set default values for constants
-	switch (id)
+	// Set default values for parameter and mode inputs.
+	// CONSTANT_ID is special: its "value" is node->out directly (no parameter inputs).
+	// For all other nodes, delegate to resetNodeToDefaults which calls setInputValue/setInputMode.
+	// setInputValue/setInputMode check _massDataUpdate internally, so set it true here to
+	// avoid re-acquiring the mutex we already hold.
+	if (id == CONSTANT_ID)
 	{
-		case SYNTHROOT_ID:
-			SETCONSTANT(SYNTHROOT_GAIN, sample_t(0.5));
-			break;
-		case CHANNELROOT_ID:
-			SETCONSTANT(CHANNELROOT_GAIN, sample_t(0.5));
-			break;
-		case NOTECONTROLLER_ID:
-			break;
-		case VOICEMANAGER_ID:
-			SETCONSTANT(VOICEMANAGER_TRANSPOSE, sample_t(0.0));
-			SETCONSTANT(VOICEMANAGER_GLIDE,		sample_t(0.0));
-			SETCONSTANT(VOICEMANAGER_ARPSPEED,	sample_t(0.140625));
-			SETMODE(VOICEMANAGER_MODE,			sample_t((int)(0x00107f00))); // full note range
-			break;
-		case VOICEROOT_ID:
-			break;
-		case ADSR_ID:
-			SETCONSTANT(ADSR_ATTACK,	sample_t(0.375));
-			SETCONSTANT(ADSR_DECAY,		sample_t(0.375));
-			SETCONSTANT(ADSR_SUSTAIN,	sample_t(0.5));
-			SETCONSTANT(ADSR_RELEASE,	sample_t(0.375));
-			SETCONSTANT(ADSR_GAIN,		sample_t(0.75));
-			if (!isGlobal)
-			{
-				SETMODE(ADSR_MODE, sample_t((int)(ADSR_VOICETRIGGER | ADSR_VOICEGATE)));
-			}
-			else
-			{
-				SETMODE(ADSR_MODE, sample_t((int)(0)));
-			}
-			break;
-		case LFO_ID:
-			SETCONSTANT(LFO_FREQ,	sample_t(0.5));
-			SETCONSTANT(LFO_PHASE,	sample_t(0.0));
-			SETCONSTANT(LFO_COLOR,	sample_t(1.0));
-			SETCONSTANT(LFO_GAIN,	sample_t(1.0));
-			SETMODE(LFO_MODE,		sample_t((int)(LFO_SINE)));
-			break;
-		case OSCILLATOR_ID:
-			SETCONSTANT(OSCILLATOR_FREQ,		sample_t(0.0));
-			SETCONSTANT(OSCILLATOR_PHASE,		sample_t(0.0));
-			SETCONSTANT(OSCILLATOR_COLOR,		sample_t(0.5));
-			SETCONSTANT(OSCILLATOR_TRANSPOSE,	sample_t(0.0));
-			SETCONSTANT(OSCILLATOR_DETUNE,		sample_t(0.0));
-			SETCONSTANT(OSCILLATOR_GAIN,		sample_t(1.0));
-			SETCONSTANT(OSCILLATOR_UDETUNE,		sample_t(-0.5));
-			if (!isGlobal)
-			{
-				SETMODE(OSCILLATOR_MODE, sample_t((int)(OSCILLATOR_SINE | OSCILLATOR_VOICEFREQ)));
-			}
-			else
-			{
-				SETMODE(OSCILLATOR_MODE, sample_t((int)(OSCILLATOR_SINE)));
-			}
-			break;
-		case NOISEGEN_ID:
-			SETCONSTANT(NOISEGEN_MIX,	sample_t(0.0));
-			SETCONSTANT(NOISEGEN_GAIN,	sample_t(1.0));
-			break;
-		case BQFILTER_ID:
-			SETCONSTANT(BQFILTER_FREQ,	sample_t(1.0));
-			SETCONSTANT(BQFILTER_Q,		sample_t(0.0));
-			SETCONSTANT(BQFILTER_DBGAIN,sample_t(0.75));
-			SETMODE(BQFILTER_MODE,		sample_t((int)(BQFILTER_LOWPASS)));
-			break;
-		case ONEPOLEFILTER_ID:
-			SETCONSTANT(ONEPOLEFILTER_POLE, sample_t(0.0));
-			break;
-		case ONEZEROFILTER_ID:
-			SETCONSTANT(ONEZEROFILTER_ZERO, sample_t(0.0));
-			break;
-		case SHAPER_ID:
-			SETCONSTANT(SHAPER_DRIVE, sample_t(0.0));
-			break;
-		case PANNING_ID:
-			SETCONSTANT(PANNING_PAN, sample_t(0.5));
-			break;
-		case SCALE_ID:
-			SETCONSTANT(SCALE_SCALE, sample_t(0.0));
-			break;
-		case MUL_ID:
-			break;
-		case DIV_ID:
-			break;
-		case ADD_ID:
-			break;
-		case SUB_ID:
-			break;
-		case CLIP_ID:
-			SETCONSTANT(CLIP_LEVEL, sample_t(1.0));
-			break;
-		case MIX_ID:
-			SETCONSTANT(MIX_MIX, sample_t(0.5));
-			break;
-		case MULTIADD_ID:
-			break;
-		case MONO_ID:
-			SETMODE(MONO_MODE, sample_t(0.0));
-			break;
-		case ENVFOLLOWER_ID:
-			SETCONSTANT(ENVFOLLOWER_ATTACK,		sample_t(0.125));
-			SETCONSTANT(ENVFOLLOWER_RELEASE,	sample_t(0.375));
-			break;
-		case LOGIC_ID:
-			SETMODE(LOGIC_MODE, sample_t((int)(LOGIC_AND)));
-			break;
-		case COMPARE_ID:
-			SETMODE(COMPARE_MODE, sample_t((int)(COMPARE_GT)));
-			break;
-		case SELECT_ID:
-			break;
-		case EVENTSIGNAL_ID:
-			break;
-		case PROCESS_ID:
-			break;
-		case MIDISIGNAL_ID:
-			SETCONSTANT(MIDISIGNAL_SCALE, sample_t(1.0));
-			SETMODE(MIDISIGNAL_MODE, sample_t((int)(0)));
-			break;
-		case DISTORTION_ID:
-			SETCONSTANT(DISTORTION_DRIVE,		sample_t(0.0));
-			SETCONSTANT(DISTORTION_THRESHOLD,	sample_t(0.75));
-			SETMODE(DISTORTION_MODE,			sample_t((int)(DISTORTION_OVERDRIVE)));
-			break;
-		case CROSSMIX_ID:
-			SETCONSTANT(CROSSMIX_MIX, sample_t(0.0));
-			break;
-		case DELAY_ID:
-			SETCONSTANT(DELAY_TIME, sample_t(0.5));
-			SETMODE(DELAY_MODE,		sample_t((int)(DELAY_BPMSYNC)));
-			break;
-		case FBDELAY_ID:
-			SETCONSTANT(FBDELAY_TIME,		sample_t(0.3125));
-			SETCONSTANT(FBDELAY_FEEDBACK,	sample_t(0.5));
-			SETCONSTANT(FBDELAY_DAMP,		sample_t(0.5));
-			SETCONSTANT(FBDELAY_MIX,		sample_t(0.5));
-			SETMODE(FBDELAY_MODE,			sample_t((int)(DELAY_BPMSYNC)));
-			break;
-		case DCFILTER_ID:
-			SETCONSTANT(DCFILTER_POLE, SC[NOISEGEN_B0]);
-			break;
-		case OSRAND_ID:
-			SETCONSTANT(OSRAND_SCALE, sample_t(0.0));
-			break;
-		case REVERB_ID:
-			SETCONSTANT(REVERB_GAIN,		sample_t(0.5));
-			SETCONSTANT(REVERB_ROOMSIZE,	sample_t(0.75));
-			SETCONSTANT(REVERB_DAMP,		sample_t(0.5));
-			SETCONSTANT(REVERB_WIDTH,		sample_t(0.5));
-			SETCONSTANT(REVERB_MIX,			sample_t(0.5));
-			break;
-		case EQ_ID:
-			SETCONSTANT(EQ_B1,	sample_t(0.75));
-			SETCONSTANT(EQ_B2,	sample_t(0.75));
-			SETCONSTANT(EQ_B3,	sample_t(0.75));
-			SETCONSTANT(EQ_B4,	sample_t(0.75));
-			SETCONSTANT(EQ_B5,	sample_t(0.75));
-			SETCONSTANT(EQ_B6,	sample_t(0.75));
-			SETCONSTANT(EQ_B7,	sample_t(0.75));
-			SETCONSTANT(EQ_B8,	sample_t(0.75));
-			SETCONSTANT(EQ_B9,	sample_t(0.75));
-			SETCONSTANT(EQ_B10, sample_t(0.75));
-			break;
-		case COMPEXP_ID:
-			SETCONSTANT(COMPEXP_THRESHOLD,	sample_t(0.75));
-			SETCONSTANT(COMPEXP_RATIO,		sample_t(0.0));
-			SETCONSTANT(COMPEXP_ATTACK,		sample_t(0.0));
-			SETCONSTANT(COMPEXP_RELEASE,	sample_t(0.75));
-			break;
-		case TRIGGER_ID:
-			break;
-		case TRIGGERSEQ_ID:
-			SETMODE(TRIGGERSEQ_MODE,			sample_t((int)(0x0400 | 0x1)));
-			SETMODE(TRIGGERSEQ_PATTERN0_3L,		sample_t((int)(0x11111111)));
-			SETMODE(TRIGGERSEQ_PATTERN4_7L,		sample_t((int)(0x11111111)));
-			SETMODE(TRIGGERSEQ_PATTERN8_11L,	sample_t((int)(0x11111111)));
-			SETMODE(TRIGGERSEQ_PATTERN12_15L,	sample_t((int)(0x11111111)));
-			SETMODE(TRIGGERSEQ_PATTERN0_3R,		sample_t((int)(0x11111111)));
-			SETMODE(TRIGGERSEQ_PATTERN4_7R,		sample_t((int)(0x11111111)));
-			SETMODE(TRIGGERSEQ_PATTERN8_11R,	sample_t((int)(0x11111111)));
-			SETMODE(TRIGGERSEQ_PATTERN12_15R,	sample_t((int)(0x11111111)));
-			break;
-		case SAMPLEREC_ID:
-			SETMODE(SAMPLEREC_MODE, sample_t((int)(0x0ffff000)));
-			break;
-		case SAMPLER_ID:
-			SETCONSTANT(SAMPLER_POSITION,	sample_t(0.0));
-			SETCONSTANT(SAMPLER_SPEED,		sample_t(0.0));
-			SETCONSTANT(SAMPLER_DIRECTION,	sample_t(0.0));
-			SETCONSTANT(SAMPLER_LOOPSTART,	sample_t(0.0));
-			SETCONSTANT(SAMPLER_LOOPEND,	sample_t(1.0));
-			SETCONSTANT(SAMPLER_CROSSFADE,	sample_t(0.0));
-			SETMODE(SAMPLER_MODE,			sample_t(SAMPLER_STORED));
-			break;
-		case SVFILTER_ID:
-			SETCONSTANT(SVFILTER_FREQ,	sample_t(1.0));
-			SETCONSTANT(SVFILTER_Q,		sample_t(0.0));
-			SETMODE(SVFILTER_MODE,		sample_t((int)(SVFILTER_LOWPASS)));
-			break;
-		case ABS_ID:
-			break;
-		case NEG_ID:
-			break;
-		case SQRT_ID:
-			break;
-		case MIN_ID:
-			break;
-		case MAX_ID:
-			break;
-		case GLITCH_ID:
-			SETCONSTANT(GLITCH_ACTIVE,	sample_t(0.0));
-			SETCONSTANT(GLITCH_TIME,	sample_t(0.3125));
-			SETCONSTANT(GLITCH_P1,		sample_t(0.125));
-			SETCONSTANT(GLITCH_P2,		sample_t(0.125));
-			SETCONSTANT(GLITCH_SPEED,	sample_t(0.0));
-			SETMODE(GLITCH_MODE,		sample_t((int)0));
-			break;
-		case SAPI_ID:
-			break;
-		case COMBDELAY_ID:
-			SETCONSTANT(COMBDELAY_TIME, sample_t(0.5));
-			SETMODE(COMBDELAY_MODE,		sample_t((int)(DELAY_BPMSYNC)));
-			break;
-		case GMDLS_ID:
-			SETMODE(GMDLS_MODE, sample_t((int)0));
-			break;
-		case BOWED_ID:
-			SETCONSTANT(BOWED_POSITION,		sample_t(0.5));
-			SETCONSTANT(BOWED_PRESSURE,		sample_t(0.5));
-			SETCONSTANT(BOWED_VELOCITY,		sample_t(0.75));
-			SETCONSTANT(BOWED_VIBRATO,		sample_t(0.0));
-			SETCONSTANT(BOWED_FRICTIONSYM,	sample_t(0.0));
-			break;
-		case FORMULA_ID:
-			break;
-		case SNH_ID:
-			SETCONSTANT(SNH_SNH, sample_t(1.0));
-			SETCONSTANT(SNH_SNHSMOOTH, sample_t(0.0));
-			SETMODE(SNH_MODE, sample_t((int)(SNH_QUADRATIC)));
-			break;
-		case WTFOSC_ID:
-			SETCONSTANT(WTFOSC_POSITION, sample_t(0.0));
-			SETCONSTANT(WTFOSC_SPEED, sample_t(0.0));
-			SETCONSTANT(WTFOSC_TARGETSEARCHLEN, sample_t(0.125, 0.0625));
-			SETCONSTANT(WTFOSC_COUNTSKIP, sample_t(0.125, 0.0));
-			SETMODE(WTFOSC_MODE, sample_t(SAMPLER_STORED));
-			break;
-		case FORMANT_ID:
-			SETCONSTANT(FORMANT_GAIN,	sample_t(1.0));
-			SETMODE(FORMANT_MODE,		sample_t((int)0));
-			break;
-		case EQ3_ID:
-			SETCONSTANT(EQ3_LGAIN, sample_t(0.75));
-			SETCONSTANT(EQ3_MGAIN, sample_t(0.75));
-			SETCONSTANT(EQ3_HGAIN, sample_t(0.75));
-			break;
-		case OSCSYNC_ID:
-			break;
-
-		case CONSTANT_ID:
-			node->out = sample_t(0.0);
-			break;
-
-		case VOICE_FREQUENCY_ID:
-			SETCONSTANT(VOICEPARAM_SCALE, sample_t(0.0));
-			break;
-		case VOICE_NOTE_ID:
-			SETCONSTANT(VOICEPARAM_SCALE, sample_t(0.0));
-			break;
-		case VOICE_ATTACKVELOCITY_ID:
-			SETCONSTANT(VOICEPARAM_SCALE, sample_t(0.0));
-			break;
-		case VOICE_TRIGGER_ID:
-			SETCONSTANT(VOICEPARAM_SCALE, sample_t(0.0));
-			break;
-		case VOICE_GATE_ID:
-			SETCONSTANT(VOICEPARAM_SCALE, sample_t(0.0));
-			break;
-		case VOICE_AFTERTOUCH_ID:
-			SETCONSTANT(VOICEPARAM_SCALE, sample_t(0.0));
-			break;
-
-		default:
-			node->out = sample_t(0.0);
-			break;
+		node->out = sample_t(0.0);
+	}
+	else
+	{
+		bool saved = _massDataUpdate;
+		_massDataUpdate = true;
+		resetNodeToDefaults(node->valueOffset, id, isGlobal != 0);
+		_massDataUpdate = saved;
 	}
 
 	if (!_massDataUpdate)
 		DataAccessMutex.unlock();
 
 	return node;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Returns the factory-default raw normalized value for a specific input of a given node type.
+// createGUINode delegates to resetNodeToDefaults which uses this function as the single source of truth.
+
+void SynthController::getNodeInputDefault(DWORD typeID, DWORD inputIdx, bool isGlobal, double& outL, double& outR)
+{
+	outL = outR = 0.0;
+	int idx = (int)inputIdx;
+
+#define DEFCONST(x, val)       if (idx == (x)) { outL = outR = (double)(val); return; }
+#define DEFCONST2(x, vl, vr)   if (idx == (x)) { outL = (double)(vl); outR = (double)(vr); return; }
+#define DEFMODE(x, val)        if (idx == (x)) { outL = outR = (double)(int)(val); return; }
+
+	switch (typeID)
+	{
+	case SYNTHROOT_ID:      DEFCONST(SYNTHROOT_GAIN, 0.5); break;
+	case CHANNELROOT_ID:    DEFCONST(CHANNELROOT_GAIN, 0.5); break;
+	case VOICEMANAGER_ID:
+		DEFCONST(VOICEMANAGER_TRANSPOSE, 0.0);
+		DEFCONST(VOICEMANAGER_GLIDE,     0.0);
+		DEFCONST(VOICEMANAGER_ARPSPEED,  0.140625);
+		DEFMODE (VOICEMANAGER_MODE,      0x00107f00);
+		break;
+	case ADSR_ID:
+		DEFCONST(ADSR_ATTACK,  0.375);
+		DEFCONST(ADSR_DECAY,   0.375);
+		DEFCONST(ADSR_SUSTAIN, 0.5);
+		DEFCONST(ADSR_RELEASE, 0.375);
+		DEFCONST(ADSR_GAIN,    0.75);
+		if (!isGlobal) { DEFMODE(ADSR_MODE, (int)(ADSR_VOICETRIGGER | ADSR_VOICEGATE)); }
+		else           { DEFMODE(ADSR_MODE, 0); }
+		break;
+	case LFO_ID:
+		DEFCONST(LFO_FREQ,  0.5);
+		DEFCONST(LFO_PHASE, 0.0);
+		DEFCONST(LFO_COLOR, 1.0);
+		DEFCONST(LFO_GAIN,  1.0);
+		DEFMODE (LFO_MODE,  LFO_SINE);
+		break;
+	case OSCILLATOR_ID:
+		DEFCONST(OSCILLATOR_FREQ,      0.0);
+		DEFCONST(OSCILLATOR_PHASE,     0.0);
+		DEFCONST(OSCILLATOR_COLOR,     0.5);
+		DEFCONST(OSCILLATOR_TRANSPOSE, 0.0);
+		DEFCONST(OSCILLATOR_DETUNE,    0.0);
+		DEFCONST(OSCILLATOR_GAIN,      1.0);
+		DEFCONST(OSCILLATOR_UDETUNE,  -0.5);
+		if (!isGlobal) {DEFMODE(OSCILLATOR_MODE, (int)(OSCILLATOR_SINE | OSCILLATOR_VOICEFREQ)); }
+		else           {DEFMODE(OSCILLATOR_MODE, (int)(OSCILLATOR_SINE)); }
+		break;
+	case NOISEGEN_ID:
+		DEFCONST(NOISEGEN_MIX,  0.0);
+		DEFCONST(NOISEGEN_GAIN, 1.0);
+		break;
+	case BQFILTER_ID:
+		DEFCONST(BQFILTER_FREQ,   1.0);
+		DEFCONST(BQFILTER_Q,      0.0);
+		DEFCONST(BQFILTER_DBGAIN, 0.75);
+		DEFMODE (BQFILTER_MODE,   BQFILTER_LOWPASS);
+		break;
+	case ONEPOLEFILTER_ID:  DEFCONST(ONEPOLEFILTER_POLE, 0.0); break;
+	case ONEZEROFILTER_ID:  DEFCONST(ONEZEROFILTER_ZERO, 0.0); break;
+	case SHAPER_ID:         DEFCONST(SHAPER_DRIVE, 0.0); break;
+	case PANNING_ID:        DEFCONST(PANNING_PAN, 0.5); break;
+	case SCALE_ID:          DEFCONST(SCALE_SCALE, 0.0); break;
+	case CLIP_ID:           DEFCONST(CLIP_LEVEL, 1.0); break;
+	case MIX_ID:            DEFCONST(MIX_MIX, 0.5); break;
+	case MONO_ID:           DEFMODE (MONO_MODE, 0); break;
+	case ENVFOLLOWER_ID:
+		DEFCONST(ENVFOLLOWER_ATTACK,  0.125);
+		DEFCONST(ENVFOLLOWER_RELEASE, 0.375);
+		break;
+	case LOGIC_ID:          DEFMODE(LOGIC_MODE,   LOGIC_AND); break;
+	case COMPARE_ID:        DEFMODE(COMPARE_MODE, COMPARE_GT); break;
+	case MIDISIGNAL_ID:
+		DEFCONST(MIDISIGNAL_SCALE, 1.0);
+		DEFMODE (MIDISIGNAL_MODE,  0);
+		break;
+	case DISTORTION_ID:
+		DEFCONST(DISTORTION_DRIVE,     0.0);
+		DEFCONST(DISTORTION_THRESHOLD, 0.75);
+		DEFMODE (DISTORTION_MODE,      DISTORTION_OVERDRIVE);
+		break;
+	case CROSSMIX_ID:  DEFCONST(CROSSMIX_MIX, 0.0); break;
+	case DELAY_ID:
+		DEFCONST(DELAY_TIME, 0.5);
+		DEFMODE (DELAY_MODE, DELAY_BPMSYNC);
+		break;
+	case FBDELAY_ID:
+		DEFCONST(FBDELAY_TIME,     0.3125);
+		DEFCONST(FBDELAY_FEEDBACK, 0.5);
+		DEFCONST(FBDELAY_DAMP,     0.5);
+		DEFCONST(FBDELAY_MIX,      0.5);
+		DEFMODE (FBDELAY_MODE,     DELAY_BPMSYNC);
+		break;
+	case DCFILTER_ID:  DEFCONST(DCFILTER_POLE, 0.99765014648437500); break;
+	case OSRAND_ID:    DEFCONST(OSRAND_SCALE,  0.0); break;
+	case REVERB_ID:
+		DEFCONST(REVERB_GAIN,     0.5);
+		DEFCONST(REVERB_ROOMSIZE, 0.75);
+		DEFCONST(REVERB_DAMP,     0.5);
+		DEFCONST(REVERB_WIDTH,    0.5);
+		DEFCONST(REVERB_MIX,      0.5);
+		break;
+	case EQ_ID:
+		DEFCONST(EQ_B1,  0.75); DEFCONST(EQ_B2,  0.75); DEFCONST(EQ_B3,  0.75);
+		DEFCONST(EQ_B4,  0.75); DEFCONST(EQ_B5,  0.75); DEFCONST(EQ_B6,  0.75);
+		DEFCONST(EQ_B7,  0.75); DEFCONST(EQ_B8,  0.75); DEFCONST(EQ_B9,  0.75);
+		DEFCONST(EQ_B10, 0.75);
+		break;
+	case COMPEXP_ID:
+		DEFCONST(COMPEXP_THRESHOLD, 0.75);
+		DEFCONST(COMPEXP_RATIO,     0.0);
+		DEFCONST(COMPEXP_ATTACK,    0.0);
+		DEFCONST(COMPEXP_RELEASE,   0.75);
+		break;
+	case TRIGGERSEQ_ID:
+		DEFMODE(TRIGGERSEQ_MODE,          0x0400 | 0x1);
+		DEFMODE(TRIGGERSEQ_PATTERN0_3L,   0x11111111);
+		DEFMODE(TRIGGERSEQ_PATTERN4_7L,   0x11111111);
+		DEFMODE(TRIGGERSEQ_PATTERN8_11L,  0x11111111);
+		DEFMODE(TRIGGERSEQ_PATTERN12_15L, 0x11111111);
+		DEFMODE(TRIGGERSEQ_PATTERN0_3R,   0x11111111);
+		DEFMODE(TRIGGERSEQ_PATTERN4_7R,   0x11111111);
+		DEFMODE(TRIGGERSEQ_PATTERN8_11R,  0x11111111);
+		DEFMODE(TRIGGERSEQ_PATTERN12_15R, 0x11111111);
+		break;
+	case SAMPLEREC_ID:  DEFMODE(SAMPLEREC_MODE, 0x0ffff000); break;
+	case SAMPLER_ID:
+		DEFCONST(SAMPLER_POSITION,  0.0);
+		DEFCONST(SAMPLER_SPEED,     0.0);
+		DEFCONST(SAMPLER_DIRECTION, 0.0);
+		DEFCONST(SAMPLER_LOOPSTART, 0.0);
+		DEFCONST(SAMPLER_LOOPEND,   1.0);
+		DEFCONST(SAMPLER_CROSSFADE, 0.0);
+		DEFMODE (SAMPLER_MODE,      SAMPLER_STORED);
+		break;
+	case SVFILTER_ID:
+		DEFCONST(SVFILTER_FREQ, 1.0);
+		DEFCONST(SVFILTER_Q,    0.0);
+		DEFMODE (SVFILTER_MODE, SVFILTER_LOWPASS);
+		break;
+	case GLITCH_ID:
+		DEFCONST(GLITCH_ACTIVE, 0.0);
+		DEFCONST(GLITCH_TIME,   0.3125);
+		DEFCONST(GLITCH_P1,     0.125);
+		DEFCONST(GLITCH_P2,     0.125);
+		DEFCONST(GLITCH_SPEED,  0.0);
+		DEFMODE (GLITCH_MODE,   0);
+		break;
+	case COMBDELAY_ID:
+		DEFCONST(COMBDELAY_TIME, 0.5);
+		DEFMODE (COMBDELAY_MODE, DELAY_BPMSYNC);
+		break;
+	case GMDLS_ID:  DEFMODE(GMDLS_MODE, 0); break;
+	case BOWED_ID:
+		DEFCONST(BOWED_POSITION,    0.5);
+		DEFCONST(BOWED_PRESSURE,    0.5);
+		DEFCONST(BOWED_VELOCITY,    0.75);
+		DEFCONST(BOWED_VIBRATO,     0.0);
+		DEFCONST(BOWED_FRICTIONSYM, 0.0);
+		break;
+	case SNH_ID:
+		DEFCONST(SNH_SNH,       1.0);
+		DEFCONST(SNH_SNHSMOOTH, 0.0);
+		DEFMODE (SNH_MODE,      SNH_QUADRATIC);
+		break;
+	case WTFOSC_ID:
+		DEFCONST (WTFOSC_POSITION,        0.0);
+		DEFCONST (WTFOSC_SPEED,           0.0);
+		DEFCONST2(WTFOSC_TARGETSEARCHLEN, 0.125, 0.0625);
+		DEFCONST2(WTFOSC_COUNTSKIP,       0.125, 0.0);
+		DEFMODE  (WTFOSC_MODE,            SAMPLER_STORED);
+		break;
+	case FORMANT_ID:
+		DEFCONST(FORMANT_GAIN, 1.0);
+		DEFMODE (FORMANT_MODE, 0);
+		break;
+	case EQ3_ID:
+		DEFCONST(EQ3_LGAIN, 0.75);
+		DEFCONST(EQ3_MGAIN, 0.75);
+		DEFCONST(EQ3_HGAIN, 0.75);
+		break;
+	case VOICE_FREQUENCY_ID:
+	case VOICE_NOTE_ID:
+	case VOICE_ATTACKVELOCITY_ID:
+	case VOICE_TRIGGER_ID:
+	case VOICE_GATE_ID:
+	case VOICE_AFTERTOUCH_ID:
+		DEFCONST(VOICEPARAM_SCALE, 0.0);
+		break;
+	default: break;
+	}
+
+#undef DEFCONST
+#undef DEFCONST2
+#undef DEFMODE
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void SynthController::resetNodeToDefaults(DWORD nodeID, DWORD typeID, bool isGlobal)
+{
+	// Reset parameter constant inputs to factory defaults
+	for (DWORD i = NodeReqGUISignals[typeID]; i < NodeMaxGUISignals[typeID]; i++)
+	{
+		double defL, defR;
+		getNodeInputDefault(typeID, i, isGlobal, defL, defR);
+		setInputValue(nodeID, i, defL, defR);
+	}
+	// Reset mode inputs to factory defaults
+	for (DWORD i = NodeMaxGUISignals[typeID]; i < NodeInputs[typeID]; i++)
+	{
+		double defVal, dummy;
+		getNodeInputDefault(typeID, i, isGlobal, defVal, dummy);
+		setInputMode(nodeID, i, (DWORD)(long long)defVal, 0xffffffff);
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1817,20 +1763,6 @@ double SynthController::getNodeSignal(DWORD nodeid, int left, int inp)
 		}
 	}
 	return 0;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void SynthController::queryCoreProcessingMutex(bool acquire)
-{
-	if (acquire)
-	{
-		DataAccessMutex.lock();
-	}
-	else
-	{
-		DataAccessMutex.unlock();
-	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

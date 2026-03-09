@@ -20,8 +20,14 @@ void VUMeter(float levelL, float levelR, float width, float height);
 // Bit pattern toggle buttons (8 per row for L and R)
 bool BitPattern(const char* label, unsigned int* pattern);
 
+// Two-line display label (line2 is empty for single-line values)
+struct KnobLabel {
+    std::string line1;
+    std::string line2;
+};
+
 // Format a knob value for display based on mapping type
-std::string formatKnobValue(double normValue, double range, int mapping, int currentMode, int nodeTypeID);
+KnobLabel formatKnobValue(double normValue, double range, int mapping, int currentMode, int nodeTypeID);
 
 } // namespace Widgets
 } // namespace K64GUI
