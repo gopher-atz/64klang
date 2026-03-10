@@ -756,12 +756,26 @@ void SynthController::resetNodeToDefaults(DWORD nodeID, DWORD typeID, bool isGlo
 
 void SynthController::deleteNode(DWORD node)
 {
-	if (!_massDataUpdate)
+	// Suppress nested locking: disconnectInput also checks _massDataUpdate.
+	// If we held the mutex but left _massDataUpdate false, every inner call
+	// would try to lock a std::timed_mutex we already own → deadlock.
+	bool wasUpdating = _massDataUpdate;
+	if (!wasUpdating)
+	{
+		_massDataUpdate = true;
 		DataAccessMutex.lock();
+	}
 
 	// parameters and modadders are destroyed when their owner nodes are destroyed
 	if (_nodeGUIInfo[node].IsParameter || _nodeGUIInfo[node].IsModAdder)
+	{
+		if (!wasUpdating)
+		{
+			_massDataUpdate = false;
+			DataAccessMutex.unlock();
+		}
 		return;
+	}
 
 	// the gui node to be deleted
 	SynthNode* dnode = _nodeGUIInfo[node].Node;
@@ -849,8 +863,11 @@ void SynthController::deleteNode(DWORD node)
 		SynthFree(dnode->customMem);
 	SynthFree(dnode);
 
-	if (!_massDataUpdate)
+	if (!wasUpdating)
+	{
+		_massDataUpdate = false;
 		DataAccessMutex.unlock();
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

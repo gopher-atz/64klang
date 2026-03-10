@@ -110,6 +110,13 @@ int NodeCanvas::effectiveInputCount(int guiIndex) const
 {
     SynthController* sc = SynthController::instance();
     if (!sc) return 0;
+    // Input-category nodes (Midi CC, Constant, voice params) have no connectable
+    // signal inputs — their numInputs stores Scale/mode constants, not wiring slots.
+    {
+        int nt = sc->gnType(guiIndex);
+        if (nt == MIDISIGNAL_ID || nt >= CONSTANT_ID)
+            return 0;
+    }
     int maxSignals = sc->gnNodeMaxSignals(guiIndex);
     // For non-variable-input nodes, maxSignals already excludes mode inputs.
     // For variable-input nodes (NoteController, MultiAdd), maxSignals is 0;
@@ -174,11 +181,13 @@ std::string NodeCanvas::buildModeText(int guiIndex) const
 
     char buf[64];
 
-    // Constants and OsRand: show L/R values of first parameter
+    // Constants and OsRand: show L/R values of first parameter.
+    // Constant stores its value in node->out (index -1); voice params store Scale at input[0].
     if (nodeType == 35 || nodeType >= CONSTANT_ID) // OsRand=35, constants>=64
     {
-        double l = sc->getInputValue((DWORD)nodeID, 0, 0);
-        double r = sc->getInputValue((DWORD)nodeID, 0, 1);
+        DWORD valIdx = (nodeType == CONSTANT_ID) ? (DWORD)-1 : 0u;
+        double l = sc->getInputValue((DWORD)nodeID, valIdx, 0);
+        double r = sc->getInputValue((DWORD)nodeID, valIdx, 1);
         snprintf(buf, sizeof(buf), "%.2f / %.2f", l, r);
         return buf;
     }
@@ -1133,12 +1142,17 @@ void NodeCanvas::updateMouseOverEditPanel(const ImVec2& canvasOrigin)
         int modeInputIdx = typeDef->numMaxGUIInputs;
         if (!(modeInputIdx < typeDef->numInputs && modeInputIdx < (int)typeDef->inputs.size()))
             modeInputIdx = -1;
+        // Midi CC: Mode is at inputs[1], not inputs[numMaxGUIInputs=0]
+        if (nodeType == MIDISIGNAL_ID)
+            modeInputIdx = 1;
 
         int paramStart = typeDef->numReqGUIInputs;
         int paramEnd = typeDef->numMaxGUIInputs;
         int numParams = 0;
         for (int i = paramStart; i < paramEnd && i < (int)typeDef->inputs.size(); i++)
             numParams++;
+        if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || nodeType > CONSTANT_ID)
+            numParams = 1;
 
         float paramRowH = (kEditKnobDiam);
         float flagsH = 0.f;
@@ -1241,9 +1255,13 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             int pmodeIdx = pdef->numMaxGUIInputs;
             if (!(pmodeIdx < pdef->numInputs && pmodeIdx < (int)pdef->inputs.size()))
                 pmodeIdx = -1;
+            if (ptype == MIDISIGNAL_ID)
+                pmodeIdx = 1;
             int pnp = 0;
             for (int k = pdef->numReqGUIInputs; k < pdef->numMaxGUIInputs && k < (int)pdef->inputs.size(); k++)
                 pnp++;
+            if (ptype == MIDISIGNAL_ID || ptype >= CONSTANT_ID)
+                pnp = 1;
             float pfh = 0.f;
             if (pmodeIdx >= 0 && pmodeIdx < (int)pdef->inputs.size())
             {
@@ -1326,6 +1344,9 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         int modeInputIdx = typeDef->numMaxGUIInputs;
         if (!(modeInputIdx < typeDef->numInputs && modeInputIdx < (int)typeDef->inputs.size()))
             modeInputIdx = -1;
+        // Midi CC: Mode is at inputs[1]; numMaxGUIInputs=0 would wrongly point at Scale (inputs[0]).
+        if (nodeType == MIDISIGNAL_ID)
+            modeInputIdx = 1;
         int currentMode = (modeInputIdx >= 0) ? sc->getInputMode((DWORD)nodeID, (DWORD)modeInputIdx) : 0;
 
         int paramStart = typeDef->numReqGUIInputs;
@@ -1333,6 +1354,26 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         int numParams = 0;
         for (int i = paramStart; i < paramEnd && i < (int)typeDef->inputs.size(); i++)
             numParams++;
+
+        // Constant nodes store their value in node->out (no config inputs); inject one synthetic row.
+        bool isConstant = (nodeType == CONSTANT_ID);
+        if (isConstant) numParams = 1;
+        // Voice param and Midi CC nodes have a Scale input at inputs[0] but numMaxGUIInputs=0,
+        // so the regular loop skips it; inject one row to show the Scale knob.
+        bool isVoiceInput = (nodeType == MIDISIGNAL_ID || nodeType > CONSTANT_ID);
+        if (isVoiceInput) numParams = 1;
+        // Constant and voice params use -1..1 signal range; Midi CC keeps its -128..128 config range.
+        bool isSignalRange = (isConstant || nodeType > CONSTANT_ID);
+        InputDef signalRangeDef;  // used for Constant and voice params
+        if (isSignalRange)
+        {
+            signalRangeDef.name           = isConstant ? "Value" : typeDef->inputs[0].name;
+            signalRangeDef.range          = 1;
+            signalRangeDef.minVal         = -1.0;
+            signalRangeDef.maxVal         =  1.0;
+            signalRangeDef.displayMapping = 0;
+            signalRangeDef.singleInput    = false;
+        }
 
         // Per param row: knob height + padding (label+sync fit in left column at same height)
         float paramRowH = (kEditKnobDiam);
@@ -1467,9 +1508,13 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
 
         // ── Parameter rows ──
         float curY = sepY;
-        for (int i = paramStart; i < paramEnd && i < (int)typeDef->inputs.size(); i++)
+        bool runOnce = (isConstant || isVoiceInput); // these nodes always expose exactly one knob row
+        for (int i = runOnce ? 0 : paramStart;
+             runOnce ? (i < 1) : (i < paramEnd && i < (int)typeDef->inputs.size());
+             i++)
         {
-            const InputDef& inputDef = typeDef->inputs[i];
+            DWORD paramIdx = isConstant ? (DWORD)-1 : (DWORD)i;
+            const InputDef& inputDef = isSignalRange ? signalRangeDef : typeDef->inputs[i];
             float range = (float)inputDef.range;
             if (range <= 0.f) range = 128.f;
             float minVal  = (float)inputDef.minVal;
@@ -1479,13 +1524,14 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             // getInputValue returns raw stored value (value/range convention).
             // Display value = rawL * range, which maps to [minVal..maxVal].
             // e.g. Transpose: rawL=0 → valL=0 (center of -64..64).
-            float rawL = (float)sc->getInputValue((DWORD)nodeID, (DWORD)i, 0);
-            float rawR = (float)sc->getInputValue((DWORD)nodeID, (DWORD)i, 1);
+            // For CONSTANT_ID, paramIdx=(DWORD)-1 and range=1 so rawL IS the display value.
+            float rawL = (float)sc->getInputValue((DWORD)nodeID, paramIdx, 0);
+            float rawR = (float)sc->getInputValue((DWORD)nodeID, paramIdx, 1);
             float valL = rawL * range;
             float valR = rawR * range;
 
             // Lazy-init sync state from value equality on first encounter
-            uint64_t syncKey = ((uint64_t)(uint32_t)nodeID << 32) | (uint64_t)(uint32_t)i;
+            uint64_t syncKey = ((uint64_t)(uint32_t)nodeID << 32) | (uint64_t)(uint32_t)paramIdx;
             if (paramSyncState.find(syncKey) == paramSyncState.end())
                 paramSyncState[syncKey] = (std::abs(rawL - rawR) < 0.0001f);
             bool synced = paramSyncState[syncKey];
@@ -1535,7 +1581,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                     bool newSynced = !synced;
                     paramSyncState[syncKey] = newSynced;
                     if (newSynced)
-                        sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)rawL, (double)rawL);
+                        sc->setInputValue((DWORD)nodeID, paramIdx, (double)rawL, (double)rawL);
                 }
             }
 
@@ -1593,9 +1639,9 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
 
                 // Modulator needle: only drawn when a wire is actually connected to this input.
                 // getNodeSignal reads the ModAdder's stale out field — gate on connection state first.
-                if (sc->inputIsModulated((DWORD)nodeID, (DWORD)i))
+                if (!isConstant && sc->inputIsModulated((DWORD)nodeID, paramIdx))
                 {
-                    double liveL = sc->getNodeSignal((DWORD)nodeID, 0, (DWORD)i);
+                    double liveL = sc->getNodeSignal((DWORD)nodeID, 0, paramIdx);
                     float normModL = (valRange > 0.f) ? ((float)(liveL * range) - minVal) / valRange : 0.f;
                     normModL = std::max(0.f, std::min(1.f, normModL));
                     float mr = (startAngle + normModL * sweepDeg) * PI / 180.f;
@@ -1615,12 +1661,19 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                     {
                         // Reset left channel (and right if synced) to factory default
-                        double defL, defR;
-                        sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->gnIsGlobal(gi), defL, defR);
-                        if (synced)
-                            sc->setInputValue((DWORD)nodeID, (DWORD)i, defL, defL);
+                        if (isConstant)
+                        {
+                            sc->setInputValue((DWORD)nodeID, paramIdx, 0.0, synced ? 0.0 : (double)rawR);
+                        }
                         else
-                            sc->setInputValue((DWORD)nodeID, (DWORD)i, defL, (double)rawR);
+                        {
+                            double defL, defR;
+                            sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->gnIsGlobal(gi), defL, defR);
+                            if (synced)
+                                sc->setInputValue((DWORD)nodeID, paramIdx, defL, defL);
+                            else
+                                sc->setInputValue((DWORD)nodeID, paramIdx, defL, (double)rawR);
+                        }
                         knobDragNodeID = -1;
                         knobDragParam  = -1;
                     }
@@ -1635,11 +1688,20 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 if (knobDragNodeID == nodeID && knobDragParam == i && !knobDragIsRight &&
                     ImGui::IsMouseDragging(ImGuiMouseButton_Left))
                 {
-                    // Normal: integer steps, ~2px each.
-                    // Ctrl (fine): 1/128 steps, ~256px each.
                     float delta = -io.MouseDelta.y * 0.5f;
-                    float quantStep = ctrlHeld ? (1.f / 128.f) : 1.f;
-                    if (ctrlHeld) delta /= 128.f;
+                    float quantStep;
+                    if (isSignalRange)
+                    {
+                        // Signal-range (-1..1): fine step in normal mode, very fine with Ctrl.
+                        delta /= 128.f;
+                        quantStep = ctrlHeld ? (1.f / (128.f * 128.f)) : (1.f / 128.f);
+                    }
+                    else
+                    {
+                        // Normal: integer steps, ~2px each. Ctrl (fine): 1/128 steps.
+                        quantStep = ctrlHeld ? (1.f / 128.f) : 1.f;
+                        if (ctrlHeld) delta /= 128.f;
+                    }
                     knobDragAccum += delta;
                     int stepCount = (int)(knobDragAccum / quantStep);
                     if (stepCount != 0)
@@ -1648,9 +1710,9 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         valL = std::max(minVal, std::min(maxVal, valL + applied));
                         knobDragAccum -= applied;
                         if (synced)
-                            sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)(valL/range), (double)(valL/range));
+                            sc->setInputValue((DWORD)nodeID, paramIdx, (double)(valL/range), (double)(valL/range));
                         else
-                            sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)(valL/range), (double)(valR/range));
+                            sc->setInputValue((DWORD)nodeID, paramIdx, (double)(valL/range), (double)(valR/range));
                     }
                 }
 
@@ -1714,9 +1776,9 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 }
 
                 // Modulator needle for right channel (always drawn when wire is connected, same as left)
-                if (sc->inputIsModulated((DWORD)nodeID, (DWORD)i))
+                if (!isConstant && sc->inputIsModulated((DWORD)nodeID, paramIdx))
                 {
-                    double liveR = sc->getNodeSignal((DWORD)nodeID, 1, (DWORD)i);
+                    double liveR = sc->getNodeSignal((DWORD)nodeID, 1, paramIdx);
                     float normModR = (valRange > 0.f) ? ((float)(liveR * range) - minVal) / valRange : 0.f;
                     normModR = std::max(0.f, std::min(1.f, normModR));
                     float mr = (startAngle + normModR * sweepDeg) * PI / 180.f;
@@ -1738,9 +1800,16 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                         {
                             // Reset right channel only to factory default
-                            double defL, defR;
-                            sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->gnIsGlobal(gi), defL, defR);
-                            sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)rawL, defR);
+                            if (isConstant)
+                            {
+                                sc->setInputValue((DWORD)nodeID, paramIdx, (double)rawL, 0.0);
+                            }
+                            else
+                            {
+                                double defL, defR;
+                                sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->gnIsGlobal(gi), defL, defR);
+                                sc->setInputValue((DWORD)nodeID, paramIdx, (double)rawL, defR);
+                            }
                             knobDragNodeID = -1;
                             knobDragParam  = -1;
                         }
@@ -1756,8 +1825,17 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         ImGui::IsMouseDragging(ImGuiMouseButton_Left))
                     {
                         float delta = -io.MouseDelta.y * 0.5f;
-                        float quantStep = ctrlHeld ? (1.f / 128.f) : 1.f;
-                        if (ctrlHeld) delta /= 128.f;
+                        float quantStep;
+                        if (isSignalRange)
+                        {
+                            delta /= 128.f;
+                            quantStep = ctrlHeld ? (1.f / (128.f * 128.f)) : (1.f / 128.f);
+                        }
+                        else
+                        {
+                            quantStep = ctrlHeld ? (1.f / 128.f) : 1.f;
+                            if (ctrlHeld) delta /= 128.f;
+                        }
                         knobDragAccum += delta;
                         int stepCount = (int)(knobDragAccum / quantStep);
                         if (stepCount != 0)
@@ -1765,7 +1843,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                             float applied = (float)stepCount * quantStep;
                             valR = std::max(minVal, std::min(maxVal, valR + applied));
                             knobDragAccum -= applied;
-                            sc->setInputValue((DWORD)nodeID, (DWORD)i, (double)(valL/range), (double)(valR/range));
+                            sc->setInputValue((DWORD)nodeID, paramIdx, (double)(valL/range), (double)(valR/range));
                         }
                     }
                 }
