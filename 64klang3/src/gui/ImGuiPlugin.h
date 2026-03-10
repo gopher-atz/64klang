@@ -5,14 +5,17 @@
 
 namespace K64GUI {
 
-// Initialize the ImGui GUI context
+// Create / destroy the canvas (call once from plugin initialize / terminate).
+// The canvas persists across window open/close cycles so view state is preserved.
+void createCanvas();
+void destroyCanvas();
+
+// Called on window attach / detach — arms and disarms rendering, does not touch the canvas.
 void init();
+void shutdown();
 
 // Render one frame of the GUI
 void render();
-
-// Shutdown the ImGui GUI context
-void shutdown();
 
 // Check if GUI is initialized
 bool isInitialized();
@@ -20,5 +23,9 @@ bool isInitialized();
 // Pass / retrieve the native window handle (HWND on Windows).
 void  setWindowHandle(void* hwnd);
 void* getWindowHandle();
+
+// Viewport state (pan + zoom) — saved/restored with the DAW project per instance.
+void setViewport(float offsetX, float offsetY, float zoom);
+void getViewport(float& offsetX, float& offsetY, float& zoom);
 
 } // namespace K64GUI

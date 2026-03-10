@@ -18,10 +18,10 @@ BEGIN_FACTORY_DEF(K64_VENDOR, K64_URL, K64_EMAIL)
 
     DEF_CLASS2(
         INLINE_UID_FROM_FUID(kProcessorUID),
-        PClassInfo::kManyInstances,
+        1,                          // single instance — engine is a process-wide singleton
         kVstAudioEffectClass,
         "64klang3",
-        Steinberg::Vst::kDistributable,
+        0,                          // not distributable — singleton state cannot be split
         Steinberg::Vst::PlugType::kInstrumentSynth,
         K64_VERSION,
         kVstVersionString,
@@ -30,7 +30,7 @@ BEGIN_FACTORY_DEF(K64_VENDOR, K64_URL, K64_EMAIL)
 
     DEF_CLASS2(
         INLINE_UID_FROM_FUID(kControllerUID),
-        PClassInfo::kManyInstances,
+        1,                          // single instance — paired with the singleton processor
         kVstComponentControllerClass,
         "64klang3 Controller",
         0,

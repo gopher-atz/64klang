@@ -1892,8 +1892,8 @@ void SynthController::panic()
 		}
 	}
 
-	DataAccessMutex.unlock();
 	_massDataUpdate = false;
+	DataAccessMutex.unlock();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2422,8 +2422,8 @@ bool SynthController::loadPatch(const std::string& filename)
 		}
 	}
 
-	DataAccessMutex.unlock();
 	_massDataUpdate = false;
+	DataAccessMutex.unlock();
 
 	return true;
 }
@@ -2609,8 +2609,8 @@ bool SynthController::loadPatchFromString(const std::string& xmlData)
 		}
 	}
 
-	DataAccessMutex.unlock();
 	_massDataUpdate = false;
+	DataAccessMutex.unlock();
 
 	return true;
 }
@@ -2684,8 +2684,8 @@ void SynthController::resetPatch(bool createDefault, bool acquireMutex)
 
 	if (acquireMutex)
 	{
-		DataAccessMutex.unlock();
 		_massDataUpdate = false;
+		DataAccessMutex.unlock();
 	}
 }
 
@@ -2808,8 +2808,8 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 		}
 	}
 
-	DataAccessMutex.unlock();
 	_massDataUpdate = false;
+	DataAccessMutex.unlock();
 
 	return !interconnected;
 }

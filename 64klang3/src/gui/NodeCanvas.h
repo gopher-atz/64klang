@@ -18,8 +18,17 @@ public:
     void render();
 
     void setOffset(float x, float y) { offsetX = x; offsetY = y; }
+    void getOffset(float& x, float& y) const { x = offsetX; y = offsetY; }
     void setZoom(float z) { zoom = z; }
     float getZoom() const { return zoom; }
+
+    // Restore a previously saved viewport — also suppresses the first-frame
+    // auto-center so the saved position is not overwritten.
+    void restoreViewport(float x, float y, float z)
+    {
+        offsetX = x; offsetY = y; zoom = z;
+        needsInitialView = false;
+    }
 
     // Toolbar integration
     void toggleWaveFileDialog() { showWaveFileDialog = !showWaveFileDialog; }

@@ -5,6 +5,7 @@
 #include "pluginterfaces/vst/ivstprocesscontext.h"
 #include "core/SynthController.h"
 #include "core/Synth.h"
+#include "gui/ImGuiPlugin.h"
 
 #include <chrono>
 
@@ -35,6 +36,10 @@ tresult PLUGIN_API K64Plugin::initialize(FUnknown* context)
     // Initialize the synth controller singleton
     SynthController::instance();
 
+    // Create the canvas once here so its view state persists across
+    // window open/close cycles (attached/removed on the PluginView).
+    K64GUI::createCanvas();
+
     synthInitialized = true;
 
     return kResultOk;
@@ -42,6 +47,7 @@ tresult PLUGIN_API K64Plugin::initialize(FUnknown* context)
 
 tresult PLUGIN_API K64Plugin::terminate()
 {
+    K64GUI::destroyCanvas();
     return AudioEffect::terminate();
 }
 
@@ -139,6 +145,13 @@ tresult PLUGIN_API K64Plugin::getState(IBStream* state)
     state->write(&size, sizeof(size), nullptr);
     state->write((void*)xml.data(), size, nullptr);
 
+    // Append viewport (pan + zoom) so each DAW track instance remembers its own view.
+    float ox = 0.f, oy = 0.f, z = 1.f;
+    K64GUI::getViewport(ox, oy, z);
+    state->write(&ox, sizeof(ox), nullptr);
+    state->write(&oy, sizeof(oy), nullptr);
+    state->write(&z,  sizeof(z),  nullptr);
+
     return kResultOk;
 }
 
@@ -160,6 +173,17 @@ tresult PLUGIN_API K64Plugin::setState(IBStream* state)
 
     if (!SynthController::instance()->loadPatchFromString(xml))
         return kResultFalse;
+
+    // Read viewport if present (absent in files saved before this feature was added).
+    float ox = 0.f, oy = 0.f, z = 1.f;
+    int32 vr = 0;
+    state->read(&ox, sizeof(ox), &vr);
+    if (vr == sizeof(ox))
+    {
+        state->read(&oy, sizeof(oy), &vr);
+        state->read(&z,  sizeof(z),  &vr);
+        K64GUI::setViewport(ox, oy, z);
+    }
 
     return kResultOk;
 }

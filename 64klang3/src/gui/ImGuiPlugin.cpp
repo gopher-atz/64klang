@@ -33,19 +33,51 @@ void* getWindowHandle()
     return g_windowHandle;
 }
 
-void init()
+void setViewport(float offsetX, float offsetY, float zoom)
+{
+    if (s_canvas)
+        s_canvas->restoreViewport(offsetX, offsetY, zoom);
+}
+
+void getViewport(float& offsetX, float& offsetY, float& zoom)
+{
+    if (s_canvas)
+    {
+        s_canvas->getOffset(offsetX, offsetY);
+        zoom = s_canvas->getZoom();
+    }
+    else
+    {
+        offsetX = offsetY = 0.f;
+        zoom = 1.f;
+    }
+}
+
+void createCanvas()
 {
     if (!NodeConfig::instance().load())
         fprintf(stderr, "64klang3: Failed to parse embedded node config\n");
 
-    s_canvas = new NodeCanvas();
+    if (!s_canvas)
+        s_canvas = new NodeCanvas();
+}
+
+void destroyCanvas()
+{
+    delete s_canvas;
+    s_canvas = nullptr;
+}
+
+void init()
+{
+    // Canvas already exists (created in createCanvas); just arm rendering.
     s_initialized = true;
 }
 
 void shutdown()
 {
-    delete s_canvas;
-    s_canvas = nullptr;
+    // Disarm rendering but keep the canvas alive so view state survives
+    // the window being closed and reopened by the DAW.
     s_initialized = false;
 }
 
@@ -196,18 +228,50 @@ static void renderToolbar()
 
     // ── Jump To Channel ───────────────────────────────────────────────────
     // Indices 0-15 = channels 1-16, index 16 = SynthRoot (channel -1).
+    // Labels are rebuilt each frame from ChannelRoot node names so they
+    // reflect renames and patch/channel loads immediately.
     ImGui::TextUnformatted("Jump To Channel:");
     ImGui::SameLine(0.f, 3.f);
     {
-        static int s_jumpSel = 0;
-        static const char* kChLabels[] = {
-            "1","2","3","4","5","6","7","8",
-            "9","10","11","12","13","14","15","16",
-            "SynthRoot"
-        };
-        ImGui::SetNextItemWidth(72.f);
-        if (ImGui::Combo("##ch", &s_jumpSel, kChLabels, 17) && s_canvas)
-            s_canvas->jumpToChannel(s_jumpSel == 16 ? -1 : s_jumpSel);
+        // Use BeginCombo so we can show a blank placeholder when nothing is selected.
+        // Channel names are built only when the dropdown is actually opened.
+        ImGui::SetNextItemWidth(150.f);
+        if (ImGui::BeginCombo("##ch", "---"))
+        {
+            // Single pass over the node list to collect ChannelRoot names.
+            char        chBufs[16][64];
+            const char* chLabels[17];
+            std::string chNames[16];
+            int nn = sc ? sc->numGUINodes() : 0;
+            for (int i = 0; i < nn; i++)
+            {
+                if (sc->gnType(i) == CHANNELROOT_ID)
+                {
+                    int ch = sc->gnChannel(i);
+                    if (ch >= 0 && ch < 16)
+                        chNames[ch] = sc->gnName(i);
+                }
+            }
+            for (int ch = 0; ch < 16; ch++)
+            {
+                if (chNames[ch].empty())
+                    snprintf(chBufs[ch], sizeof(chBufs[ch]), "Channel %d", ch + 1);
+                else
+                    snprintf(chBufs[ch], sizeof(chBufs[ch]), "%d : %s", ch + 1, chNames[ch].c_str());
+                chLabels[ch] = chBufs[ch];
+            }
+            chLabels[16] = "SynthRoot";
+
+            for (int i = 0; i < 17; i++)
+            {
+                if (ImGui::Selectable(chLabels[i]))
+                {
+                    if (s_canvas)
+                        s_canvas->jumpToChannel(i == 16 ? -1 : i);
+                }
+            }
+            ImGui::EndCombo();
+        }
     }
 
     toolbarSeparator(dl, tbPos, tbH);

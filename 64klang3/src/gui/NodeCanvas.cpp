@@ -2602,7 +2602,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
         // Hit-test X button
         ImGuiIO& io = ImGui::GetIO();
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel)
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel && canvasHovered)
         {
             ImVec2 mpos = io.MousePos;
             if (mpos.x >= xMin.x && mpos.x <= xMax.x &&
@@ -2803,7 +2803,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
         // Hit-test: detect click on button to open/toggle edit panel
         ImGuiIO& io = ImGui::GetIO();
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel)
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel && canvasHovered)
         {
             ImVec2 mpos = io.MousePos;
             if (mpos.x >= btnMin.x && mpos.x <= btnMax.x &&
@@ -2860,7 +2860,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
             // Click handling
             ImGuiIO& io = ImGui::GetIO();
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel)
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel && canvasHovered)
             {
                 ImVec2 mpos = io.MousePos;
                 if (mpos.x >= btnMin.x && mpos.x <= btnMax.x &&
@@ -3022,6 +3022,11 @@ void NodeCanvas::render()
     ImGui::InvisibleButton("##canvas", canvasSize,
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
     canvasHovered = ImGui::IsItemHovered();
+
+    // Suppress canvas interaction while any popup (combo dropdown, context menu, …) is open.
+    // Without this, the click that dismisses the popup also hits the canvas.
+    if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
+        canvasHovered = false;
 
     SynthController* sc = SynthController::instance();
 
