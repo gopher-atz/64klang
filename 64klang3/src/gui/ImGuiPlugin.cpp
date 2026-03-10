@@ -94,7 +94,6 @@ static bool openFileDialog(char* outBuf, int outBufSz,
                             const char* filter, const char* defExt,
                             bool forSave)
 {
-    outBuf[0] = '\0';
 #ifdef _WIN32
     OPENFILENAMEA ofn  = {};
     ofn.lStructSize    = sizeof(ofn);
@@ -111,6 +110,9 @@ static bool openFileDialog(char* outBuf, int outBufSz,
     // Flush any WM_KEY* messages that accumulated while the dialog pumped the
     // message loop; without this the host receives them as MIDI note triggers.
     { MSG m; while (PeekMessageA(&m, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE)) {} }
+    // Tell ImGui the left button was released; the dialog consumed the WM_LBUTTONUP
+    // so ImGui never saw it and would otherwise require two clicks to interact again.
+    ImGui::GetIO().AddMouseButtonEvent(0, false);
     return ok;
 #else
     (void)outBufSz; (void)filter; (void)defExt; (void)forSave;
@@ -161,8 +163,8 @@ static void renderToolbar()
     {
         char buf[512] = {};
         if (openFileDialog(buf, 512,
-                "64klang2 Patch\0*.64klang2\0All Files\0*.*\0",
-                "64klang2", false) && sc)
+                "64klang2 Patch\0*.64k2Patch\0All Files\0*.*\0",
+                "64k2Patch", false) && sc)
         {
             sc->killVoices();
             sc->loadPatch(std::string(buf));
@@ -171,10 +173,10 @@ static void renderToolbar()
     ImGui::SameLine();
     if (ImGui::Button("Save Patch"))
     {
-        char buf[512] = {};
+        char buf[512] = {"MyPatch.64k2Patch"};
         if (openFileDialog(buf, 512,
-                "64klang2 Patch\0*.64klang2\0All Files\0*.*\0",
-                "64klang2", true) && sc)
+                "64klang2 Patch\0*.64k2Patch\0All Files\0*.*\0",
+                "64k2Patch", true) && sc)
             sc->savePatch(std::string(buf));
     }
     ImGui::SameLine();
@@ -200,10 +202,10 @@ static void renderToolbar()
 
     if (ImGui::Button("Export Patch"))
     {
-        char buf[512] = {};
+        char buf[512] = {"64k2Patch.h"};
         if (openFileDialog(buf, 512,
-                "64klang2 Patch\0*.64klang2\0All Files\0*.*\0",
-                "64klang2", true) && sc)
+                "64klang2 Patch Header\0*.h\0All Files\0*.*\0",
+                "h", true) && sc)
             sc->exportPatch(std::string(buf));
     }
     ImGui::SameLine();
@@ -214,7 +216,7 @@ static void renderToolbar()
     static const char* kQuantLabels[]      = {"16","32","48","64","80","96","112","128","144","160","176","192","208","224","240","256"};
     if (ImGui::Button("Export Song"))
     {
-        char buf[512] = {};
+        char buf[512] = {"64k2Song.h"};
         if (openFileDialog(buf, 512,
                 "64klang2 Song Header\0*.h\0All Files\0*.*\0",
                 "h", true) && sc)

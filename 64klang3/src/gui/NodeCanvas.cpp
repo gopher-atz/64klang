@@ -728,42 +728,60 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             else
             {
                 // Single click on node
-                bool ctrl = io.KeyCtrl;
-                bool shift = io.KeyShift;
+                // Skip selection/drag if click lands on channel buttons (Load/Save Channel)
+                int gi = findGuiIndex(hitID);
+                int nodeType = (gi >= 0) ? sc->gnType(gi) : -1;
+                bool clickedChannelBtn = false;
+                if (nodeType == CHANNELROOT_ID && gi >= 0)
+                {
+                    int numSig = effectiveInputCount(gi);
+                    bool hasEdit = nodeHasEditButton(gi);
+                    ImVec2 nodePos = nodeScreenPos(sc->gnX(gi), sc->gnY(gi), canvasPos);
+                    float btnBaseY = nodePos.y + (kHeaderHeight + (float)numSig * kRowHeight
+                                                  + (hasEdit ? kEditButtonHeight : 0.f)) * zoom;
+                    float btnTotalH = kEditButtonHeight * zoom * 2.f;
+                    clickedChannelBtn = (mousePos.y >= btnBaseY && mousePos.y <= btnBaseY + btnTotalH);
+                }
 
-                if (shift)
+                if (!clickedChannelBtn)
                 {
-                    // Shift+click: recursive upstream select
-                    if (!ctrl)
-                        selectedNodeIDs.clear();
-                    std::unordered_set<int> visited;
-                    recursiveSelect(hitID, visited);
-                }
-                else if (ctrl)
-                {
-                    // Ctrl+click: toggle
-                    if (selectedNodeIDs.count(hitID))
-                        selectedNodeIDs.erase(hitID);
-                    else
-                        selectedNodeIDs.insert(hitID);
-                }
-                else
-                {
-                    // Plain click
-                    if (!selectedNodeIDs.count(hitID))
+                    bool ctrl = io.KeyCtrl;
+                    bool shift = io.KeyShift;
+
+                    if (shift)
                     {
-                        selectedNodeIDs.clear();
-                        selectedNodeIDs.insert(hitID);
+                        // Shift+click: recursive upstream select
+                        if (!ctrl)
+                            selectedNodeIDs.clear();
+                        std::unordered_set<int> visited;
+                        recursiveSelect(hitID, visited);
                     }
-                    // If already selected, keep selection (for group drag)
+                    else if (ctrl)
+                    {
+                        // Ctrl+click: toggle
+                        if (selectedNodeIDs.count(hitID))
+                            selectedNodeIDs.erase(hitID);
+                        else
+                            selectedNodeIDs.insert(hitID);
+                    }
+                    else
+                    {
+                        // Plain click
+                        if (!selectedNodeIDs.count(hitID))
+                        {
+                            selectedNodeIDs.clear();
+                            selectedNodeIDs.insert(hitID);
+                        }
+                        // If already selected, keep selection (for group drag)
+                    }
+
+                    syncSelectionToCore();
+
+                    // Prepare for potential drag
+                    pressedNodeID = hitID;
+                    dragStartMouse = mousePos;
+                    isDragging = false;
                 }
-
-                syncSelectionToCore();
-
-                // Prepare for potential drag
-                pressedNodeID = hitID;
-                dragStartMouse = mousePos;
-                isDragging = false;
             }
         }
         else
@@ -2553,7 +2571,7 @@ void NodeCanvas::handlePanZoom(const ImVec2& canvasPos, const ImVec2& canvasSize
     {
         float oldZoom = zoom;
         zoom *= (io.MouseWheel > 0) ? 1.1f : (1.f / 1.1f);
-        zoom = std::max(0.1f, std::min(zoom, 5.0f));
+        zoom = std::max(0.03f, std::min(zoom, 5.0f));
 
         // Zoom toward mouse position
         ImVec2 mouseRel = ImVec2(io.MousePos.x - canvasPos.x,
@@ -2950,7 +2968,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                     mpos.y >= btnMin.y && mpos.y <= btnMax.y)
                 {
 #ifdef _WIN32
-                    char buf[512] = {};
+                    char buf[512] = {"MyChannel.64k2Channel"};
                     OPENFILENAMEA ofn  = {};
                     ofn.lStructSize    = sizeof(ofn);
                     ofn.hwndOwner      = (HWND)K64GUI::getWindowHandle();
@@ -2964,19 +2982,16 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                         ofn.Flags |= OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
                         bool ok = GetOpenFileNameA(&ofn) != 0;
                         { MSG m; while (PeekMessageA(&m, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE)) {} }
-                        if (ok && sc->loadChannel(ch, std::string(buf)))
-                        {
-                            selectedNodeIDs.clear();
-                            std::unordered_set<int> visited;
-                            recursiveSelect(nodeID, visited);
-                            syncSelectionToCore();
-                        }
+                        ImGui::GetIO().AddMouseButtonEvent(0, false);
+                        if (ok)
+                            sc->loadChannel(ch, std::string(buf));
                     }
                     else
                     {
                         ofn.Flags |= OFN_OVERWRITEPROMPT;
                         bool ok = GetSaveFileNameA(&ofn) != 0;
                         { MSG m; while (PeekMessageA(&m, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE)) {} }
+                        ImGui::GetIO().AddMouseButtonEvent(0, false);
                         if (ok)
                             sc->saveChannel(ch, std::string(buf));
                     }
@@ -3467,7 +3482,9 @@ void NodeCanvas::drawWaveFileDialog()
                 ofn.nMaxFile      = MAX_PATH;
                 ofn.Flags         = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
                 ofn.lpstrDefExt   = "wav";
-                if (GetOpenFileNameA(&ofn))
+                bool wavOk = GetOpenFileNameA(&ofn) != 0;
+                { MSG m; while (PeekMessageA(&m, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE)) {} }
+                if (wavOk)
                     sc->setWaveFileReference(i, 0, freq, std::string(filenameBuf));
 #endif
             }
