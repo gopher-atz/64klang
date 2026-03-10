@@ -2984,6 +2984,7 @@ void SynthController::setWaveFileReference(int index, int format, int frequency,
 	SynthGlobalState.RawWaveFormat[index] = 0;
 	SynthGlobalState.RawWaveFrequency[index] = 0;
 	SynthGlobalState.RawWaveFileName[index] = "";
+	SynthGlobalState.RawWavePackedSize[index] = 0;
 	SynthGlobalState.CompSampleRate[index] = 0;
 	SynthGlobalState.CompAvgBytes[index] = 0;
 	SynthGlobalState.CompWaveTableSize[index] = 0;

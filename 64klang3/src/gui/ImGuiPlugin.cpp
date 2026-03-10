@@ -190,7 +190,7 @@ static void renderToolbar()
     toolbarSeparator(dl, tbPos, tbH);
 
     // ── Waves ─────────────────────────────────────────────────────────────
-    if (ImGui::Button("Edit Wavetables"))
+    if (ImGui::Button("Wavetables"))
     {
         if (s_canvas)
             s_canvas->toggleWaveFileDialog();
@@ -222,7 +222,7 @@ static void renderToolbar()
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(44.f);
-    ImGui::Combo("##quant", &s_exportQuantIdx, kQuantLabels, 16);
+    ImGui::Combo("##quant", &s_exportQuantIdx, kQuantLabels, 16, ImGuiComboFlags_HeightLargest);
 
     toolbarSeparator(dl, tbPos, tbH);
 
@@ -230,13 +230,13 @@ static void renderToolbar()
     // Indices 0-15 = channels 1-16, index 16 = SynthRoot (channel -1).
     // Labels are rebuilt each frame from ChannelRoot node names so they
     // reflect renames and patch/channel loads immediately.
-    ImGui::TextUnformatted("Jump To Channel:");
+    ImGui::TextUnformatted("Jump To:");
     ImGui::SameLine(0.f, 3.f);
     {
         // Use BeginCombo so we can show a blank placeholder when nothing is selected.
         // Channel names are built only when the dropdown is actually opened.
         ImGui::SetNextItemWidth(150.f);
-        if (ImGui::BeginCombo("##ch", "---"))
+        if (ImGui::BeginCombo("##ch", "---", ImGuiComboFlags_HeightLargest))
         {
             // Single pass over the node list to collect ChannelRoot names.
             char        chBufs[16][64];
@@ -294,18 +294,18 @@ static void renderToolbar()
         float voiceTextW = ImGui::CalcTextSize(voiceBuf).x;
         float rightEdge  = tbPos.x + tbW - 6.f;
 
-        // Voices label (rightmost)
+        // P.A.N.I.C button (rightmost)
         ImGui::SetCursorScreenPos(ImVec2(
-            rightEdge - voiceTextW,
-            tbPos.y + (tbH - ImGui::GetTextLineHeight()) * 0.5f));
-        ImGui::TextUnformatted(voiceBuf);
-
-        // P.A.N.I.C button (left of Voices)
-        ImGui::SetCursorScreenPos(ImVec2(
-            rightEdge - voiceTextW - 8.f - panicW,
+            rightEdge - panicW,
             tbPos.y + 4.f));
         if (ImGui::Button("P.A.N.I.C") && sc)
             sc->panic();
+
+        // Voices label (left of P.A.N.I.C)
+        ImGui::SetCursorScreenPos(ImVec2(
+            rightEdge - panicW - 8.f - voiceTextW,
+            tbPos.y + (tbH - ImGui::GetTextLineHeight()) * 0.5f));
+        ImGui::TextUnformatted(voiceBuf);
     }
 
     ImGui::PopFont();

@@ -42,9 +42,14 @@ void NodeCanvas::jumpToChannel(int channel)
 
         int nodeID = sc->gnID(i);
 
-        // Center the canvas on this node.
-        float cx = (float)sc->gnX(i);
-        float cy = (float)sc->gnY(i);
+        // Center the canvas on this node's center point.
+        int   numIn        = effectiveInputCount(i);
+        bool  hasEditBtn   = nodeHasEditButton(i);
+        bool  hasChBtns    = (sc->gnType(i) == CHANNELROOT_ID);
+        float halfW        = kNodeWidth * 0.5f;
+        float halfH        = nodeHeight(numIn, hasEditBtn, /*hasAddInput=*/false, hasChBtns) * 0.5f;
+        float cx = (float)sc->gnX(i) + halfW;
+        float cy = (float)sc->gnY(i) + halfH;
         if (canvasSizeCache.x > 0 && canvasSizeCache.y > 0)
         {
             offsetX = canvasSizeCache.x / (2.f * zoom) - cx;

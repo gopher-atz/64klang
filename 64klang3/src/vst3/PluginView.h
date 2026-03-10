@@ -27,17 +27,19 @@ public:
     tresult PLUGIN_API removed() override;
     tresult PLUGIN_API onSize(ViewRect* newSize) override;
     tresult PLUGIN_API getSize(ViewRect* size) override;
+    tresult PLUGIN_API canResize() override;
+    tresult PLUGIN_API checkSizeConstraint(ViewRect* rect) override;
 
 #ifdef _WIN32
     void renderFrame(); // called by the file-scope CALLBACK timerCallback
 #endif
 
+    static constexpr int32 kDefaultWidth  = 1280;
+    static constexpr int32 kDefaultHeight = 800;
+
 private:
     void* nativeHandle = nullptr;
     bool guiInitialized = false;
-
-    static constexpr int32 kDefaultWidth = 1280;
-    static constexpr int32 kDefaultHeight = 800;
 
 #ifdef _WIN32
     // D3D11 resources

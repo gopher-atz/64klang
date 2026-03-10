@@ -34,13 +34,20 @@ static LRESULT CALLBACK editorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 namespace Steinberg {
 namespace Vst {
 
+// Persists window size and position across view create/destroy cycles within a
+#ifdef _WIN32
+// Session-static window geometry — position and total HWND size (including host
+// chrome) captured from GetWindowRect so SetWindowPos round-trips cleanly.
+static POINT s_savedPos      = { -1, -1 };  // -1,-1 = not yet saved
+static int   s_savedWinW     = 0;
+static int   s_savedWinH     = 0;
+static bool  s_pendingRestore = false;
+#endif
+
 K64PluginView::K64PluginView()
     : CPluginView(nullptr)
 {
-    rect.left = 0;
-    rect.top = 0;
-    rect.right = kDefaultWidth;
-    rect.bottom = kDefaultHeight;
+    rect = { 0, 0, kDefaultWidth, kDefaultHeight };
 }
 
 K64PluginView::~K64PluginView()
@@ -104,6 +111,10 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     // Start render timer (~60 fps)
     g_activeView = this;
     timerID = SetTimer((HWND)parent, 1, 16, (TIMERPROC)timerCallback);
+
+    // Arm lazy restore — applied on the first rendered frame so the host has
+    // finished placing the window before we reposition/resize it.
+    s_pendingRestore = true;
 #endif
 
     guiInitialized = true;
@@ -115,6 +126,15 @@ tresult PLUGIN_API K64PluginView::removed()
 #ifdef _WIN32
     if (nativeHandle)
     {
+        // Save full HWND rect for session-static restore on next open.
+        // Use the total window size (not the VST3 ViewRect) so that
+        // SetWindowPos round-trips without shrinking host chrome each cycle.
+        RECT wr = {};
+        ::GetWindowRect((HWND)nativeHandle, &wr);
+        s_savedPos  = { wr.left, wr.top };
+        s_savedWinW = wr.right  - wr.left;
+        s_savedWinH = wr.bottom - wr.top;
+
         KillTimer((HWND)nativeHandle, (UINT_PTR)timerID);
         timerID = 0;
         g_activeView = nullptr;
@@ -174,6 +194,27 @@ tresult PLUGIN_API K64PluginView::getSize(ViewRect* size)
 
     *size = rect;
     return kResultOk;
+}
+
+tresult PLUGIN_API K64PluginView::canResize()
+{
+    return kResultTrue;
+}
+
+tresult PLUGIN_API K64PluginView::checkSizeConstraint(ViewRect* rect)
+{
+    if (!rect)
+        return kInvalidArgument;
+
+    static constexpr int32 kMinWidth  = 640;
+    static constexpr int32 kMinHeight = 400;
+
+    if (rect->right  - rect->left < kMinWidth)
+        rect->right  = rect->left + kMinWidth;
+    if (rect->bottom - rect->top  < kMinHeight)
+        rect->bottom = rect->top  + kMinHeight;
+
+    return kResultTrue;
 }
 
 #ifdef _WIN32
@@ -301,6 +342,17 @@ void K64PluginView::renderFrame()
 {
     if (!d3dDevice || !swapChain || !mainRTV)
         return;
+
+    // Lazy position + size restore: applied on the first frame after attach so
+    // the host has finished placing the window before we override it.
+    if (s_pendingRestore && nativeHandle)
+    {
+        s_pendingRestore = false;
+        if (s_savedPos.x != -1)
+            SetWindowPos((HWND)nativeHandle, nullptr,
+                         s_savedPos.x, s_savedPos.y, s_savedWinW, s_savedWinH,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+    }
 
     // Guard against re-entrant calls: blocking operations inside a frame
     // (e.g. GetOpenFileNameA) pump the Win32 message loop which can fire
