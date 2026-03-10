@@ -3733,11 +3733,7 @@ void SynthController::exportPatch(const std::string& filename)
 void SynthController::noteOn(int channel, int note, int velocity)
 {
 	Recorder.AddNoteOn(channel, note, velocity);
-	if (DataAccessMutex.try_lock_for(std::chrono::milliseconds(1)))
-	{
-		_64klang_NoteOn(channel, note, velocity);
-		DataAccessMutex.unlock();
-	}
+	_64klang_NoteOn(channel, note, velocity);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3745,11 +3741,7 @@ void SynthController::noteOn(int channel, int note, int velocity)
 void SynthController::noteOff(int channel, int note, int velocity)
 {
 	Recorder.AddNoteOff(channel, note);
-	if (DataAccessMutex.try_lock_for(std::chrono::milliseconds(1)))
-	{
-		_64klang_NoteOff(channel, note, velocity);
-		DataAccessMutex.unlock();
-	}
+	_64klang_NoteOff(channel, note, velocity);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3757,11 +3749,7 @@ void SynthController::noteOff(int channel, int note, int velocity)
 void SynthController::noteAftertouch(int channel, int note, int pressure)
 {
 	Recorder.AddNoteAftertouch(channel, note, pressure);
-	if (DataAccessMutex.try_lock_for(std::chrono::milliseconds(1)))
-	{
-		_64klang_NoteAftertouch(channel, note, pressure);
-		DataAccessMutex.unlock();
-	}
+	_64klang_NoteAftertouch(channel, note, pressure);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3769,11 +3757,7 @@ void SynthController::noteAftertouch(int channel, int note, int pressure)
 void SynthController::midiSignal(int channel, int value, int cc)
 {
 	Recorder.AddCC(channel, value, cc);
-	if (DataAccessMutex.try_lock_for(std::chrono::milliseconds(1)))
-	{
-		_64klang_MidiSignal(channel, value, cc);
-		DataAccessMutex.unlock();
-	}
+	_64klang_MidiSignal(channel, value, cc);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3788,9 +3772,7 @@ void SynthController::setBPM(float bpm)
 void SynthController::tick(float* left, float* right, int samples)
 {
 	Recorder.AddSamples(samples);
-	DataAccessMutex.lock();
 	_64klang_Tick(left, right, samples);
-	DataAccessMutex.unlock();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

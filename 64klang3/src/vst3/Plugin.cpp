@@ -69,6 +69,8 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
     if (!synthInitialized)
         return kResultOk;
 
+    SynthController* sc = SynthController::instance();
+
     // Try to acquire mutex with 1ms timeout — output silence on failure
     if (!SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(1)))
     {
@@ -99,12 +101,12 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
                 switch (e.type)
                 {
                 case Event::kNoteOnEvent:
-                    _64klang_NoteOn(e.noteOn.channel, e.noteOn.pitch,
-                                    (uint32_t)(e.noteOn.velocity * 127.f));
+                    sc->noteOn(e.noteOn.channel, e.noteOn.pitch,
+                               (uint32_t)(e.noteOn.velocity * 127.f));
                     break;
                 case Event::kNoteOffEvent:
-                    _64klang_NoteOff(e.noteOff.channel, e.noteOff.pitch,
-                                     (uint32_t)(e.noteOff.velocity * 127.f));
+                    sc->noteOff(e.noteOff.channel, e.noteOff.pitch,
+                                (uint32_t)(e.noteOff.velocity * 127.f));
                     break;
                 default:
                     break;
@@ -124,7 +126,7 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
     {
         float* left = data.outputs[0].channelBuffers32[0];
         float* right = data.outputs[0].channelBuffers32[1];
-        _64klang_Tick(left, right, data.numSamples);
+        sc->tick(left, right, data.numSamples);
     }
 
     SynthController::DataAccessMutex.unlock();

@@ -161,15 +161,34 @@ endif()
 if(WIN32)
     set(DEBUG_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tools/DebugExe)
     if(EXISTS ${DEBUG_DIR}/Exe.cpp)
-        add_executable(DebugExe
+        add_executable(DebugExe WIN32
             ${DEBUG_DIR}/Exe.cpp
+            ${GUI_DIR}/ImGuiPlugin.cpp
+            ${GUI_DIR}/ImGuiPlugin.h
+            ${GUI_DIR}/NodeCanvas.cpp
+            ${GUI_DIR}/NodeCanvas.h
+            ${GUI_DIR}/NodeConfig.cpp
+            ${GUI_DIR}/NodeConfig.h
+            ${GUI_DIR}/Widgets.cpp
+            ${GUI_DIR}/Widgets.h
+            ${GUI_DIR}/ArpEditor.cpp
+            ${GUI_DIR}/ArpEditor.h
+            ${GUI_DIR}/NodeConfigData.h
         )
         target_link_libraries(DebugExe PRIVATE
             64klang_core
             imgui
+            d3d11
+            dxgi
+            winmm
         )
         target_include_directories(DebugExe PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${GUI_DIR}
+            ${DEBUG_DIR}
         )
+        if(MSVC)
+            target_compile_options(DebugExe PRIVATE /wd4244 /wd4267)
+        endif()
     endif()
 endif()
