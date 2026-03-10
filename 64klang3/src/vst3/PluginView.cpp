@@ -97,8 +97,9 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     // Subclass the host window to receive input events
     g_originalWndProc = (WNDPROC)SetWindowLongPtr((HWND)parent, GWLP_WNDPROC, (LONG_PTR)editorWndProc);
 
-    // Init the 64klang GUI layer
+    // Init the 64klang GUI layer and pass the HWND for file dialogs
     K64GUI::init();
+    K64GUI::setWindowHandle(parent);
 
     // Start render timer (~60 fps)
     g_activeView = this;
@@ -125,6 +126,7 @@ tresult PLUGIN_API K64PluginView::removed()
             g_originalWndProc = nullptr;
         }
 
+        K64GUI::setWindowHandle(nullptr);
         K64GUI::shutdown();
 
         ImGui_ImplDX11_Shutdown();
@@ -300,6 +302,14 @@ void K64PluginView::renderFrame()
     if (!d3dDevice || !swapChain || !mainRTV)
         return;
 
+    // Guard against re-entrant calls: blocking operations inside a frame
+    // (e.g. GetOpenFileNameA) pump the Win32 message loop which can fire
+    // WM_TIMER again, causing a second NewFrame() before the first Render().
+    static bool s_inFrame = false;
+    if (s_inFrame)
+        return;
+    s_inFrame = true;
+
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
 
@@ -346,6 +356,7 @@ void K64PluginView::renderFrame()
     }
 
     swapChain->Present(1, 0); // vsync
+    s_inFrame = false;
 }
 
 #endif // _WIN32

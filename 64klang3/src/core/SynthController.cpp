@@ -1188,6 +1188,28 @@ int SynthController::getArpPlayPos(DWORD nodeid)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+int SynthController::getTriggerSeqPlayPos(DWORD nodeid)
+{
+	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
+	if (it != _nodeGUIInfo.end())
+	{
+		SynthNode* node = it->second.Node;
+		if (node->id != TRIGGERSEQ_ID)
+			return -1;
+		// v[0] doubles each step: 1→tick0, 2→tick1, 4→tick2, ..., 128→tick7
+		// v[1] = current pattern (0-based float)
+		int step = (int)node->v[0].d[0];
+		int tick = 0;
+		while (step > 1 && tick < 7) { step >>= 1; tick++; }
+		int pattern = (int)node->v[1].d[0];
+		if (pattern < 0) pattern = 0;
+		return (pattern << 8) | tick;
+	}
+	return -1;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 void SynthController::setArpStepData(DWORD nodeid, DWORD step, DWORD value)
 {
 	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
@@ -1710,6 +1732,18 @@ int SynthController::getNumActiveVoices(DWORD node)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+bool SynthController::inputIsModulated(DWORD nodeID, DWORD inputIdx)
+{
+	auto it = _nodeGUIInfo.find(nodeID);
+	if (it == _nodeGUIInfo.end()) return false;
+	SynthNode* modadder = it->second.ModAdder[inputIdx];
+	if (!modadder) return false;
+	// input[1] of the ModAdder is reset to constant0() by disconnectInput when no wire is connected.
+	return modadder->input[1] != (sample_t*)constant0();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 double SynthController::getNodeSignal(DWORD nodeid, int left, int inp)
 {
 	SynthNode* useNode = SynthGlobalState.GlobalNodes[nodeid];
@@ -1916,6 +1950,13 @@ void SynthController::recursiveAddChannel(SynthNode* node, int channel)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+static void setAttrDouble6(TiXmlElement& el, const char* name, double val)
+{
+	char buf[32];
+	snprintf(buf, sizeof(buf), "%.6g", val);
+	el.SetAttribute(name, buf);
+}
+
 void SynthController::saveNode(SynthNode* n, TiXmlElement& root, int saveChannel)
 {
 	if (n)
@@ -1984,15 +2025,15 @@ void SynthController::saveNode(SynthNode* n, TiXmlElement& root, int saveChannel
 				// modadder not used?
 				if (input->id == CONSTANT_ID)
 				{
-					inode.SetDoubleAttribute("value1", input->out.d[0]);
-					inode.SetDoubleAttribute("value2", input->out.d[1]);
+					setAttrDouble6(inode, "value1", input->out.d[0]);
+					setAttrDouble6(inode, "value2", input->out.d[1]);
 				}
 				// modadder used?
 				else
 				{
 					SynthNode* modadder = ni->ModAdder[i];
-					inode.SetDoubleAttribute("value1", modadder->input[0]->d[0]);
-					inode.SetDoubleAttribute("value2", modadder->input[0]->d[1]);
+					setAttrDouble6(inode, "value1", modadder->input[0]->d[0]);
+					setAttrDouble6(inode, "value2", modadder->input[0]->d[1]);
 					inode.SetAttribute("input", ((SynthNode*)(modadder->input[1]))->valueOffset / NODE_SLOTS);
 				}
 				node.InsertEndChild(inode);
@@ -2075,8 +2116,8 @@ void SynthController::saveNode(SynthNode* n, TiXmlElement& root, int saveChannel
 			node.SetAttribute("id", n->valueOffset / NODE_SLOTS);
 			if (ni->Name != "")
 				node.SetAttribute("name", ni->Name);
-			node.SetDoubleAttribute("value1", n->out.d[0]);
-			node.SetDoubleAttribute("value2", n->out.d[1]);
+			setAttrDouble6(node, "value1", n->out.d[0]);
+			setAttrDouble6(node, "value2", n->out.d[1]);
 			root.InsertEndChild(node);
 		}
 	}

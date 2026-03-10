@@ -134,6 +134,8 @@ smtg_add_vst3plugin(64klang3
     ${GUI_DIR}/NodeConfig.h
     ${GUI_DIR}/Widgets.cpp
     ${GUI_DIR}/Widgets.h
+    ${GUI_DIR}/ArpEditor.cpp
+    ${GUI_DIR}/ArpEditor.h
     ${GUI_DIR}/NodeConfigData.h
 )
 

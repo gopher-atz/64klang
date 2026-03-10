@@ -103,11 +103,16 @@ public:
 	int getArpStepData(DWORD node, DWORD step);
 	int getArpPlayPos(DWORD node);
 	void setArpStepData(DWORD node, DWORD step, DWORD value);
+	// Returns (patternIndex << 8) | tickIndex (both 0-based).  -1 on error.
+	int getTriggerSeqPlayPos(DWORD node);
 	void setX(DWORD node, double x);
 	void setY(DWORD node, double y);
 	void setName(DWORD node, std::string name);
 	std::string getName(DWORD node);
 	double getNodeSignal(DWORD node, int left, int input);
+	// Returns true when a modulation wire is actually connected to a parameter input.
+	// Uses the ModAdder's second-input pointer — reliable regardless of audio playback state.
+	bool   inputIsModulated(DWORD nodeID, DWORD inputIdx);
 	void setSAPIText(DWORD node, std::string text);
 	void setFormulaText(DWORD node, std::string text, std::string rpn);
 	std::string getSAPIText(DWORD node);

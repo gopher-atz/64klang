@@ -1,6 +1,7 @@
 #pragma once
 
 #include "imgui.h"
+#include <array>
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
@@ -19,6 +20,11 @@ public:
     void setOffset(float x, float y) { offsetX = x; offsetY = y; }
     void setZoom(float z) { zoom = z; }
     float getZoom() const { return zoom; }
+
+    // Toolbar integration
+    void toggleWaveFileDialog() { showWaveFileDialog = !showWaveFileDialog; }
+    void jumpToChannel(int channel);           // scroll canvas to center on ChannelRoot N
+    void setSearchFilter(const char* text) { searchFilter = text; }
 
 private:
     float offsetX = 0.f;
@@ -70,7 +76,7 @@ private:
     float  knobDragAccum = 0.f;  // sub-step accumulator for integer-quantized dragging
 
     // Edit panel layout constants (in canvas/world coords, scaled by zoom)
-    static constexpr float kEditPanelWidth = 280.f;
+    static constexpr float kEditPanelWidth = 230.f;
     static constexpr float kEditHeaderH = 25.f;
     static constexpr float kEditLabelH = 16.f;
     static constexpr float kEditKnobDiam = 36.f;
@@ -87,6 +93,10 @@ private:
 
     // Tracks which node outputs have at least one wire going out (rebuilt each frame)
     std::unordered_set<int> connectedOutputIDs;
+
+    // Text edit buffers for TextToSpeech (SAPI, TypeID 50) and Formula (TypeID 54) panels.
+    // Keyed by nodeID; lazily populated when a panel is first displayed.
+    std::unordered_map<int, std::array<char, 4096>> textEditBuffers;
 
     // Clipboard for copy/paste
     struct ClipboardInput {
@@ -115,11 +125,20 @@ private:
     int    lastNodeCount = 0;
     bool   needsInitialView = true;
 
+    // Search filter (set from toolbar; empty = no highlight)
+    std::string searchFilter;
+
+    // Canvas size cached from last render() call (used by jumpToChannel)
+    ImVec2 canvasSizeCache = {0, 0};
+
     // Cached per-frame hover state from InvisibleButton
     bool   canvasHovered = false;
 
     // Debug overlay toggle (Ctrl+Shift+D)
     bool   showDebugOverlay = false;
+
+    // Wave File References dialog (Ctrl+W)
+    bool   showWaveFileDialog = false;
 
     // Toast notifications
     struct Toast { std::string message; double expireTime; };
@@ -184,11 +203,12 @@ private:
     void drawRenameOverlay(const ImVec2& canvasOrigin);
     void drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin);
     void updateMouseOverEditPanel(const ImVec2& canvasOrigin);
+    void drawWaveFileDialog();
     void commitRename();
 
     static constexpr float kEditButtonHeight = 20.f;
 
-    float nodeHeight(int numInputs, bool hasEditBtn, bool hasAddInput = false) const;
+    float nodeHeight(int numInputs, bool hasEditBtn, bool hasAddInput = false, bool hasChannelBtns = false) const;
     int   effectiveInputCount(int guiIndex) const;
     bool  nodeHasEditButton(int guiIndex) const;
     std::string buildModeText(int guiIndex) const;

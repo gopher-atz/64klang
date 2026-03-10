@@ -17,4 +17,8 @@ void shutdown();
 // Check if GUI is initialized
 bool isInitialized();
 
+// Pass / retrieve the native window handle (HWND on Windows).
+void  setWindowHandle(void* hwnd);
+void* getWindowHandle();
+
 } // namespace K64GUI
