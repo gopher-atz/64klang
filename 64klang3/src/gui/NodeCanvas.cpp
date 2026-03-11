@@ -478,7 +478,8 @@ NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImV
                 return {sc->gnID(i), pin};
         }
 
-        // "Add Input" pill for variable-input nodes (index ignored by connectInput)
+        // "Add Input" pill for variable-input nodes. For NoteController, ONLY this pill adds;
+        // existing pins replace. MULTIADD still uses any pin to add (legacy behavior).
         if ((nodeTypeHT == MULTIADD_ID || nodeTypeHT == NOTECONTROLLER_ID) && numSignals < 16)
         {
             float pillBaseY = pos.y + nodeHeight(numSignals, hasEditBtnHT, false) * zoom;
@@ -488,7 +489,7 @@ NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImV
             ImVec2 pillMax(pos.x + w - pillInset, pillBaseY + pillH - 2.f * zoom);
             if (mousePos.x >= pillMin.x && mousePos.x <= pillMax.x &&
                 mousePos.y >= pillMin.y && mousePos.y <= pillMax.y)
-                return {sc->gnID(i), numSignals}; // index ignored for variable-input nodes
+                return {sc->gnID(i), numSignals}; // Add-input dropzone
         }
     }
     return {-1, -1};
@@ -2686,6 +2687,20 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         dl->AddRect(pos, ImVec2(pos.x + w, pos.y + h), borderColor, 2.f * zoom, 0, 1.f);
     }
 
+    // VoiceManager: pulsating greenish frame when it has active voices
+    if (nodeType == VOICEMANAGER_ID)
+    {
+        auto it = liveDataCache.find(nodeID);
+        if (it != liveDataCache.end() && it->second.voiceCount > 0)
+        {
+            float t = (float)ImGui::GetTime();
+            float pulse = 0.4f + 0.6f * (0.5f + 0.5f * sinf(t * 5.f));
+            int g = (int)(80 + 120 * pulse);
+            ImU32 pulseCol = IM_COL32(50, g, 70, (int)(180 + 75 * pulse));
+            dl->AddRect(pos, ImVec2(pos.x + w, pos.y + h), pulseCol, 2.f * zoom, 0, 2.5f);
+        }
+    }
+
     // Search highlight: cyan outer border when the node matches the filter
     if (!searchFilter.empty())
     {
@@ -2712,8 +2727,8 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     }
 
     // Red X delete button (top-left corner)
-    // VoiceRoot is deletable; only SynthRoot/ChannelRoot/NoteController/VoiceManager are protected.
-    bool isStructural = (nodeType >= 0 && nodeType <= (int)VOICEMANAGER_ID);
+    // Only SynthRoot/ChannelRoot/NoteController are protected; Voice Manager is deletable.
+    bool isStructural = (nodeType >= 0 && nodeType <= (int)NOTECONTROLLER_ID);
     if (!isStructural)
     {
         float xbtnSz = kDeleteBtnSize * zoom;
@@ -2748,7 +2763,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                     {
                         int gi = findGuiIndex(id);
                         int tp = (gi >= 0) ? sc->gnType(gi) : -1;
-                        if (tp >= 0 && tp <= (int)VOICEMANAGER_ID) continue;
+                        if (tp >= 0 && tp <= (int)NOTECONTROLLER_ID) continue;
                         deleteNodeMaybeSmart(id, (int)toDelete.size() == 1);
                     }
                     selectedNodeIDs.clear();
@@ -2800,15 +2815,17 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         ImVec2 textSize = ImGui::CalcTextSize(displayName);
         float textScale = headerFontSize / ImGui::GetFontSize();
         float headerTextW = textSize.x * textScale;
-        // Center in header, leaving room for X button on left
-        float textX = pos.x + (w - headerTextW) * 0.5f;
+        // Center in header; reserve left margin for VU meter on SynthRoot/ChannelRoot
+        float leftMargin = (nodeType == SYNTHROOT_ID || nodeType == CHANNELROOT_ID)
+            ? (2.f * 6.f + 1.f + 4.f) * zoom : 0.f;
+        float textX = pos.x + leftMargin + (w - leftMargin - headerTextW) * 0.5f;
         float textY = pos.y + (kHeaderHeight * zoom - headerFontSize) * 0.5f;
         // Faux bold: draw at +0 and +1 pixel offset
         dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(textX, textY), textColor, displayName);
         dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(textX + 1.f, textY), textColor, displayName);
     }
 
-    // VU meter overlay on header (SynthRoot / ChannelRoot)
+    // VU meter on header left (SynthRoot / ChannelRoot) — black background
     if (nodeType == SYNTHROOT_ID || nodeType == CHANNELROOT_ID)
     {
         auto it = liveDataCache.find(nodeID);
@@ -2816,8 +2833,13 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         {
             float vuW = 6.f * zoom;
             float vuH = (kHeaderHeight - 4.f) * zoom;
-            float vuX = pos.x + w - 18.f * zoom;
+            float vuInset = 2.f * zoom;
+            float vuX = pos.x + vuInset;
             float vuY = pos.y + 2.f * zoom;
+            ImVec2 vuMin(vuX, vuY);
+            ImVec2 vuMax(vuX + 2.f * vuW + 1.f * zoom, vuY + vuH);
+
+            dl->AddRectFilled(vuMin, vuMax, IM_COL32(0, 0, 0, 255));
 
             // Left bar
             float lvlL = std::min(it->second.vuL, 1.f);
