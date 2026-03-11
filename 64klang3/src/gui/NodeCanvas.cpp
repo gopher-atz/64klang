@@ -1138,8 +1138,10 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             {
                 double px = mouseCanvasX + cn.relX;
                 double py = mouseCanvasY + cn.relY;
+                // Voice type inputs (id > CONSTANT_ID) can never be global
+                DWORD pasteGlobal = (cn.typeID > (int)CONSTANT_ID) ? 0u : (cn.isGlobal ? 1u : 0u);
                 SynthNode* newNode = sc->createGUINode((DWORD)cn.typeID, (DWORD)cn.channel,
-                                                        (DWORD)(cn.isGlobal ? 1 : 0), px, py);
+                                                        pasteGlobal, px, py);
                 int newID = newNode ? (int)newNode->valueOffset : -1;
                 newNodeIDs.push_back(newID);
             }
@@ -3430,6 +3432,9 @@ void NodeCanvas::render()
                                 }
                                 // else defaults: voice, channel -2
                             }
+                            // Voice type inputs (id > CONSTANT_ID) can never be global; ignore Ctrl
+                            if ((int)nodeDef->id > (int)CONSTANT_ID)
+                                isGlobal = false;
                             // Wire insertion: context wire set + node allows insertion
                             bool doInsert = (contextWireFromID >= 0 && contextWireToID >= 0 &&
                                             contextWirePinIndex >= 0 && nodeDef->allowSignalInsertion);
