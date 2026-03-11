@@ -64,6 +64,9 @@ private:
     bool   isWireDragging = false;
     int    wireDragFromNodeID = -1;
     ImVec2 wireDragCurrentPos = {0, 0};
+    // Click on background while wire dragging: open menu to insert node and continue (continuous wire)
+    bool   wireDragInsertMode = false;
+    ImVec2 wireDragInsertCanvasPos = {0, 0};
 
     // Context menu
     bool   showContextMenu = false;

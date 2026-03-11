@@ -729,9 +729,14 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             if (nodeHit != -1)
                 return;
 
-            // Click on empty background — cancel wire drag
-            isWireDragging = false;
-            wireDragFromNodeID = -1;
+            // Click on empty background — open menu to insert node and continue (continuous wire)
+            // If user dismisses menu without selecting, wire drag ends (handled in popup close)
+            wireDragInsertMode = true;
+            wireDragInsertCanvasPos.x = (float)((mousePos.x - canvasPos.x) / zoom - offsetX);
+            wireDragInsertCanvasPos.y = (float)((mousePos.y - canvasPos.y) / zoom - offsetY);
+            contextMenuCanvasPos = wireDragInsertCanvasPos;
+            showContextMenu = true;
+            ImGui::OpenPopup("##nodeMenu");
             return;
         }
 
@@ -978,15 +983,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         isRubberBanding = false;
     }
 
-    // ── Right-click: cancel wire drag ──
-    if (canvasHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right) && isWireDragging)
-    {
-        isWireDragging = false;
-        wireDragFromNodeID = -1;
-        return;
-    }
-
     // ── Right-button release: open context menu if no panning occurred ──
+    // (Right-drag pans; wire drag state is preserved during pan, same as zoom)
     if (canvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
         !isDragging && !isWireDragging && !didPan)
     {
@@ -3181,6 +3179,7 @@ void NodeCanvas::render()
                 isRubberBanding = false;
                 isWireDragging = false;
                 wireDragFromNodeID = -1;
+                wireDragInsertMode = false;
                 showContextMenu = false;
                 openEditPanels.clear();
                 paramSyncState.clear();
@@ -3370,6 +3369,21 @@ void NodeCanvas::render()
         {
             const float menuFontScale = 18.f / ImGui::GetFont()->FontSize;
             ImGui::SetWindowFontScale(menuFontScale);
+
+            // "Stop wiring" entry — only shown during continuous wire mode
+            if (wireDragInsertMode)
+            {
+                if (ImGui::MenuItem("Stop wiring"))
+                {
+                    wireDragInsertMode = false;
+                    isWireDragging = false;
+                    wireDragFromNodeID = -1;
+                    ImGui::CloseCurrentPopup();
+                    showContextMenu = false;
+                }
+                ImGui::Separator();
+            }
+
             const auto& cats = NodeConfig::instance().getCategories();
             for (const auto& cat : cats)
             {
@@ -3382,13 +3396,29 @@ void NodeCanvas::render()
                         {
                             int channel = -2;
                             bool isGlobal = false;
-                            if (sc)
+                            bool doWireDragInsert = wireDragInsertMode && wireDragFromNodeID >= 0;
+#ifdef _WIN32
+                            bool ctrlHeld = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+#else
+                            bool ctrlHeld = ImGui::GetIO().KeyCtrl;
+#endif
+                            if (ctrlHeld)
                             {
-                                int refID = -1;
-                                if (contextWireFromID >= 0)
-                                    refID = contextWireFromID;
-                                else if (!selectedNodeIDs.empty())
-                                    refID = *selectedNodeIDs.begin();
+                                // Ctrl: explicitly create global node (same for wire-drag and regular menu)
+                                isGlobal = true;
+                                channel = -2;
+                            }
+                            else if (doWireDragInsert)
+                            {
+                                // Continuous wiring: default to voice (no derivation from wire source)
+                                isGlobal = false;
+                                channel = -2;
+                            }
+                            else if (sc)
+                            {
+                                // Regular menu: derive from context wire or selection
+                                int refID = contextWireFromID >= 0 ? contextWireFromID
+                                          : (!selectedNodeIDs.empty() ? *selectedNodeIDs.begin() : -1);
                                 if (refID >= 0)
                                 {
                                     int gi = findGuiIndex(refID);
@@ -3398,6 +3428,7 @@ void NodeCanvas::render()
                                         isGlobal = sc->gnIsGlobal(gi);
                                     }
                                 }
+                                // else defaults: voice, channel -2
                             }
                             // Wire insertion: context wire set + node allows insertion
                             bool doInsert = (contextWireFromID >= 0 && contextWireToID >= 0 &&
@@ -3421,11 +3452,39 @@ void NodeCanvas::render()
                             }
                             if (sc)
                             {
-                                sc->killVoices();
-                                SynthNode* newNode = sc->createGUINode((DWORD)nodeDef->id, (DWORD)channel,
-                                                                       (DWORD)(isGlobal ? 1 : 0),
-                                                                       contextMenuCanvasPos.x, contextMenuCanvasPos.y);
-                                if (doInsert && newNode)
+                                // Continuous wiring: prevent voice→global (same rule as pin connection)
+                                bool blockWireDragInsert = false;
+                                if (doWireDragInsert && isGlobal)
+                                {
+                                    int fromGI = findGuiIndex(wireDragFromNodeID);
+                                    if (fromGI >= 0 && !sc->gnIsGlobal(fromGI))
+                                    {
+                                        int fromType = sc->gnType(fromGI);
+                                        // VoiceRoot→VoiceManager is allowed; other voice→global is not
+                                        if (fromType != (int)VOICEROOT_ID)
+                                        {
+                                            showToast("A voice node output cannot be connected to a global node input!");
+                                            blockWireDragInsert = true;
+                                            wireDragInsertMode = false;  // stay in wire drag, user can pick a voice node
+                                        }
+                                    }
+                                }
+                                if (!blockWireDragInsert)
+                                {
+                                    sc->killVoices();
+                                    ImVec2 createPos = doWireDragInsert ? wireDragInsertCanvasPos : contextMenuCanvasPos;
+                                    SynthNode* newNode = sc->createGUINode((DWORD)nodeDef->id, (DWORD)channel,
+                                                                           (DWORD)(isGlobal ? 1 : 0),
+                                                                           createPos.x, createPos.y);
+                                    if (doWireDragInsert && newNode)
+                                    {
+                                        int newID = (int)newNode->valueOffset;
+                                        sc->connectInput((DWORD)wireDragFromNodeID, (DWORD)newID, 0);
+                                        wireDragFromNodeID = newID;
+                                        wireDragCurrentPos = ImGui::GetIO().MousePos;
+                                        wireDragInsertMode = false;
+                                    }
+                                    else if (doInsert && newNode)
                                 {
                                     int newID = (int)newNode->valueOffset;
                                     sc->disconnectInput((DWORD)contextWireToID, (DWORD)contextWirePinIndex);
@@ -3433,9 +3492,14 @@ void NodeCanvas::render()
                                     // Variable-input targets ignore index and append
                                     sc->connectInput((DWORD)newID, (DWORD)contextWireToID, (DWORD)contextWirePinIndex);
                                 }
-                                contextWireFromID = -1;
-                                contextWireToID = -1;
-                                contextWirePinIndex = -1;
+                                if (!doWireDragInsert)
+                                {
+                                    contextWireFromID = -1;
+                                    contextWireToID = -1;
+                                    contextWirePinIndex = -1;
+                                    wireDragInsertMode = false;
+                                }
+                                }
                                 sc->numGUINodes();
                             }
                         }
@@ -3451,6 +3515,12 @@ void NodeCanvas::render()
             contextWireFromID = -1;
             contextWireToID = -1;
             contextWirePinIndex = -1;
+            if (wireDragInsertMode)
+            {
+                wireDragInsertMode = false;
+                isWireDragging = false;
+                wireDragFromNodeID = -1;
+            }
         }
     }
 
