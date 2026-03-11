@@ -381,6 +381,46 @@ void NodeCanvas::syncSelectionToCore()
         sc->setSelected((DWORD)id, 1);
 }
 
+void NodeCanvas::deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly)
+{
+    SynthController* sc = SynthController::instance();
+    if (!sc) return;
+
+    int gi = findGuiIndex(nodeID);
+    if (gi < 0) return;
+
+    int nodeType = sc->gnType(gi);
+    const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
+
+    if (singleNodeOnly && typeDef && typeDef->allowSignalInsertion)
+    {
+        int input0ID = sc->gnInput(gi, 0);
+        if (isRealConnection(input0ID, sc))
+        {
+            // Collect (toNodeID, pinIndex) where this node is the source
+            std::vector<std::pair<int, int>> outputs;
+            int numNodes = sc->numGUINodes();
+            for (int toIdx = 0; toIdx < numNodes; toIdx++)
+            {
+                if (!sc->gnIsVisible(toIdx)) continue;
+                int toID = sc->gnID(toIdx);
+                if (toID == nodeID) continue;
+                int numSig = effectiveInputCount(toIdx);
+                for (int pin = 0; pin < numSig; pin++)
+                {
+                    if (sc->gnInput(toIdx, pin) == nodeID)
+                        outputs.push_back({toID, pin});
+                }
+            }
+            sc->deleteNode((DWORD)nodeID);
+            for (const auto& p : outputs)
+                sc->connectInput((DWORD)input0ID, (DWORD)p.first, (DWORD)p.second);
+            return;
+        }
+    }
+    sc->deleteNode((DWORD)nodeID);
+}
+
 // ── Pin Hit Testing ─────────────────────────────────────────────────────
 
 int NodeCanvas::hitTestOutputPin(const ImVec2& mousePos, const ImVec2& canvasOrigin) const
@@ -452,6 +492,64 @@ NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImV
         }
     }
     return {-1, -1};
+}
+
+// Point-to-segment squared distance (avoids sqrt)
+static float distSqPointToSegment(const ImVec2& p, const ImVec2& a, const ImVec2& b)
+{
+    ImVec2 ab(b.x - a.x, b.y - a.y);
+    ImVec2 ap(p.x - a.x, p.y - a.y);
+    float t = (ab.x * ap.x + ab.y * ap.y) / (ab.x * ab.x + ab.y * ab.y + 1e-9f);
+    t = (t < 0.f) ? 0.f : (t > 1.f) ? 1.f : t;
+    float dx = a.x + t * ab.x - p.x;
+    float dy = a.y + t * ab.y - p.y;
+    return dx * dx + dy * dy;
+}
+
+NodeCanvas::WireHit NodeCanvas::hitTestWire(const ImVec2& mousePos, const ImVec2& canvasOrigin) const
+{
+    SynthController* sc = SynthController::instance();
+    if (!sc) return {-1, -1, -1};
+
+    int numNodes = sc->numGUINodes();
+    float hitRadius = kWireThickness * zoom * 3.f;  // generous hit area
+    float hitRadiusSq = hitRadius * hitRadius;
+
+    for (int toIdx = 0; toIdx < numNodes; toIdx++)
+    {
+        if (!sc->gnIsVisible(toIdx)) continue;
+
+        int toNodeID = sc->gnID(toIdx);
+        int numSignals = effectiveInputCount(toIdx);
+        double toNX = sc->gnX(toIdx);
+        double toNY = sc->gnY(toIdx);
+        ImVec2 toPos = nodeScreenPos(toNX, toNY, canvasOrigin);
+
+        for (int pin = 0; pin < numSignals; pin++)
+        {
+            int srcID = sc->gnInput(toIdx, pin);
+            if (!isRealConnection(srcID, sc)) continue;
+
+            int fromIdx = findGuiIndex(srcID);
+            if (fromIdx < 0 || !sc->gnIsVisible(fromIdx)) continue;
+
+            double fromNX = sc->gnX(fromIdx);
+            double fromNY = sc->gnY(fromIdx);
+            ImVec2 fromPos = nodeScreenPos(fromNX, fromNY, canvasOrigin);
+
+            ImVec2 p0 = outputPinPos(fromPos);
+            ImVec2 p3 = inputPinPos(toPos, pin);
+            ImVec2 p1 = ImVec2(p0.x + kWireStubLen * zoom, p0.y);
+            ImVec2 p2 = ImVec2(p3.x - kWireStubLen * zoom, p3.y);
+
+            float d1 = distSqPointToSegment(mousePos, p0, p1);
+            float d2 = distSqPointToSegment(mousePos, p1, p2);
+            float d3 = distSqPointToSegment(mousePos, p2, p3);
+            if (d1 <= hitRadiusSq || d2 <= hitRadiusSq || d3 <= hitRadiusSq)
+                return {srcID, toNodeID, pin};
+        }
+    }
+    return {-1, -1, -1};
 }
 
 void NodeCanvas::drawGhostWire(ImDrawList* dl, const ImVec2& canvasOrigin)
@@ -638,8 +736,14 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         }
 
         // Test pins BEFORE node body
+        // Shift+click on output pin = recursive select; only start wire drag when shift not held.
+#ifdef _WIN32
+        bool shiftHeld = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+#else
+        bool shiftHeld = io.KeyShift;
+#endif
         int outputHit = hitTestOutputPin(mousePos, canvasPos);
-        if (outputHit != -1)
+        if (outputHit != -1 && !shiftHeld)
         {
             // Start wire drag from output pin (click-to-start)
             isWireDragging = true;
@@ -745,10 +849,15 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
 
                 if (!clickedChannelBtn)
                 {
+                    // Use GetKeyState for Ctrl so modifiers work when plugin lacks keyboard focus
+#ifdef _WIN32
+                    bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+#else
                     bool ctrl = io.KeyCtrl;
-                    bool shift = io.KeyShift;
+#endif
+                    // shiftHeld already computed above for output-pin check
 
-                    if (shift)
+                    if (shiftHeld)
                     {
                         // Shift+click: recursive upstream select
                         if (!ctrl)
@@ -787,7 +896,11 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         else
         {
             // Click on empty canvas
+#ifdef _WIN32
+            if ((GetKeyState(VK_CONTROL) & 0x8000) == 0)
+#else
             if (!io.KeyCtrl)
+#endif
             {
                 selectedNodeIDs.clear();
                 syncSelectionToCore();
@@ -877,16 +990,55 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
     if (canvasHovered && ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
         !isDragging && !isWireDragging && !didPan)
     {
-        int hitID = hitTestNode(mousePos, canvasPos);
-        if (hitID == -1)
+        WireHit wireHit = hitTestWire(mousePos, canvasPos);
+        if (wireHit.fromID >= 0 && wireHit.toID >= 0)
         {
-            // Right-release on empty canvas → open node creation menu
-            contextMenuCanvasPos = ImVec2(
-                (mousePos.x - canvasPos.x) / zoom - offsetX,
-                (mousePos.y - canvasPos.y) / zoom - offsetY
-            );
+            // Right-release on wire → open menu for "insert node in middle"
+            contextWireFromID = wireHit.fromID;
+            contextWireToID = wireHit.toID;
+            contextWirePinIndex = wireHit.pinIndex;
+            // Position new node at wire midpoint (between p1 and p2)
+            int fromGI = findGuiIndex(wireHit.fromID);
+            int toGI = findGuiIndex(wireHit.toID);
+            if (fromGI >= 0 && toGI >= 0)
+            {
+                ImVec2 fromPos = nodeScreenPos(sc->gnX(fromGI), sc->gnY(fromGI), canvasPos);
+                ImVec2 toPos = nodeScreenPos(sc->gnX(toGI), sc->gnY(toGI), canvasPos);
+                ImVec2 p0 = outputPinPos(fromPos);
+                ImVec2 p3 = inputPinPos(toPos, wireHit.pinIndex);
+                ImVec2 p1(p0.x + kWireStubLen * zoom, p0.y);
+                ImVec2 p2(p3.x - kWireStubLen * zoom, p3.y);
+                float mx = (p1.x + p2.x) * 0.5f;
+                float my = (p1.y + p2.y) * 0.5f;
+                contextMenuCanvasPos.x = (float)((mx - canvasPos.x) / zoom - offsetX);
+                contextMenuCanvasPos.y = (float)((my - canvasPos.y) / zoom - offsetY);
+            }
+            else
+            {
+                contextMenuCanvasPos = ImVec2(
+                    (mousePos.x - canvasPos.x) / zoom - offsetX,
+                    (mousePos.y - canvasPos.y) / zoom - offsetY
+                );
+            }
             showContextMenu = true;
             ImGui::OpenPopup("##nodeMenu");
+        }
+        else
+        {
+            int hitID = hitTestNode(mousePos, canvasPos);
+            if (hitID == -1)
+            {
+                // Right-release on empty canvas → open node creation menu
+                contextWireFromID = -1;
+                contextWireToID = -1;
+                contextWirePinIndex = -1;
+                contextMenuCanvasPos = ImVec2(
+                    (mousePos.x - canvasPos.x) / zoom - offsetX,
+                    (mousePos.y - canvasPos.y) / zoom - offsetY
+                );
+                showContextMenu = true;
+                ImGui::OpenPopup("##nodeMenu");
+            }
         }
     }
 
@@ -899,10 +1051,10 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         {
             int gi = findGuiIndex(id);
             int type = (gi >= 0) ? sc->gnType(gi) : -1;
-            // Protect structural nodes
-            if (type >= 0 && type <= (int)VOICEROOT_ID)
+            // Protect structural nodes (SynthRoot/ChannelRoot/NoteController/VoiceManager)
+            if (type >= 0 && type <= (int)VOICEMANAGER_ID)
                 continue;
-            sc->deleteNode((DWORD)id);
+            deleteNodeMaybeSmart(id, (int)toDelete.size() == 1);
         }
         selectedNodeIDs.clear();
         syncSelectionToCore();
@@ -2554,7 +2706,8 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     }
 
     // Red X delete button (top-left corner)
-    bool isStructural = (nodeType >= 0 && nodeType <= (int)VOICEROOT_ID);
+    // VoiceRoot is deletable; only SynthRoot/ChannelRoot/NoteController/VoiceManager are protected.
+    bool isStructural = (nodeType >= 0 && nodeType <= (int)VOICEMANAGER_ID);
     if (!isStructural)
     {
         float xbtnSz = kDeleteBtnSize * zoom;
@@ -2589,15 +2742,15 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                     {
                         int gi = findGuiIndex(id);
                         int tp = (gi >= 0) ? sc->gnType(gi) : -1;
-                        if (tp >= 0 && tp <= (int)VOICEROOT_ID) continue;
-                        sc->deleteNode((DWORD)id);
+                        if (tp >= 0 && tp <= (int)VOICEMANAGER_ID) continue;
+                        deleteNodeMaybeSmart(id, (int)toDelete.size() == 1);
                     }
                     selectedNodeIDs.clear();
                 }
                 else
                 {
-                    // Delete just this node
-                    sc->deleteNode((DWORD)nodeID);
+                    // Delete just this node (smart reconnect when applicable)
+                    deleteNodeMaybeSmart(nodeID, true);
                     selectedNodeIDs.erase(nodeID);
                 }
                 syncSelectionToCore();
@@ -2967,9 +3120,12 @@ void NodeCanvas::drawWires(ImDrawList* dl, const ImVec2& canvasOrigin)
             ImVec2 p1 = ImVec2(p0.x + kWireStubLen * zoom, p0.y);
             ImVec2 p2 = ImVec2(p3.x - kWireStubLen * zoom, p3.y);
 
-            // Wire color: selected destination = gold, else global=DeepPink / voice=LightSkyBlue
+            // Wire color: context wire (insertion target) = SpringGreen, selected = gold, else by scope
             ImU32 wireColor;
-            if (toSelected)
+            bool isContextWire = (contextWireFromID == (int)srcID && contextWireToID == toNodeID && contextWirePinIndex == pin);
+            if (isContextWire)
+                wireColor = colorContextWire();
+            else if (toSelected)
                 wireColor = colorSelectedWire();
             else
             {
@@ -3224,26 +3380,63 @@ void NodeCanvas::render()
                     {
                         if (ImGui::MenuItem(nodeDef->name.c_str()))
                         {
-                            // Derive channel and isGlobal from first selected node
                             int channel = -2;
                             bool isGlobal = false;
-                            if (!selectedNodeIDs.empty() && sc)
+                            if (sc)
                             {
-                                int firstID = *selectedNodeIDs.begin();
-                                int gi = findGuiIndex(firstID);
-                                if (gi >= 0)
+                                int refID = -1;
+                                if (contextWireFromID >= 0)
+                                    refID = contextWireFromID;
+                                else if (!selectedNodeIDs.empty())
+                                    refID = *selectedNodeIDs.begin();
+                                if (refID >= 0)
                                 {
-                                    channel = sc->gnChannel(gi);
-                                    isGlobal = sc->gnIsGlobal(gi);
+                                    int gi = findGuiIndex(refID);
+                                    if (gi >= 0)
+                                    {
+                                        channel = sc->gnChannel(gi);
+                                        isGlobal = sc->gnIsGlobal(gi);
+                                    }
                                 }
+                            }
+                            // Wire insertion: context wire set + node allows insertion
+                            bool doInsert = (contextWireFromID >= 0 && contextWireToID >= 0 &&
+                                            contextWirePinIndex >= 0 && nodeDef->allowSignalInsertion);
+                            if (doInsert)
+                            {
+                                int fromGI = findGuiIndex(contextWireFromID);
+                                int toGI = findGuiIndex(contextWireToID);
+                                if (fromGI >= 0 && toGI >= 0)
+                                {
+                                    int fromType = sc->gnType(fromGI);
+                                    int toType = sc->gnType(toGI);
+                                    // Don't insert on VoiceRoot→VoiceManager or VoiceManager→NoteController
+                                    bool forbidden = (fromType == (int)VOICEROOT_ID && toType == (int)VOICEMANAGER_ID) ||
+                                                    (fromType == (int)VOICEMANAGER_ID && toType == (int)NOTECONTROLLER_ID);
+                                    if (forbidden)
+                                        doInsert = false;
+                                }
+                                else
+                                    doInsert = false;
                             }
                             if (sc)
                             {
                                 sc->killVoices();
-                                sc->createGUINode((DWORD)nodeDef->id, (DWORD)channel,
-                                                  (DWORD)(isGlobal ? 1 : 0),
-                                                  contextMenuCanvasPos.x, contextMenuCanvasPos.y);
-                                sc->numGUINodes(); // refresh
+                                SynthNode* newNode = sc->createGUINode((DWORD)nodeDef->id, (DWORD)channel,
+                                                                       (DWORD)(isGlobal ? 1 : 0),
+                                                                       contextMenuCanvasPos.x, contextMenuCanvasPos.y);
+                                if (doInsert && newNode)
+                                {
+                                    int newID = (int)newNode->valueOffset;
+                                    sc->disconnectInput((DWORD)contextWireToID, (DWORD)contextWirePinIndex);
+                                    sc->connectInput((DWORD)contextWireFromID, (DWORD)newID, 0);
+                                    // Variable-input targets ignore index and append
+                                    sc->connectInput((DWORD)newID, (DWORD)contextWireToID, (DWORD)contextWirePinIndex);
+                                }
+                                contextWireFromID = -1;
+                                contextWireToID = -1;
+                                contextWirePinIndex = -1;
+                                sc->numGUINodes();
                             }
                         }
                     }
@@ -3255,6 +3448,9 @@ void NodeCanvas::render()
         else
         {
             showContextMenu = false;
+            contextWireFromID = -1;
+            contextWireToID = -1;
+            contextWirePinIndex = -1;
         }
     }
 

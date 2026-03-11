@@ -69,6 +69,11 @@ private:
     bool   showContextMenu = false;
     ImVec2 contextMenuCanvasPos = {0, 0};
 
+    // Context wire (right-click on wire): fromID, toID, pinIndex. -1 = none.
+    int    contextWireFromID = -1;
+    int    contextWireToID = -1;
+    int    contextWirePinIndex = -1;
+
     // Edit panels (multiple can be open); vector preserves open order (back = topmost/last-opened)
     std::vector<int> openEditPanels;
     bool   mouseOverEditPanel = false;  // set per-frame, blocks canvas interaction
@@ -178,6 +183,7 @@ private:
     static ImU32 colorVoiceWire()     { return IM_COL32(135, 206, 250, 255); }  // LightSkyBlue
     static ImU32 colorGlobalWire()    { return IM_COL32(255, 20, 147, 255);  }  // DeepPink
     static ImU32 colorSelectedWire()  { return IM_COL32(255, 205, 80, 255);  }  // Amber
+    static ImU32 colorContextWire()   { return IM_COL32(0, 255, 127, 255);   }  // SpringGreen
     static ImU32 colorPinWired()      { return IM_COL32(144, 238, 144, 255); }  // LightGreen
     static ImU32 colorPinRequired()   { return IM_COL32(255, 60, 60, 255);   }  // Red
     static ImU32 colorPinOptional()   { return IM_COL32(30, 30, 30, 255);    }  // Black
@@ -201,11 +207,15 @@ private:
     bool nodeFullyInsideRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax, const ImVec2& canvasOrigin) const;
     void recursiveSelect(int nodeID, std::unordered_set<int>& visited);
     void syncSelectionToCore();
+    void deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly);
 
     // Pin hit-testing for wire drag
     int  hitTestOutputPin(const ImVec2& mousePos, const ImVec2& canvasOrigin) const;
     struct PinHit { int nodeID; int pinIndex; };
     PinHit hitTestInputPin(const ImVec2& mousePos, const ImVec2& canvasOrigin) const;
+
+    struct WireHit { int fromID = -1; int toID = -1; int pinIndex = -1; };
+    WireHit hitTestWire(const ImVec2& mousePos, const ImVec2& canvasOrigin) const;
     void drawGhostWire(ImDrawList* dl, const ImVec2& canvasOrigin);
 
     void drawRubberBand(ImDrawList* dl);
