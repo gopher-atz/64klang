@@ -1189,10 +1189,8 @@ void NodeCanvas::updateMouseOverEditPanel(const ImVec2& canvasOrigin)
 
         if (nodeType == VOICEMANAGER_ID)
         {
-            float arpGridW = (float)ArpEditor::kMaxSteps * ArpEditor::kStepWidth * zoom + 8.f * zoom;
-            float arpGridH = (float)(ArpEditor::kOctaves * ArpEditor::kNotesPerOctave) * ArpEditor::kNoteHeight * zoom;
-            pw = std::max(pw, arpGridW);
-            ph += kEditFlagH * zoom + arpGridH + 6.f * zoom;
+            pw = std::max(pw, ArpEditor::kTotalW * zoom + 8.f * zoom);
+            ph += 4.f * zoom + ArpEditor::kTotalH * zoom + 4.f * zoom;
         }
         if (nodeType == TRIGGERSEQ_ID)
         {
@@ -1290,10 +1288,8 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             float pph = (kEditHeaderH + pnp * (kEditKnobDiam) + pfh + 4.f) * z2;
             if (ptype == VOICEMANAGER_ID)
             {
-                float arpW = (float)ArpEditor::kMaxSteps * ArpEditor::kStepWidth * z2 + 8.f * z2;
-                float arpH = (float)(ArpEditor::kOctaves * ArpEditor::kNotesPerOctave) * ArpEditor::kNoteHeight * z2;
-                ppw = std::max(ppw, arpW);
-                pph += kEditFlagH * z2 + arpH + 6.f * z2;
+                ppw = std::max(ppw, ArpEditor::kTotalW * z2 + 8.f * z2);
+                pph += 4.f * z2 + ArpEditor::kTotalH * z2 + 4.f * z2;
             }
             if (ptype == TRIGGERSEQ_ID)
             {
@@ -1428,10 +1424,8 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         bool isVoiceManager = (nodeType == VOICEMANAGER_ID);
         if (isVoiceManager)
         {
-            float arpGridW = (float)ArpEditor::kMaxSteps * ArpEditor::kStepWidth * z + 8.f * z;
-            float arpGridH = (float)(ArpEditor::kOctaves * ArpEditor::kNotesPerOctave) * ArpEditor::kNoteHeight * z;
-            pw = std::max(pw, arpGridW);
-            ph += kEditFlagH * z + arpGridH + 6.f * z;
+            pw = std::max(pw, ArpEditor::kTotalW * z + 8.f * z);
+            ph += 4.f * z + ArpEditor::kTotalH * z + 4.f * z;
         }
 
         // TriggerSequencer: extend panel for Max Patterns control + BPM row + N pattern rows
@@ -2055,140 +2049,17 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             }
         }
 
-        // ── VoiceManager: Arpeggiator grid (DrawList, zoom-aware) ──
+        // ── VoiceManager: Arpeggiator editor ──
         if (isVoiceManager)
         {
-            float arpStepW = ArpEditor::kStepWidth * z;
-            float arpNoteH = ArpEditor::kNoteHeight * z;
-            int   kNotes   = ArpEditor::kOctaves * ArpEditor::kNotesPerOctave;
-
-            // Read actual loop length (stored in special step slot -1)
-            int arpLoopLen = sc->getArpStepData((DWORD)nodeID, (DWORD)-1);
-            if (arpLoopLen <= 0) arpLoopLen = 16;
-            if (arpLoopLen > ArpEditor::kMaxSteps) arpLoopLen = ArpEditor::kMaxSteps;
-
-            // ── Loop-length control (fits in the existing kEditFlagH * z budget) ──
+            // The inline-flags drawing loop never advances curY past the last
+            // checkbox row, so we must do it here before the separator line.
+            curY += kEditFlagH * z;
             dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), panelBorder, 0.5f);
-            float ctrlH2  = kEditFlagH * z;
-            {
-                char loopLbl[32];
-                snprintf(loopLbl, sizeof(loopLbl), "Loop: %d steps", arpLoopLen);
-                if (fontSize >= 6.f)
-                    dl->AddText(pickFont(fontSize), fontSize,
-                                ImVec2(px + 4.f*z, curY + (ctrlH2 - fontSize) * 0.5f),
-                                textCol, loopLbl);
-
-                float btnSz  = 14.f * z;
-                float btnGap = 2.f * z;
-                ImVec2 plusMin (px + pw - btnSz - 4.f*z, curY + (ctrlH2 - btnSz)*0.5f);
-                ImVec2 plusMax (plusMin.x + btnSz, plusMin.y + btnSz);
-                ImVec2 minusMin(plusMin.x - btnGap - btnSz, plusMin.y);
-                ImVec2 minusMax(minusMin.x + btnSz, plusMin.y + btnSz);
-                dl->AddRectFilled(minusMin, minusMax, IM_COL32(70, 70, 80, 255));
-                dl->AddRectFilled(plusMin,  plusMax,  IM_COL32(70, 70, 80, 255));
-                if (fontSize >= 6.f)
-                {
-                    float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, "-").x;
-                    dl->AddText(pickFont(fontSize), fontSize,
-                                ImVec2(minusMin.x + (btnSz-fw)*0.5f, minusMin.y + (btnSz-fontSize)*0.5f),
-                                IM_COL32(255,255,255,255), "-");
-                    fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, "+").x;
-                    dl->AddText(pickFont(fontSize), fontSize,
-                                ImVec2(plusMin.x + (btnSz-fw)*0.5f, plusMin.y + (btnSz-fontSize)*0.5f),
-                                IM_COL32(255,255,255,255), "+");
-                }
-                if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-                {
-                    if (mousePos.x >= minusMin.x && mousePos.x < minusMax.x &&
-                        mousePos.y >= minusMin.y && mousePos.y < minusMax.y && arpLoopLen > 1)
-                        sc->setArpStepData((DWORD)nodeID, (DWORD)-1, (DWORD)(arpLoopLen - 1));
-                    if (mousePos.x >= plusMin.x  && mousePos.x < plusMax.x  &&
-                        mousePos.y >= plusMin.y  && mousePos.y < plusMax.y  &&
-                        arpLoopLen < ArpEditor::kMaxSteps)
-                        sc->setArpStepData((DWORD)nodeID, (DWORD)-1, (DWORD)(arpLoopLen + 1));
-                }
-            }
-            curY += ctrlH2 + 4.f * z;
-
-            // ── Grid ──
-            // Always kMaxSteps wide; steps >= arpLoopLen are grayed out
-            float gridW = (float)ArpEditor::kMaxSteps * arpStepW;
-            float gridH = (float)kNotes * arpNoteH;
-            ImVec2 gMin(px + 4.f*z, curY);
-            ImVec2 gMax(gMin.x + gridW, gMin.y + gridH);
-
-            dl->AddRectFilled(gMin, gMax, IM_COL32(30, 30, 35, 255));
-
-            // Inactive region (steps >= arpLoopLen): darker overlay
-            if (arpLoopLen < ArpEditor::kMaxSteps)
-            {
-                float inactX = gMin.x + (float)arpLoopLen * arpStepW;
-                dl->AddRectFilled(ImVec2(inactX, gMin.y), gMax, IM_COL32(0, 0, 0, 100));
-            }
-
-            // Horizontal note lines
-            for (int n = 0; n <= kNotes; n++)
-            {
-                float ly = gMin.y + (float)n * arpNoteH;
-                ImU32 lc = (n % 12 == 0) ? IM_COL32(100,100,110,255) : IM_COL32(50,50,55,255);
-                dl->AddLine(ImVec2(gMin.x, ly), ImVec2(gMax.x, ly), lc);
-            }
-            // Vertical step lines
-            for (int s = 0; s <= ArpEditor::kMaxSteps; s++)
-            {
-                float lx = gMin.x + (float)s * arpStepW;
-                ImU32 lc;
-                if (s == arpLoopLen)
-                    lc = IM_COL32(255, 180, 50, 200); // loop boundary: amber
-                else if (s % 4 == 0)
-                    lc = IM_COL32(100, 100, 110, 255);
-                else
-                    lc = IM_COL32(50, 50, 55, 255);
-                dl->AddLine(ImVec2(lx, gMin.y), ImVec2(lx, gMax.y), lc);
-            }
-
-            // Notes and play cursor
-            int playPos = sc->getArpPlayPos((DWORD)nodeID);
-            for (int s = 0; s < ArpEditor::kMaxSteps; s++)
-            {
-                int stepData  = sc->getArpStepData((DWORD)nodeID, (DWORD)s);
-                int transpose = stepData & 0x3F;
-                int velocity  = (stepData >> 8) & 0xFF;
-                if (velocity > 0 && transpose < kNotes)
-                {
-                    float nx2 = gMin.x + (float)s * arpStepW;
-                    float ny2 = gMin.y + (float)(kNotes - 1 - transpose) * arpNoteH;
-                    int alpha = (s < arpLoopLen) ? (100 + (velocity * 155 / 255)) : 60;
-                    dl->AddRectFilled(ImVec2(nx2 + 1, ny2 + 1),
-                                      ImVec2(nx2 + arpStepW - 1, ny2 + arpNoteH - 1),
-                                      IM_COL32(100, 180, 255, alpha));
-                }
-                if (s == playPos && s < arpLoopLen)
-                    dl->AddRectFilled(ImVec2(gMin.x + s * arpStepW, gMin.y),
-                                      ImVec2(gMin.x + (s+1) * arpStepW, gMax.y),
-                                      IM_COL32(255, 255, 255, 40));
-            }
-
-            // Mouse click on grid → place/remove note (active region only)
-            if (canClick &&
-                ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                mousePos.x >= gMin.x && mousePos.x < gMax.x &&
-                mousePos.y >= gMin.y && mousePos.y < gMax.y)
-            {
-                int clickStep = (int)((mousePos.x - gMin.x) / arpStepW);
-                int clickNote = kNotes - 1 - (int)((mousePos.y - gMin.y) / arpNoteH);
-                if (clickStep >= 0 && clickStep < arpLoopLen && clickNote >= 0 && clickNote < kNotes)
-                {
-                    int stepData = sc->getArpStepData((DWORD)nodeID, (DWORD)clickStep);
-                    int oldTranspose = stepData & 0x3F;
-                    int oldVelocity  = (stepData >> 8) & 0xFF;
-                    if (ImGui::GetIO().KeyCtrl || (oldVelocity > 0 && oldTranspose == clickNote))
-                        sc->setArpStepData((DWORD)nodeID, (DWORD)clickStep, 0);
-                    else
-                        sc->setArpStepData((DWORD)nodeID, (DWORD)clickStep,
-                                           (DWORD)(clickNote | (1 << 6) | (127 << 8)));
-                }
-            }
+            curY += 4.f * z;
+            ArpEditor::draw(nodeID, z, ImVec2(px + 4.f * z, curY),
+                            pickFont(fontSize * 0.9f), fontSize * 0.9f, canClick);
+            curY += ArpEditor::kTotalH * z + 4.f * z;
         }
 
         // ── TriggerSequencer: Max Patterns, BPM sync, then N rows of 8L+8R tick cells ──
