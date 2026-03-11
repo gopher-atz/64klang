@@ -1765,6 +1765,11 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 { -87.5f, 0 }, {-105.f, 1 }, {-122.5f, 0 }, {-140.f, 2 },
             };
 
+            // Modulator needle: drawn when a wire is connected, or for MidiCC/voice inputs with live data.
+            // MidiCC uses getNodeSignal(..., -3); voice params use getNodeSignal(..., -4).
+            bool showModNeedle = !isConstant && (sc->inputIsModulated((DWORD)nodeID, paramIdx) || isVoiceInput);
+            int sigInp = (nodeType == MIDISIGNAL_ID) ? -3 : (nodeType > CONSTANT_ID) ? -4 : (int)paramIdx;
+
             // ── Left knob ──
             {
                 ImVec2 center(knobL_cx, knobCY);
@@ -1801,11 +1806,12 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                     dl->AddCircleFilled(center, hw, IM_COL32(100, 100, 105, 255));
                 }
 
-                // Modulator needle: only drawn when a wire is actually connected to this input.
+                // Modulator needle: drawn when a wire is connected, or for MidiCC when live MIDI data arrives.
                 // getNodeSignal reads the ModAdder's stale out field — gate on connection state first.
-                if (!isConstant && sc->inputIsModulated((DWORD)nodeID, paramIdx))
+                // MidiCC has no modulation wire; its "modulation" is the live CC value from getNodeSignal(..., -3).
+                if (showModNeedle)
                 {
-                    double liveL = sc->getNodeSignal((DWORD)nodeID, 0, paramIdx);
+                    double liveL = sc->getNodeSignal((DWORD)nodeID, 0, sigInp);
                     float normModL = (valRange > 0.f) ? ((float)(liveL * range) - minVal) / valRange : 0.f;
                     normModL = std::max(0.f, std::min(1.f, normModL));
                     float mr = (startAngle + normModL * sweepDeg) * PI / 180.f;
@@ -1939,10 +1945,10 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                     dl->AddCircleFilled(center, hw, IM_COL32(100, 100, 105, knobAlpha));
                 }
 
-                // Modulator needle for right channel (always drawn when wire is connected, same as left)
-                if (!isConstant && sc->inputIsModulated((DWORD)nodeID, paramIdx))
+                // Modulator needle for right channel (wire connected or MidiCC live data)
+                if (showModNeedle)
                 {
-                    double liveR = sc->getNodeSignal((DWORD)nodeID, 1, paramIdx);
+                    double liveR = sc->getNodeSignal((DWORD)nodeID, 1, sigInp);
                     float normModR = (valRange > 0.f) ? ((float)(liveR * range) - minVal) / valRange : 0.f;
                     normModR = std::max(0.f, std::min(1.f, normModR));
                     float mr = (startAngle + normModR * sweepDeg) * PI / 180.f;

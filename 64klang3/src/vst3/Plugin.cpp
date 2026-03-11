@@ -1,4 +1,5 @@
 #include "Plugin.h"
+#include "Controller.h"
 #include "pluginterfaces/base/ibstream.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstevents.h"
@@ -108,10 +109,43 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
                     sc->noteOff(e.noteOff.channel, e.noteOff.pitch,
                                 (uint32_t)(e.noteOff.velocity * 127.f));
                     break;
+                case Event::kPolyPressureEvent:
+                    sc->noteAftertouch(e.polyPressure.channel, e.polyPressure.pitch,
+                                       (uint32_t)(e.polyPressure.pressure * 127.f));
+                    break;
                 default:
                     break;
                 }
             }
+        }
+    }
+
+    // Process parameter changes (MIDI CC routed via IMidiMapping)
+    if (data.inputParameterChanges)
+    {
+        int32 numQueues = data.inputParameterChanges->getParameterCount();
+        for (int32 q = 0; q < numQueues; q++)
+        {
+            IParamValueQueue* queue = data.inputParameterChanges->getParameterData(q);
+            if (!queue)
+                continue;
+            ParamID paramID = queue->getParameterId();
+            if (paramID < kMidiCCParamBase || paramID >= kMidiCCParamBase + kMidiCCParamCount)
+                continue;
+            int32 numPoints = queue->getPointCount();
+            if (numPoints <= 0)
+                continue;
+            // Use last point in queue (most recent value for this block)
+            int32 sampleOffset;
+            ParamValue normVal;
+            if (queue->getPoint(numPoints - 1, sampleOffset, normVal) != kResultOk)
+                continue;
+            int ch = (int)(paramID / 128);
+            int cc = (int)(paramID % 128);
+            int value = (int)(normVal * 127.f);
+            if (value < 0) value = 0;
+            if (value > 127) value = 127;
+            sc->midiSignal(ch, value, cc);
         }
     }
 
