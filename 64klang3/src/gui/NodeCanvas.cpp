@@ -2983,8 +2983,13 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                         bool ok = GetOpenFileNameA(&ofn) != 0;
                         { MSG m; while (PeekMessageA(&m, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE)) {} }
                         ImGui::GetIO().AddMouseButtonEvent(0, false);
-                        if (ok)
-                            sc->loadChannel(ch, std::string(buf));
+                        if (ok && sc->loadChannel(ch, std::string(buf)))
+                        {
+                            selectedNodeIDs.clear();
+                            syncSelectionToCore();
+                            sc->numGUINodes(); // rebuild _nodesGUIAccessor — loadChannel invalidated it
+                            return true;       // break draw loop, same as node deletion
+                        }
                     }
                     else
                     {
