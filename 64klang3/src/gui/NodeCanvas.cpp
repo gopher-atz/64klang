@@ -2694,10 +2694,10 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         if (it != liveDataCache.end() && it->second.voiceCount > 0)
         {
             float t = (float)ImGui::GetTime();
-            float pulse = 0.4f + 0.6f * (0.5f + 0.5f * sinf(t * 5.f));
-            int g = (int)(80 + 120 * pulse);
-            ImU32 pulseCol = IM_COL32(50, g, 70, (int)(180 + 75 * pulse));
-            dl->AddRect(pos, ImVec2(pos.x + w, pos.y + h), pulseCol, 2.f * zoom, 0, 2.5f);
+            float pulse = 0.4f + 0.6f * (0.5f + 0.5f * sinf(t * 10.f));
+            int g = (int)(128 + 127 * pulse);
+            ImU32 pulseCol = IM_COL32(64, g, 64, 255);
+            dl->AddRect(pos, ImVec2(pos.x + w, pos.y + h), pulseCol, 2.f * zoom, 0, 5.f);
         }
     }
 
@@ -2856,21 +2856,6 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         }
     }
 
-    // Voice count on VoiceManager
-    if (nodeType == VOICEMANAGER_ID && fontSize >= 6.f)
-    {
-        auto it = liveDataCache.find(nodeID);
-        if (it != liveDataCache.end() && it->second.voiceCount > 0)
-        {
-            char vcBuf[16];
-            snprintf(vcBuf, sizeof(vcBuf), "%d", it->second.voiceCount);
-            float vcX = pos.x + w - 20.f * zoom;
-            float vcY = pos.y + 3.f * zoom;
-            dl->AddText(pickFont(fontSize * 0.8f), fontSize * 0.8f, ImVec2(vcX, vcY),
-                        IM_COL32(255, 255, 255, 220), vcBuf);
-        }
-    }
-
     // Header separator line
     float sepY = pos.y + kHeaderHeight * zoom;
     dl->AddLine(ImVec2(pos.x, sepY), ImVec2(pos.x + w, sepY), borderColor, 1.f);
@@ -2917,6 +2902,26 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
             float labelY = pinPos.y - fontSize * 0.5f;
             dl->AddText(pickFont(fontSize), fontSize,
                         ImVec2(labelX, labelY), textColor, label);
+        }
+    }
+
+    // Voice count on VoiceManager: in node body, vertical center, 75% to the right, 2x input font
+    if (nodeType == VOICEMANAGER_ID)
+    {
+        auto it = liveDataCache.find(nodeID);
+        if (it != liveDataCache.end() && it->second.voiceCount > 0)
+        {
+            char vcBuf[16];
+            snprintf(vcBuf, sizeof(vcBuf), "%d", it->second.voiceCount);
+            float vcFontSize = fontSize * 2.f;
+            float bodyH = (float)numSignals * kRowHeight * zoom;
+            float bodyCenterY = sepY + bodyH * 0.5f;
+            ImVec2 vcSize = ImGui::CalcTextSize(vcBuf);
+            float vcScale = vcFontSize / ImGui::GetFontSize();
+            float vcX = pos.x + w * 0.75f - vcSize.x * vcScale * 0.5f;
+            float vcY = bodyCenterY - vcFontSize * 0.5f;
+            dl->AddText(pickFont(vcFontSize), vcFontSize, ImVec2(vcX, vcY),
+                        IM_COL32(0, 0, 0, 255), vcBuf);
         }
     }
 
