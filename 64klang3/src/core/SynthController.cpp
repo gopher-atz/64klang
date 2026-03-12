@@ -1198,7 +1198,11 @@ int SynthController::getArpPlayPos(DWORD nodeid)
 		if (node->id != VOICEMANAGER_ID)
 			return 0;
 
-		return node->v[19].i[0];
+		int step=node->v[19].i[0];
+		int loopStart = ((VMWork*)(node->customMem))->ArpSequenceLoopIndex;
+		step=(step+31) % 32;
+		// note: this does not display correctly when loopStart > 0. tick 31 always wraps to loopStart-1 then
+		return step;
 	}
 	return 0;
 }
