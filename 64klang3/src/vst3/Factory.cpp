@@ -5,7 +5,7 @@
 #include "Controller.h"
 
 #define K64_VENDOR      "Alcatraz"
-#define K64_URL         "https://github.com/kebby/64klang"
+#define K64_URL         "https://github.com/gopher-atz/64klang"
 #define K64_EMAIL       ""
 #define K64_VERSION     "3.0.0"
 
