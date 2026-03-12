@@ -129,10 +129,6 @@ private:
     };
     std::vector<ClipboardNode> clipboard;
 
-    // Rename
-    bool   isRenaming = false;
-    int    renamingNodeID = -1;
-    char   renameBuffer[256] = {};
 
     // Double-click detection
     double lastClickTime = 0.0;
@@ -222,11 +218,9 @@ private:
     void drawGhostWire(ImDrawList* dl, const ImVec2& canvasOrigin);
 
     void drawRubberBand(ImDrawList* dl);
-    void drawRenameOverlay(const ImVec2& canvasOrigin);
     void drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin);
     void updateMouseOverEditPanel(const ImVec2& canvasOrigin);
     void drawWaveFileDialog();
-    void commitRename();
 
     static constexpr float kEditButtonHeight = 20.f;
 

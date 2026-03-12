@@ -2827,6 +2827,20 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 				connectInput(from->valueOffset, to->valueOffset, index);
 			}
 		}
+
+		// Set channel name from filename when empty (e.g. old channel files without name attribute)
+		if (_nodeGUIInfo[channelRoots[channel]->valueOffset].Name.empty())
+		{
+			int ls = (int)filename.rfind("/");
+			int lbs = (int)filename.rfind("\\");
+			if (lbs > ls)
+				ls = lbs;
+			std::string name = filename.substr(ls + 1);
+			int ext = (int)name.find_last_of(".");
+			if (ext > 0)
+				name = name.substr(0, ext);
+			_nodeGUIInfo[channelRoots[channel]->valueOffset].Name = name;
+		}
 	}
 
 	_massDataUpdate = false;
@@ -2871,16 +2885,16 @@ bool SynthController::saveChannel(int channel, const std::string& filename)
 		recursiveAddChannel(channelRoots[i], i);
 	}
 
-	// check if no name was given, use filename then
-	if (_nodeGUIInfo[channelRoots[channel]->valueOffset].Name == "")
+	// Always update channel name from filename (for Save and Save As)
 	{
 		int ls = (int)filename.rfind("/");
-		int lbs= (int)filename.rfind("\\");
+		int lbs = (int)filename.rfind("\\");
 		if (lbs > ls)
 			ls = lbs;
-		std::string name = filename.substr(ls+1);
+		std::string name = filename.substr(ls + 1);
 		int ext = (int)name.find_last_of(".");
-		name = name.substr(0, ext);
+		if (ext > 0)
+			name = name.substr(0, ext);
 		_nodeGUIInfo[channelRoots[channel]->valueOffset].Name = name;
 	}
 

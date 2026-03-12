@@ -102,7 +102,10 @@ float NodeCanvas::nodeHeight(int numInputs, bool hasEditBtn, bool hasAddInput, b
     if (hasAddInput)
         h += kRowHeight; // "Add Input" pill row
     if (hasChannelBtns)
+    {
         h += kEditButtonHeight * 2.f; // Load + Save channel buttons
+        h += kRowHeight; // Channel name label (centered below buttons)
+    }
     return h;
 }
 
@@ -580,10 +583,6 @@ void NodeCanvas::drawGhostWire(ImDrawList* dl, const ImVec2& canvasOrigin)
 
 void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& canvasSize)
 {
-    // While renaming, only handle rename-related input
-    if (isRenaming)
-        return;
-
     // Block new canvas interactions when mouse is over an edit panel.
     // Exception: allow in-progress node drags, rubber-band selections, and wire drags
     // to keep tracking the mouse — otherwise movement over a panel causes stuck/jump behaviour.
@@ -825,15 +824,6 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                         sc->setNodeProcessingFlags((DWORD)hitID, NODE_PROCESSING_MUTE);
                     }
                 }
-                else if (nodeType > (int)VOICEMANAGER_ID)
-                {
-                    // Start inline rename
-                    isRenaming = true;
-                    renamingNodeID = hitID;
-                    std::string name = (gi >= 0) ? sc->gnName(gi) : "";
-                    std::strncpy(renameBuffer, name.c_str(), sizeof(renameBuffer) - 1);
-                    renameBuffer[sizeof(renameBuffer) - 1] = '\0';
-                }
             }
             else
             {
@@ -1042,7 +1032,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
     }
 
     // ── Delete key ──
-    if (!isRenaming && canvasHovered && ImGui::IsKeyPressed(ImGuiKey_Delete))
+    if (canvasHovered && ImGui::IsKeyPressed(ImGuiKey_Delete))
     {
         sc->killVoices();
         std::vector<int> toDelete(selectedNodeIDs.begin(), selectedNodeIDs.end());
@@ -1061,7 +1051,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
     }
 
     // ── Copy (Ctrl+C) ──
-    if (!isRenaming && canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
+    if (canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
     {
         clipboard.clear();
         if (!selectedNodeIDs.empty())
@@ -1124,7 +1114,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
     }
 
     // ── Paste (Ctrl+V) ──
-    if (!isRenaming && canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V))
+    if (canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V))
     {
         if (!clipboard.empty())
         {
@@ -1189,84 +1179,6 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             sc->numGUINodes(); // refresh
         }
     }
-}
-
-// ── Rename Overlay ───────────────────────────────────────────────────────
-
-void NodeCanvas::drawRenameOverlay(const ImVec2& canvasOrigin)
-{
-    if (!isRenaming || renamingNodeID < 0)
-        return;
-
-    SynthController* sc = SynthController::instance();
-    if (!sc) return;
-
-    int gi = findGuiIndex(renamingNodeID);
-    if (gi < 0)
-    {
-        isRenaming = false;
-        return;
-    }
-
-    double nx = sc->gnX(gi);
-    double ny = sc->gnY(gi);
-    ImVec2 pos = nodeScreenPos(nx, ny, canvasOrigin);
-    float w = kNodeWidth * zoom;
-
-    // Position the input text over the header
-    float inputW = std::max(w, 150.f);
-    float inputH = kHeaderHeight * zoom;
-    ImVec2 inputPos(pos.x, pos.y);
-
-    ImGui::SetNextWindowPos(inputPos);
-    ImGui::SetNextWindowSize(ImVec2(inputW, inputH + 8.f));
-    ImGui::Begin("##rename", nullptr,
-                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-                 ImGuiWindowFlags_NoSavedSettings);
-
-    ImGui::SetNextItemWidth(inputW - 8.f);
-
-    // Auto-focus on first frame
-    if (ImGui::IsWindowAppearing())
-        ImGui::SetKeyboardFocusHere();
-
-    bool enterPressed = ImGui::InputText("##renameInput", renameBuffer, sizeof(renameBuffer),
-                                          ImGuiInputTextFlags_EnterReturnsTrue |
-                                          ImGuiInputTextFlags_AutoSelectAll);
-
-    // Commit on Enter
-    if (enterPressed)
-    {
-        commitRename();
-    }
-    // Cancel on Escape
-    else if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-    {
-        isRenaming = false;
-        renamingNodeID = -1;
-    }
-    // Cancel on click outside the rename window
-    else if (!ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-             ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-    {
-        commitRename();
-    }
-
-    ImGui::End();
-}
-
-void NodeCanvas::commitRename()
-{
-    if (!isRenaming || renamingNodeID < 0)
-        return;
-
-    SynthController* sc = SynthController::instance();
-    if (sc)
-        sc->setName((DWORD)renamingNodeID, std::string(renameBuffer));
-
-    isRenaming = false;
-    renamingNodeID = -1;
 }
 
 // ── Edit Panel ──────────────────────────────────────────────────────────
@@ -2748,7 +2660,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
         // Hit-test X button
         ImGuiIO& io = ImGui::GetIO();
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel && canvasHovered)
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered)
         {
             ImVec2 mpos = io.MousePos;
             if (mpos.x >= xMin.x && mpos.x <= xMax.x &&
@@ -2784,25 +2696,14 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
     const char* displayName = typeDef ? typeDef->name.c_str() : "???";
 
-    // Use custom name if set; ChannelRoot uses "Channel N" or "N : name"
+    // ChannelRoot always shows "Channel N"; other nodes use custom name if set
     std::string customName = sc->gnName(guiIndex);
-    std::string channelDisplayName;
     if (nodeType == CHANNELROOT_ID)
     {
         int ch1 = sc->gnChannel(guiIndex) + 1;
-        if (customName.empty())
-        {
-            char buf[32];
-            snprintf(buf, sizeof(buf), "Channel %d", ch1);
-            channelDisplayName = buf;
-        }
-        else
-        {
-            char buf[288];
-            snprintf(buf, sizeof(buf), "%d : %s", ch1, customName.c_str());
-            channelDisplayName = buf;
-        }
-        displayName = channelDisplayName.c_str();
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Channel %d", ch1);
+        displayName = buf;
     }
     else if (!customName.empty())
         displayName = customName.c_str();
@@ -2961,7 +2862,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
         // Hit-test: detect click on button to open/toggle edit panel
         ImGuiIO& io = ImGui::GetIO();
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel && canvasHovered)
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered)
         {
             ImVec2 mpos = io.MousePos;
             if (mpos.x >= btnMin.x && mpos.x <= btnMax.x &&
@@ -3018,7 +2919,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
             // Click handling
             ImGuiIO& io = ImGui::GetIO();
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !isRenaming && !mouseOverEditPanel && canvasHovered)
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered)
             {
                 ImVec2 mpos = io.MousePos;
                 if (mpos.x >= btnMin.x && mpos.x <= btnMax.x &&
@@ -3060,6 +2961,35 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 #endif
                 }
             }
+        }
+    }
+
+    // ── Channel name label (ChannelRoot only): below Load/Save, centered, as wide as needed ──
+    if (hasChannelBtns)
+    {
+        std::string channelName = sc->gnName(guiIndex);
+        if (!channelName.empty())
+        {
+            float labelBaseY = pos.y + (kHeaderHeight + (float)numSignals * kRowHeight
+                                        + (hasEditBtn ? kEditButtonHeight : 0.f)
+                                        + kEditButtonHeight * 2.f) * zoom;
+            ImVec2 textSize = ImGui::CalcTextSize(channelName.c_str());
+            float textScale = fontSize / ImGui::GetFontSize();
+            float textW = textSize.x * textScale;
+            float textH = fontSize;
+            float pad = 4.f * zoom;
+            float labelW = textW + pad * 2.f;
+            float labelH = kRowHeight * zoom;
+            // Center horizontally with node body
+            float labelX = pos.x + (w - labelW) * 0.5f;
+            float labelY = labelBaseY;
+            ImVec2 labelMin(labelX, labelY);
+            ImVec2 labelMax(labelX + labelW, labelY + labelH);
+            ImU32 labelBg = isMuted ? withMuteAlpha(colorGlobalNode()) : colorGlobalNode();
+            dl->AddRectFilled(labelMin, labelMax, labelBg, 2.f * zoom);
+            float textX = labelX + pad;
+            float textY = labelBaseY + (labelH - textH) * 0.5f;
+            dl->AddText(pickFont(fontSize), fontSize, ImVec2(textX, textY), textColor, channelName.c_str());
         }
     }
 
@@ -3207,8 +3137,6 @@ void NodeCanvas::render()
             {
                 selectedNodeIDs.clear();
                 mutedNodeIDs.clear();
-                isRenaming = false;
-                renamingNodeID = -1;
                 isDragging = false;
                 pressedNodeID = -1;
                 isRubberBanding = false;
@@ -3344,7 +3272,7 @@ void NodeCanvas::render()
         ImGuiIO& io = ImGui::GetIO();
         if (io.KeyCtrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_D, false))
             showDebugOverlay = !showDebugOverlay;
-        if (!isRenaming && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_W, false))
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_W, false))
             showWaveFileDialog = !showWaveFileDialog;
 
         if (showDebugOverlay)
@@ -3561,9 +3489,6 @@ void NodeCanvas::render()
             }
         }
     }
-
-    // Draw rename overlay (uses ImGui windows, must be outside clip rect)
-    drawRenameOverlay(canvasPos);
 
     // Draw toast notifications (screen-centered, on top of everything)
     drawToasts(canvasPos, canvasSize);
