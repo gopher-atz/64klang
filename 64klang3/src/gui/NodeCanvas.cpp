@@ -14,7 +14,7 @@
 #include <sstream>
 
 #ifdef _WIN32
-#include <commdlg.h>
+#include <windows.h>
 #endif
 
 namespace K64GUI {
@@ -2925,40 +2925,29 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                 if (mpos.x >= btnMin.x && mpos.x <= btnMax.x &&
                     mpos.y >= btnMin.y && mpos.y <= btnMax.y)
                 {
-#ifdef _WIN32
                     char buf[512] = {"MyChannel.64k2Channel"};
-                    OPENFILENAMEA ofn  = {};
-                    ofn.lStructSize    = sizeof(ofn);
-                    ofn.hwndOwner      = (HWND)K64GUI::getWindowHandle();
-                    ofn.lpstrFilter    = "64klang2 Channel\0*.64k2Channel\0All Files\0*.*\0";
-                    ofn.lpstrFile      = buf;
-                    ofn.nMaxFile       = sizeof(buf);
-                    ofn.lpstrDefExt    = "64k2Channel";
-                    ofn.Flags          = OFN_NOCHANGEDIR;
-                    if (bi == 0)
+                    bool forSave = (bi != 0);
+                    bool ok = K64GUI::openFileDialog(
+                        buf, (int)sizeof(buf),
+                        "64klang2 Channel\0*.64k2Channel\0All Files\0*.*\0",
+                        "64k2Channel", forSave);
+                    if (ok)
                     {
-                        ofn.Flags |= OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
-                        bool ok = GetOpenFileNameA(&ofn) != 0;
-                        { MSG m; while (PeekMessageA(&m, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE)) {} }
-                        ImGui::GetIO().AddMouseButtonEvent(0, false);
-                        if (ok && sc->loadChannel(ch, std::string(buf)))
+                        if (!forSave)
                         {
-                            selectedNodeIDs.clear();
-                            syncSelectionToCore();
-                            sc->numGUINodes(); // rebuild _nodesGUIAccessor — loadChannel invalidated it
-                            return true;       // break draw loop, same as node deletion
+                            if (sc->loadChannel(ch, std::string(buf)))
+                            {
+                                selectedNodeIDs.clear();
+                                syncSelectionToCore();
+                                sc->numGUINodes(); // rebuild _nodesGUIAccessor — loadChannel invalidated it
+                                return true;       // break draw loop, same as node deletion
+                            }
+                        }
+                        else
+                        {
+                            sc->saveChannel(ch, std::string(buf));
                         }
                     }
-                    else
-                    {
-                        ofn.Flags |= OFN_OVERWRITEPROMPT;
-                        bool ok = GetSaveFileNameA(&ofn) != 0;
-                        { MSG m; while (PeekMessageA(&m, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE)) {} }
-                        ImGui::GetIO().AddMouseButtonEvent(0, false);
-                        if (ok)
-                            sc->saveChannel(ch, std::string(buf));
-                    }
-#endif
                 }
             }
         }
@@ -3578,20 +3567,13 @@ void NodeCanvas::drawWaveFileDialog()
             ImGui::TableSetColumnIndex(4);
             if (ImGui::Button("Load", ImVec2(48.f, 0.f)))
             {
-#ifdef _WIN32
-                char filenameBuf[MAX_PATH] = {};
-                OPENFILENAMEA ofn = {};
-                ofn.lStructSize   = sizeof(ofn);
-                ofn.lpstrFilter   = "Wave Files\0*.wav\0All Files\0*.*\0";
-                ofn.lpstrFile     = filenameBuf;
-                ofn.nMaxFile      = MAX_PATH;
-                ofn.Flags         = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
-                ofn.lpstrDefExt   = "wav";
-                bool wavOk = GetOpenFileNameA(&ofn) != 0;
-                { MSG m; while (PeekMessageA(&m, nullptr, WM_KEYFIRST, WM_KEYLAST, PM_REMOVE)) {} }
+                char filenameBuf[512] = {};
+                bool wavOk = K64GUI::openFileDialog(
+                    filenameBuf, (int)sizeof(filenameBuf),
+                    "Wave Files\0*.wav\0All Files\0*.*\0",
+                    "wav", false);
                 if (wavOk)
                     sc->setWaveFileReference(i, 0, freq, std::string(filenameBuf));
-#endif
             }
             ImGui::SameLine(0.f, 4.f);
             if (ImGui::Button("Clear", ImVec2(48.f, 0.f)))

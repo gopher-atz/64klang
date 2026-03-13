@@ -11,6 +11,16 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <commdlg.h>
+#elif defined(__APPLE__)
+// Use Cocoa file panels via Objective-C; we call a C bridge defined below.
+// The actual implementation must live in a .mm translation unit.
+// Here we forward-declare the C bridge so this .cpp file can call it.
+extern "C" bool k64_macOS_openFileDialog(char* outBuf, int bufSz,
+                                          const char* ext, bool forSave);
+#else
+// Linux: invoke zenity or kdialog as a subprocess
+#include <cstdio>    // popen / fgets
+#include <cstring>   // strncpy
 #endif
 
 namespace K64GUI {
@@ -89,10 +99,11 @@ bool isInitialized()
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 // Opens a native file dialog.  Returns true and fills outBuf on success.
-// filter is the Win32 double-null-terminated filter string.
-static bool openFileDialog(char* outBuf, int outBufSz,
-                            const char* filter, const char* defExt,
-                            bool forSave)
+// filter is the Win32 double-null-terminated filter string (Windows only).
+// defExt is the default file extension (without dot).
+bool openFileDialog(char* outBuf, int outBufSz,
+                    const char* filter, const char* defExt,
+                    bool forSave)
 {
 #ifdef _WIN32
     OPENFILENAMEA ofn  = {};
@@ -114,9 +125,48 @@ static bool openFileDialog(char* outBuf, int outBufSz,
     // so ImGui never saw it and would otherwise require two clicks to interact again.
     ImGui::GetIO().AddMouseButtonEvent(0, false);
     return ok;
+
+#elif defined(__APPLE__)
+    return k64_macOS_openFileDialog(outBuf, outBufSz, defExt, forSave);
+
 #else
-    (void)outBufSz; (void)filter; (void)defExt; (void)forSave;
-    return false;
+    // Linux: try zenity first, fall back to kdialog
+    char cmd[512];
+    if (forSave)
+        snprintf(cmd, sizeof(cmd),
+                 "zenity --file-selection --save --confirm-overwrite"
+                 " --file-filter='*.%s' 2>/dev/null", defExt);
+    else
+        snprintf(cmd, sizeof(cmd),
+                 "zenity --file-selection"
+                 " --file-filter='*.%s' 2>/dev/null", defExt);
+
+    FILE* fp = popen(cmd, "r");
+    if (!fp)
+    {
+        // zenity not found — try kdialog
+        if (forSave)
+            snprintf(cmd, sizeof(cmd),
+                     "kdialog --getsavefilename . '*.%s' 2>/dev/null", defExt);
+        else
+            snprintf(cmd, sizeof(cmd),
+                     "kdialog --getopenfilename . '*.%s' 2>/dev/null", defExt);
+        fp = popen(cmd, "r");
+    }
+    if (!fp)
+        return false;
+
+    outBuf[0] = '\0';
+    if (fgets(outBuf, outBufSz, fp))
+    {
+        // Strip trailing newline
+        int len = (int)strlen(outBuf);
+        while (len > 0 && (outBuf[len-1] == '\n' || outBuf[len-1] == '\r'))
+            outBuf[--len] = '\0';
+    }
+    pclose(fp);
+    ImGui::GetIO().AddMouseButtonEvent(0, false);
+    return (outBuf[0] != '\0');
 #endif
 }
 

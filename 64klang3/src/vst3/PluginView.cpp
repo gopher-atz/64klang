@@ -29,6 +29,30 @@ static LRESULT CALLBACK editorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
         return 1;
     return CallWindowProc(g_originalWndProc, hWnd, msg, wParam, lParam);
 }
+
+#elif defined(__APPLE__)
+
+// Bridge functions implemented in PluginView_macOS.mm
+bool k64_macOS_createView(void* parentNSView, int width, int height,
+                           Steinberg::Vst::K64PluginView* view);
+void k64_macOS_destroyView();
+void k64_macOS_resizeView(int width, int height);
+void k64_macOS_renderFrame();
+
+#else
+// Linux — X11 + OpenGL3
+#include "imgui.h"
+#include "imgui_impl_opengl3.h"
+#include "gui/ImGuiPlugin.h"
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <GL/gl.h>
+#include <GL/glx.h>
+#include <unistd.h>    // usleep
+#include <cstdio>      // fprintf
+
+static void* renderThreadEntryLinux(void* arg);
+
 #endif
 
 namespace Steinberg {
@@ -115,6 +139,127 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     // Arm lazy restore — applied on the first rendered frame so the host has
     // finished placing the window before we reposition/resize it.
     s_pendingRestore = true;
+
+#elif defined(__APPLE__)
+
+    int w = rect.right  - rect.left;
+    int h = rect.bottom - rect.top;
+    if (w <= 0) w = kDefaultWidth;
+    if (h <= 0) h = kDefaultHeight;
+    if (!k64_macOS_createView(parent, w, h, this))
+        return kResultFalse;
+
+#else // Linux — X11 + OpenGL3
+
+    viewWidth  = rect.right  - rect.left;
+    viewHeight = rect.bottom - rect.top;
+    if (viewWidth  <= 0) viewWidth  = kDefaultWidth;
+    if (viewHeight <= 0) viewHeight = kDefaultHeight;
+
+    // Open connection to the X server
+    XInitThreads();
+    linuxDisplay = XOpenDisplay(nullptr);
+    if (!linuxDisplay)
+    {
+        fprintf(stderr, "64klang3: XOpenDisplay failed\n");
+        return kResultFalse;
+    }
+
+    int screen = DefaultScreen(linuxDisplay);
+
+    // Choose a visual with double-buffered OpenGL
+    static const int visualAttribs[] = {
+        GLX_RGBA, GLX_DOUBLEBUFFER,
+        GLX_RED_SIZE, 8, GLX_GREEN_SIZE, 8, GLX_BLUE_SIZE, 8,
+        GLX_DEPTH_SIZE, 0,
+        None
+    };
+    XVisualInfo* vi = glXChooseVisual(linuxDisplay, screen, const_cast<int*>(visualAttribs));
+    if (!vi)
+    {
+        fprintf(stderr, "64klang3: glXChooseVisual failed\n");
+        XCloseDisplay(linuxDisplay);
+        linuxDisplay = nullptr;
+        return kResultFalse;
+    }
+
+    // Create a child X11 window embedded in the host's window
+    XSetWindowAttributes swa = {};
+    swa.colormap   = XCreateColormap(linuxDisplay,
+                                     RootWindow(linuxDisplay, vi->screen),
+                                     vi->visual, AllocNone);
+    swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask
+                   | ButtonPressMask | ButtonReleaseMask | PointerMotionMask
+                   | StructureNotifyMask;
+
+    linuxWindow = XCreateWindow(
+        linuxDisplay,
+        (Window)(uintptr_t)parent,   // parent from host
+        0, 0,
+        (unsigned)viewWidth, (unsigned)viewHeight,
+        0,
+        vi->depth, InputOutput, vi->visual,
+        CWColormap | CWEventMask, &swa);
+
+    XMapWindow(linuxDisplay, linuxWindow);
+    XFlush(linuxDisplay);
+
+    // Create GLX context
+    linuxGLCtx = glXCreateContext(linuxDisplay, vi, nullptr, GL_TRUE);
+    XFree(vi);
+    if (!linuxGLCtx)
+    {
+        fprintf(stderr, "64klang3: glXCreateContext failed\n");
+        XDestroyWindow(linuxDisplay, linuxWindow);
+        XCloseDisplay(linuxDisplay);
+        linuxDisplay = nullptr;
+        linuxWindow  = 0;
+        return kResultFalse;
+    }
+
+    // Make current on this thread briefly to initialise ImGui, then release —
+    // the render thread will own the context for the rest of the session.
+    glXMakeCurrent(linuxDisplay, linuxWindow, linuxGLCtx);
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename  = nullptr;
+    ImGui::StyleColorsDark();
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 0.0f;
+    style.FrameRounding  = 2.0f;
+
+    // Fonts — try common Linux paths
+    const char* fontPaths[] = {
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        nullptr
+    };
+    bool loadedSmall = false, loadedLarge = false;
+    for (int i = 0; fontPaths[i] && (!loadedSmall || !loadedLarge); ++i)
+    {
+        if (!loadedSmall && io.Fonts->AddFontFromFileTTF(fontPaths[i], 14.0f))
+            loadedSmall = true;
+        if (!loadedLarge && io.Fonts->AddFontFromFileTTF(fontPaths[i], 32.0f))
+            loadedLarge = true;
+    }
+    if (!loadedSmall) io.Fonts->AddFontDefault();
+    if (!loadedLarge) io.Fonts->AddFontDefault();
+    io.Fonts->Build();
+
+    ImGui_ImplOpenGL3_Init("#version 130");
+
+    K64GUI::init();
+
+    glXMakeCurrent(linuxDisplay, None, nullptr); // release; render thread takes over
+
+    // Start background render thread
+    renderRunning = true;
+    pthread_create(&renderThread, nullptr, renderThreadEntryLinux, this);
+
 #endif
 
     guiInitialized = true;
@@ -155,6 +300,38 @@ tresult PLUGIN_API K64PluginView::removed()
 
         destroyD3D11();
     }
+
+#elif defined(__APPLE__)
+
+    k64_macOS_destroyView();
+
+#else // Linux
+
+    renderRunning = false;
+    if (renderThread)
+    {
+        pthread_join(renderThread, nullptr);
+        renderThread = 0;
+    }
+
+    if (linuxDisplay)
+    {
+        glXMakeCurrent(linuxDisplay, linuxWindow, linuxGLCtx);
+
+        K64GUI::shutdown();
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui::DestroyContext();
+
+        glXMakeCurrent(linuxDisplay, None, nullptr);
+        glXDestroyContext(linuxDisplay, linuxGLCtx);
+        linuxGLCtx = nullptr;
+
+        XDestroyWindow(linuxDisplay, linuxWindow);
+        linuxWindow = 0;
+        XCloseDisplay(linuxDisplay);
+        linuxDisplay = nullptr;
+    }
+
 #endif
 
     guiInitialized = false;
@@ -168,6 +345,8 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
         return kInvalidArgument;
 
     rect = *newSize;
+    int w = newSize->right  - newSize->left;
+    int h = newSize->bottom - newSize->top;
 
 #ifdef _WIN32
     if (swapChain && nativeHandle)
@@ -178,10 +357,26 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
         // size prevents DWM from stretching the smaller buffer to fit.
         RECT hwndRect = {};
         ::GetClientRect((HWND)nativeHandle, &hwndRect);
-        int w = (hwndRect.right  > 0) ? (hwndRect.right  - hwndRect.left) : (newSize->right  - newSize->left);
-        int h = (hwndRect.bottom > 0) ? (hwndRect.bottom - hwndRect.top)  : (newSize->bottom - newSize->top);
-        resizeSwapChain(w, h);
+        int hw = (hwndRect.right  > 0) ? (hwndRect.right  - hwndRect.left) : w;
+        int hh = (hwndRect.bottom > 0) ? (hwndRect.bottom - hwndRect.top)  : h;
+        resizeSwapChain(hw, hh);
     }
+
+#elif defined(__APPLE__)
+
+    if (guiInitialized && w > 0 && h > 0)
+        k64_macOS_resizeView(w, h);
+
+#else // Linux
+
+    if (guiInitialized && linuxDisplay && linuxWindow && w > 0 && h > 0)
+    {
+        viewWidth  = w;
+        viewHeight = h;
+        XResizeWindow(linuxDisplay, linuxWindow, (unsigned)w, (unsigned)h);
+        XFlush(linuxDisplay);
+    }
+
 #endif
 
     return kResultOk;
@@ -412,6 +607,108 @@ void K64PluginView::renderFrame()
 }
 
 #endif // _WIN32
+
+// ─────────────────────────────────────────────────────────────────────────────
+// macOS: thin wrapper — actual work is in PluginView_macOS.mm
+// ─────────────────────────────────────────────────────────────────────────────
+#ifdef __APPLE__
+
+void K64PluginView::renderFrameMacOS()
+{
+    k64_macOS_renderFrame();
+}
+
+#endif // __APPLE__
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Linux: X11 + OpenGL3 render thread
+// ─────────────────────────────────────────────────────────────────────────────
+#if defined(__linux__) && !defined(__APPLE__)
+
+void K64PluginView::renderFrameLinux()
+{
+    if (!linuxDisplay || !linuxWindow || !linuxGLCtx)
+        return;
+
+    // Handle X11 events (key/mouse) — forward to ImGui
+    while (XPending(linuxDisplay))
+    {
+        XEvent ev;
+        XNextEvent(linuxDisplay, &ev);
+        ImGuiIO& io = ImGui::GetIO();
+
+        switch (ev.type)
+        {
+        case MotionNotify:
+            io.AddMousePosEvent((float)ev.xmotion.x, (float)ev.xmotion.y);
+            break;
+        case ButtonPress:
+        case ButtonRelease:
+        {
+            bool down = (ev.type == ButtonPress);
+            if (ev.xbutton.button == Button1) io.AddMouseButtonEvent(0, down);
+            if (ev.xbutton.button == Button3) io.AddMouseButtonEvent(1, down);
+            if (ev.xbutton.button == Button4) io.AddMouseWheelEvent(0.0f, +1.0f);
+            if (ev.xbutton.button == Button5) io.AddMouseWheelEvent(0.0f, -1.0f);
+            break;
+        }
+        case KeyPress:
+        case KeyRelease:
+        {
+            // Minimal key forwarding — translate keycode to ImGuiKey
+            // (full mapping omitted for brevity; extend as needed)
+            bool down = (ev.type == KeyPress);
+            KeySym sym = XLookupKeysym(&ev.xkey, 0);
+            (void)sym; (void)down;
+            break;
+        }
+        case ConfigureNotify:
+            io.DisplaySize = ImVec2((float)ev.xconfigure.width,
+                                    (float)ev.xconfigure.height);
+            glViewport(0, 0, ev.xconfigure.width, ev.xconfigure.height);
+            break;
+        default:
+            break;
+        }
+    }
+
+    // Render frame
+    ImGuiIO& io = ImGui::GetIO();
+    io.DisplaySize = ImVec2((float)viewWidth, (float)viewHeight);
+    io.DeltaTime   = 1.0f / 60.0f;
+
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui::NewFrame();
+
+    K64GUI::render();
+
+    ImGui::Render();
+
+    glClearColor(0.12f, 0.12f, 0.14f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    glXSwapBuffers(linuxDisplay, linuxWindow);
+}
+
+void K64PluginView::runLinuxRenderLoop()
+{
+    glXMakeCurrent(linuxDisplay, linuxWindow, linuxGLCtx);
+    while (renderRunning)
+    {
+        renderFrameLinux();
+        usleep(16000); // ~60 fps
+    }
+    glXMakeCurrent(linuxDisplay, None, nullptr);
+}
+
+static void* renderThreadEntryLinux(void* arg)
+{
+    static_cast<K64PluginView*>(arg)->runLinuxRenderLoop();
+    return nullptr;
+}
+
+#endif // Linux
 
 } // namespace Vst
 } // namespace Steinberg

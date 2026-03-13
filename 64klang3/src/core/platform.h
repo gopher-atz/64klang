@@ -145,4 +145,22 @@ static inline void k64_aligned_free(void* ptr)
   _mm_free(ptr);
 }
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SSE control register wrappers
+// _mm_getcsr / _mm_setcsr are only valid on x86/x64 targets.
+// On ARM (AArch64, ARM32) and other non-x86 architectures they don't exist.
+// The denormals-are-zero and flush-to-zero behaviour is still desirable on
+// AArch64 via FPCR, but for now we leave the FP mode unchanged on non-x86.
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#if defined(__i386__) || defined(_M_IX86) || defined(__x86_64__) || defined(_M_X64)
+  static inline unsigned int k64_getcsr()              { return _mm_getcsr(); }
+  static inline void         k64_setcsr(unsigned int v){ _mm_setcsr(v); }
+  #define K64_HAS_MXCSR 1
+#else
+  static inline unsigned int k64_getcsr()              { return 0u; }
+  static inline void         k64_setcsr(unsigned int)  {}
+  #define K64_HAS_MXCSR 0
+#endif
+
 #endif // _64KLANG_PLATFORM_H_

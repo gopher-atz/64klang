@@ -3,13 +3,25 @@
 #include "pluginterfaces/gui/iplugview.h"
 #include "public.sdk/source/common/pluginview.h"
 
-#ifdef _WIN32
 #include <cstdint>    // uintptr_t
+
+#ifdef _WIN32
 struct ID3D11Device;
 struct ID3D11DeviceContext;
 struct IDXGISwapChain;
 struct ID3D11RenderTargetView;
 struct ID3D11Texture2D;
+#endif
+
+#if defined(__linux__) && !defined(__APPLE__)
+#include <pthread.h>
+// Forward-declare X11/GLX types without pulling in the full headers here
+typedef unsigned long XID;
+typedef XID Window;
+struct _XDisplay;
+typedef struct _XDisplay Display;
+struct __GLXcontextRec;
+typedef struct __GLXcontextRec* GLXContext;
 #endif
 
 namespace Steinberg {
@@ -30,12 +42,21 @@ public:
     tresult PLUGIN_API canResize() override;
     tresult PLUGIN_API checkSizeConstraint(ViewRect* rect) override;
 
-#ifdef _WIN32
-    void renderFrame(); // called by the file-scope CALLBACK timerCallback
-#endif
-
     static constexpr int32 kDefaultWidth  = 1280;
     static constexpr int32 kDefaultHeight = 800;
+
+#ifdef _WIN32
+    void renderFrame();            // called by Win32 timer callback
+#endif
+
+#ifdef __APPLE__
+    void renderFrameMacOS();       // called by NSTimer in PluginView_macOS.mm
+#endif
+
+#if defined(__linux__) && !defined(__APPLE__)
+    void renderFrameLinux();       // called from background render thread
+    void runLinuxRenderLoop();     // render-thread entry: sets up GL context then loops
+#endif
 
 private:
     void* nativeHandle = nullptr;
@@ -61,6 +82,16 @@ private:
 
     // Timer ID for render loop (UINT_PTR on Win32, stored as uintptr_t to avoid Windows header in this header)
     uintptr_t timerID = 0;
+#endif // _WIN32
+
+#if defined(__linux__) && !defined(__APPLE__)
+    Display*    linuxDisplay = nullptr;
+    Window      linuxWindow  = 0;
+    GLXContext  linuxGLCtx   = nullptr;
+    pthread_t   renderThread = 0;
+    volatile bool renderRunning = false;
+    int         viewWidth  = kDefaultWidth;
+    int         viewHeight = kDefaultHeight;
 #endif
 };
 

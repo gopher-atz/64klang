@@ -28,4 +28,13 @@ void* getWindowHandle();
 void setViewport(float offsetX, float offsetY, float zoom);
 void getViewport(float& offsetX, float& offsetY, float& zoom);
 
+// Native file dialog — cross-platform (Win32 common dialog / macOS NSPanel / Linux zenity).
+// filter   : Win32-style double-null-terminated filter string (only used on Windows).
+// defExt   : default extension without dot (e.g. "64k2Channel").
+// forSave  : true → save dialog, false → open dialog.
+// Returns true and writes the chosen path into outBuf[outBufSz] on success.
+bool openFileDialog(char* outBuf, int outBufSz,
+                    const char* filter, const char* defExt,
+                    bool forSave);
+
 } // namespace K64GUI

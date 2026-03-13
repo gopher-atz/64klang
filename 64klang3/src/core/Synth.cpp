@@ -519,11 +519,11 @@ void _64klang_SetBPM(float bpm)
 void _64klang_Tick(float* left, float* right, uint32_t samples)
 {
 	// save state with cleared flags
-	unsigned int sse_control_store = _mm_getcsr() & 0xffc0;
+	unsigned int sse_control_store = k64_getcsr() & 0xffc0;
 	// bits: 15 = flush to zero | 6 = denormals are zero
 	// rounding 14:13, 00 = nearest, 01 = neg, 10 = pos, 11 = to zero
 	// bits 12-7 exception masks
-	_mm_setcsr(0x8040 | 0x1f80 | ((unsigned int)3 << 13));
+	k64_setcsr(0x8040 | 0x1f80 | ((unsigned int)3 << 13));
 
 	while (samples--)
 	{
@@ -534,7 +534,7 @@ void _64klang_Tick(float* left, float* right, uint32_t samples)
 	}
 
 	// restore previous state
-	_mm_setcsr(sse_control_store);
+	k64_setcsr(sse_control_store);
 }
 
 #endif
@@ -643,8 +643,8 @@ void _64klang_Render(float* dstbuffer)
 {
 	renderDone = false;
 	// save state with cleared flags
-	unsigned int sse_control_store = _mm_getcsr() & 0xffc0;
-	_mm_setcsr(0x8040 | 0x1f80 | ((unsigned int)3 << 13));
+	unsigned int sse_control_store = k64_getcsr() & 0xffc0;
+	k64_setcsr(0x8040 | 0x1f80 | ((unsigned int)3 << 13));
 
 	// read song bpm (1 DWORD)
 	SynthGlobalState.CurrentBPM = sample_t((double)(*((float*)SynthGlobalState.SongStream)));
@@ -684,7 +684,7 @@ void _64klang_Render(float* dstbuffer)
 	renderDone = true;
 
 	// restore previous state
-	_mm_setcsr(sse_control_store);
+	k64_setcsr(sse_control_store);
 }
 
 bool _64klang_RenderDone()

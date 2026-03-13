@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
-project(64klang3 VERSION 3.0.0 LANGUAGES CXX C)
+# OBJC and OBJCXX are needed for .mm files on macOS
+if(APPLE)
+    project(64klang3 VERSION 3.0.0 LANGUAGES CXX C OBJC OBJCXX)
+else()
+    project(64klang3 VERSION 3.0.0 LANGUAGES CXX C)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -41,6 +46,31 @@ if(WIN32)
     )
     target_include_directories(imgui PUBLIC ${IMGUI_DIR}/backends)
     target_link_libraries(imgui PUBLIC d3d11 dxgi)
+elseif(APPLE)
+    target_sources(imgui PRIVATE
+        ${IMGUI_DIR}/backends/imgui_impl_osx.mm
+        ${IMGUI_DIR}/backends/imgui_impl_metal.mm
+    )
+    target_include_directories(imgui PUBLIC ${IMGUI_DIR}/backends)
+    target_link_libraries(imgui PUBLIC
+        "-framework Cocoa"
+        "-framework Metal"
+        "-framework QuartzCore"
+    )
+    set_source_files_properties(
+        ${IMGUI_DIR}/backends/imgui_impl_osx.mm
+        ${IMGUI_DIR}/backends/imgui_impl_metal.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc"
+    )
+else()
+    # Linux / other UNIX — X11 + OpenGL3
+    target_sources(imgui PRIVATE
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    target_include_directories(imgui PUBLIC ${IMGUI_DIR}/backends)
+    find_package(OpenGL REQUIRED)
+    find_package(X11 REQUIRED)
+    target_link_libraries(imgui PUBLIC OpenGL::GL ${X11_LIBRARIES})
 endif()
 
 ###############################################################################
@@ -118,7 +148,7 @@ endif()
 set(VST3_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/vst3)
 set(GUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/gui)
 
-smtg_add_vst3plugin(64klang3
+set(VST3_COMMON_SOURCES
     ${VST3_DIR}/Factory.cpp
     ${VST3_DIR}/Plugin.cpp
     ${VST3_DIR}/Plugin.h
@@ -139,6 +169,16 @@ smtg_add_vst3plugin(64klang3
     ${GUI_DIR}/NodeConfigData.h
 )
 
+if(APPLE)
+    list(APPEND VST3_COMMON_SOURCES ${VST3_DIR}/PluginView_macOS.mm)
+    set_source_files_properties(
+        ${VST3_DIR}/PluginView_macOS.mm
+        PROPERTIES COMPILE_FLAGS "-fobjc-arc"
+    )
+endif()
+
+smtg_add_vst3plugin(64klang3 ${VST3_COMMON_SOURCES})
+
 target_link_libraries(64klang3 PRIVATE
     64klang_core
     imgui
@@ -150,8 +190,22 @@ target_include_directories(64klang3 PRIVATE
     ${GUI_DIR}
 )
 
+if(APPLE)
+    target_link_libraries(64klang3 PRIVATE
+        "-framework Cocoa"
+        "-framework Metal"
+        "-framework QuartzCore"
+    )
+elseif(UNIX)
+    find_package(OpenGL REQUIRED)
+    find_package(X11 REQUIRED)
+    target_link_libraries(64klang3 PRIVATE OpenGL::GL ${X11_LIBRARIES} pthread)
+endif()
+
 if(MSVC)
     target_compile_options(64klang3 PRIVATE /wd4244 /wd4267)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(64klang3 PRIVATE -Wno-conversion -Wno-sign-conversion)
 endif()
 
 ###############################################################################
