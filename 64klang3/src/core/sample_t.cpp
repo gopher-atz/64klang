@@ -124,20 +124,73 @@ double ConstantList[S_MAX_CONSTANTS] =
 
 void sample_t::init()
 {
+#if defined(K64_USE_NEON)
+	SC[0].i[0] = _EXP2_OFFSET[0];
+	SC[0].i[1] = _EXP2_OFFSET[1];
+	SC[0].i[2] = SC[0].i[3] = 0;
+	SC[1].i[0] = _RAND_SEED[0];
+	SC[1].i[1] = _RAND_SEED[1];
+	SC[1].i[2] = _RAND_SEED[2];
+	SC[1].i[3] = _RAND_SEED[3];
+	SC[2] = SC[0] == SC[0];
+	for (int i = 3; i < S_MAX_CONSTANTS; i++)
+		SC[i] = sample_t((double)ConstantList[i]);
+#else
 	SC[0] = sample_t(*((const __m128i*)(_EXP2_OFFSET)));
 	SC[1] = sample_t(*((const __m128i*)(_RAND_SEED)));
 	SC[2] = SC[0] == SC[0];
-
 	for (int i = 3; i < S_MAX_CONSTANTS; i++)
 		SC[i] = sample_t((double)ConstantList[i]);
+#endif
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#if defined(K64_USE_NEON)
+sample_t s_toInt(const sample_t& x)
+{
+	sample_t r;
+	r.i[0] = (int32_t)x.d[0];
+	r.i[1] = (int32_t)x.d[1];
+	r.i[2] = r.i[3] = 0;
+	return r;
+}
+sample_t s_toSample(const sample_t& x)
+{
+	sample_t r;
+	r.d[0] = (double)x.i[0];
+	r.d[1] = (double)x.i[1];
+	r.pd = vld1q_f64(r.d);
+	return r;
+}
+sample_t s_asSample(const sample_t& x)
+{
+	uint64_t u0 = (uint64_t)((uint32_t)x.i[0]) << 32;
+	uint64_t u1 = (uint64_t)((uint32_t)x.i[1]) << 32;
+	double d0, d1;
+	memcpy(&d0, &u0, 8);
+	memcpy(&d1, &u1, 8);
+	return sample_t(d0, d1);
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 sample_t SYNTHCALL s_rand()
 {
+#if defined(K64_USE_NEON)
+	// Match SSE _mm_mul_epi32: multiply lanes 0 and 2, store full 64-bit products; return high 32 bits as double
+	int64_t p0 = (int64_t)(int32_t)SC[S_RAND_SEED].i[0] * (int64_t)(int32_t)SC[S_RAND_MUL].i[0];
+	int64_t p1 = (int64_t)(int32_t)SC[S_RAND_SEED].i[2] * (int64_t)(int32_t)SC[S_RAND_MUL].i[2];
+	SC[S_RAND_SEED].l[0] = p0;
+	SC[S_RAND_SEED].l[1] = p1;
+	double d0 = (double)(int32_t)(p0 >> 32) * ConstantList[S_RAND_NORM];
+	double d1 = (double)(int32_t)(p1 >> 32) * ConstantList[S_RAND_NORM];
+	return sample_t(d0, d1);
+#else
 	SC[S_RAND_SEED].pi = _mm_mul_epi32(SC[S_RAND_SEED].pi, SC[S_RAND_MUL].pi);
 	return sample_t(_mm_mul_pd(_mm_cvtepi32_pd(_mm_shuffle_epi32(SC[S_RAND_SEED].pi, _MM_SHUFFLE(1,3,0,2))), SC[S_RAND_NORM].pd));
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -157,8 +210,13 @@ sample_t SYNTHCALL s_sin(const sample_t& x)
 #define ECOEFFICIENTS 6
 sample_t SYNTHCALL s_exp2(const sample_t& x)
 {
+#if defined(K64_USE_NEON)
+	sample_t k = s_toInt(x);
+	sample_t p = x - s_toSample(k);
+#else
 	__m128i k = s_toInt(x);
 	sample_t p = x - s_toSample(k);
+#endif
 
 #if ECOEFFICIENTS == 6
 	sample_t r(SC[S_EXP2_0]);
@@ -198,9 +256,17 @@ sample_t SYNTHCALL s_exp2(const sample_t& x)
 
 
 	/* 2^k; */
+#if defined(K64_USE_NEON)
+	k.i[0] = (k.i[0] + SC[S_EXP2_OFFSET].i[0]) << 20;
+	k.i[1] = (k.i[1] + SC[S_EXP2_OFFSET].i[1]) << 20;
+	k.i[2] = k.i[3] = 0;
+	// shuffle (1,3,0,2): new lanes = [k.i[1], k.i[3], k.i[0], k.i[2]] -> for 64-bit view: first 64 bits get k.i[1], second 64 bits get k.i[0]
+	{ int32_t t = k.i[0]; k.i[0] = k.i[1]; k.i[1] = t; }
+#else
 	k = _mm_add_epi32(k, SC[S_EXP2_OFFSET].pi);
 	k = _mm_slli_epi32(k, 20);
 	k = _mm_shuffle_epi32(k, _MM_SHUFFLE(1,3,0,2));
+#endif
 
 	/* a * 2^k. */
 	return r * s_asSample(k);
@@ -211,6 +277,24 @@ sample_t SYNTHCALL s_exp2(const sample_t& x)
 #define LCOEFFICIENTS 4
 sample_t SYNTHCALL s_log2(const sample_t& x)
 {
+#if defined(K64_USE_NEON)
+	// rescale: extract exponent (bits 52-62), subtract 1023, build ilogb_x
+	uint64_t u0, u1;
+	memcpy(&u0, &x.d[0], 8);
+	memcpy(&u1, &x.d[1], 8);
+	int32_t e0 = (int32_t)((u0 >> 52) & 0x7FF) - 1023;
+	int32_t e1 = (int32_t)((u1 >> 52) & 0x7FF) - 1023;
+	sample_t ilogb_x;
+	ilogb_x.i[0] = e0;
+	ilogb_x.i[1] = e1;
+	ilogb_x.i[2] = ilogb_x.i[3] = 0;
+	// mask out exponent (keep mantissa), set exponent to 1023 (value 1.0)
+	sample_t o(1.0, 1.0);
+	uint64_t mask64 = 0x000FFFFFFFFFFFFFULL;
+	double mask_d; memcpy(&mask_d, &mask64, 8);
+	sample_t a(mask_d, mask_d);
+	sample_t p = (x & a) | o;
+#else
 	// rescale
 	sample_t minexp(_mm_set_epi32(0, (2 - (-1021)), 0, (2 - (-1021))));
 	sample_t ilogb_x(_mm_shuffle_epi32(_mm_sub_epi64(_mm_srli_epi64(x.pi, 52), minexp.pi), _MM_SHUFFLE(1,3,2,0)));
@@ -218,6 +302,7 @@ sample_t SYNTHCALL s_log2(const sample_t& x)
 	sample_t o(_mm_slli_epi64(minexp.pi, 52));
 	sample_t a(_mm_srli_epi64(SC[S_ALLBITS].pi, 12));
 	sample_t p = (x & a) | o;
+#endif
 	// pole
 	sample_t y = (p - SC[S_1_0]) / (p + SC[S_1_0]);
 	sample_t y2 = y*y;
@@ -254,7 +339,11 @@ sample_t SYNTHCALL s_log2(const sample_t& x)
 
 	r *= y;
 	// undo rescaling
+#if defined(K64_USE_NEON)
+	r += s_toSample(ilogb_x);
+#else
 	r += s_toSample(ilogb_x.pi);
+#endif
 
 	return r;
 }

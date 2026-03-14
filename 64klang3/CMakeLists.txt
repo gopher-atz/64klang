@@ -24,6 +24,9 @@ set(SMTG_CREATE_MODULE_INFO OFF CACHE BOOL "" FORCE)
 # Fetch all third-party dependencies
 include(cmake/Dependencies.cmake)
 
+# Required so smtg_target_add_library_main can add macmain.cpp (bundleEntry) on macOS
+set(public_sdk_SOURCE_DIR ${vst3sdk_SOURCE_DIR}/public.sdk)
+
 ###############################################################################
 # ImGui static library (built from fetched sources)
 ###############################################################################
@@ -56,6 +59,7 @@ elseif(APPLE)
         "-framework Cocoa"
         "-framework Metal"
         "-framework QuartzCore"
+        "-framework GameController"
     )
     set_source_files_properties(
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm
@@ -129,8 +133,11 @@ if(MSVC)
         target_compile_options(64klang_core PRIVATE /arch:SSE2)
     endif()
 else()
+    # SSE4.1 only for x86/x64 (sample_t); ARM uses NEON (detected in platform.h via __aarch64__)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|i386|AMD64")
+        target_compile_options(64klang_core PRIVATE -msse4.1)
+    endif()
     target_compile_options(64klang_core PRIVATE
-        -msse4.1
         -Wno-conversion
         -Wno-sign-conversion
     )
@@ -195,6 +202,12 @@ if(APPLE)
         "-framework Cocoa"
         "-framework Metal"
         "-framework QuartzCore"
+        "-framework GameController"
+    )
+    # So Finder shows .vst3 as package icon (like other VST3s), not as folder
+    add_custom_command(TARGET 64klang3 POST_BUILD
+        COMMAND SetFile -a B "${CMAKE_CURRENT_BINARY_DIR}/VST3/Release/64klang3.vst3"
+        COMMENT "Set VST3 bundle attribute for Finder"
     )
 elseif(UNIX)
     find_package(OpenGL REQUIRED)

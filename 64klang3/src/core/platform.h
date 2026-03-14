@@ -89,6 +89,9 @@
   #ifndef FALSE
     #define FALSE 0
   #endif
+  #ifndef WAVE_FORMAT_PCM
+    #define WAVE_FORMAT_PCM 1
+  #endif
 #endif
 
 #ifndef _WIN32
@@ -100,23 +103,34 @@
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// SSE intrinsics header
+// SIMD: SSE (x86/x64) or NEON (ARM64)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#if defined(_MSC_VER)
-  #include <intrin.h>
-#else
-  #include <immintrin.h>
+#if defined(__aarch64__) || (defined(__ARM_NEON) && defined(__ARM_NEON_FP))
+  #define K64_USE_NEON 1
 #endif
-#include <smmintrin.h>
+
+#if defined(K64_USE_NEON)
+  #include <arm_neon.h>
+#else
+  #if defined(_MSC_VER)
+    #include <intrin.h>
+  #else
+    #include <immintrin.h>
+  #endif
+  #include <smmintrin.h>
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// CPUID wrapper
+// CPUID wrapper (x86 only; no-op on ARM)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 static inline void k64_cpuid(int info[4], int function_id)
 {
-#if defined(_MSC_VER)
+#if defined(K64_USE_NEON)
+  (void)function_id;
+  info[0] = info[1] = info[2] = info[3] = 0;
+#elif defined(_MSC_VER)
   __cpuid(info, function_id);
 #elif defined(__GNUC__) || defined(__clang__)
   __asm__ __volatile__(
@@ -135,14 +149,27 @@ static inline void k64_cpuid(int info[4], int function_id)
 
 static inline void* k64_aligned_alloc(size_t size, size_t alignment)
 {
+#if defined(K64_USE_NEON)
+  void* ptr = nullptr;
+  if (posix_memalign(&ptr, alignment, size) == 0) {
+    if (ptr) memset(ptr, 0, size);
+    return ptr;
+  }
+  return nullptr;
+#else
   void* ptr = _mm_malloc(size, alignment);
   if (ptr) memset(ptr, 0, size);
   return ptr;
+#endif
 }
 
 static inline void k64_aligned_free(void* ptr)
 {
+#if defined(K64_USE_NEON)
+  free(ptr);
+#else
   _mm_free(ptr);
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
