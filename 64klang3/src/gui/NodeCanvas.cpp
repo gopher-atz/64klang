@@ -1688,14 +1688,16 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 ImVec2 center(knobL_cx, knobCY);
 
                 // Tick marks: radii as exact WPF fractions of knobR (bounding=25, inner edge=19)
+                // Ticks are shifted 1 px left (scaled) to align visually with the needle.
+                const float tickOffX = -.2f * z;
                 for (const auto& tk : kKnobTicks)
                 {
                     float rad = tk.a * PI / 180.f;
                     float rO = (tk.t == 2) ? knobR : (tk.t == 1) ? knobR * (23.f/25.f) : knobR * (22.5f/25.f);
                     float rI = knobR * (19.f / 25.f);
                     float th = (tk.t == 2) ? 2.f * z : (tk.t == 1) ? 1.2f * z : 0.75f * z;
-                    dl->AddLine(ImVec2(center.x + sinf(rad) * rO, center.y - cosf(rad) * rO),
-                                ImVec2(center.x + sinf(rad) * rI, center.y - cosf(rad) * rI),
+                    dl->AddLine(ImVec2(center.x + tickOffX + sinf(rad) * rO, center.y - cosf(rad) * rO),
+                                ImVec2(center.x + tickOffX + sinf(rad) * rI, center.y - cosf(rad) * rI),
                                 IM_COL32(20, 20, 20, 220), th);
                 }
 
@@ -1829,14 +1831,16 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 unsigned int tickAlpha = synced ? 100 : 200;
 
                 // Tick marks (same WPF proportions as left knob, faded when synced)
+                // Ticks are shifted 1 px left (scaled) to align visually with the needle.
+                const float tickOffX = -.2f * z;
                 for (const auto& tk : kKnobTicks)
                 {
                     float rad = tk.a * PI / 180.f;
                     float rO = (tk.t == 2) ? knobR : (tk.t == 1) ? knobR * (23.f/25.f) : knobR * (22.5f/25.f);
                     float rI = knobR * (19.f / 25.f);
                     float th = (tk.t == 2) ? 2.f * z : (tk.t == 1) ? 1.2f * z : 0.75f * z;
-                    dl->AddLine(ImVec2(center.x + sinf(rad) * rO, center.y - cosf(rad) * rO),
-                                ImVec2(center.x + sinf(rad) * rI, center.y - cosf(rad) * rI),
+                    dl->AddLine(ImVec2(center.x + tickOffX + sinf(rad) * rO, center.y - cosf(rad) * rO),
+                                ImVec2(center.x + tickOffX + sinf(rad) * rI, center.y - cosf(rad) * rI),
                                 IM_COL32(20, 20, 20, tickAlpha), th);
                 }
 
