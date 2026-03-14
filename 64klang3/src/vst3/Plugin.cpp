@@ -209,13 +209,15 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
             ParamValue normVal;
             if (queue->getPoint(numPoints - 1, sampleOffset, normVal) != kResultOk)
                 continue;
+            if (normVal < 0.f) normVal = 0.f;
+            if (normVal > 1.f) normVal = 1.f;
             int ch = (int)(paramID / kCountCtrlNumber);
             int cc = (int)(paramID % kCountCtrlNumber);
-            if (cc == kPitchBend)
+            if (cc == kPitchBend) {
                 cc = 0; // map VST3's pitchbend from "CC"129 to 64klangs storage at CC0
+                normVal*=2; // historically we transformed the pitchband range from 0..1 to 0..2 to get the full -/+ range with the same 128 steps, so we need to multiply by 2 here to restore that mapping.
+            }
             int value = (int)(normVal * 127.f);
-            if (value < 0) value = 0;
-            if (value > 127) value = 127;
             sc->midiSignal(ch, value, cc);
         }
     }
