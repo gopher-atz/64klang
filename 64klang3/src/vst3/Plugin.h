@@ -22,6 +22,7 @@ public:
     tresult PLUGIN_API initialize(FUnknown* context) override;
     tresult PLUGIN_API terminate() override;
     tresult PLUGIN_API setActive(TBool state) override;
+    tresult PLUGIN_API setProcessing(TBool state) override;
     tresult PLUGIN_API setBusArrangements(SpeakerArrangement* inputs, int32 numIns,
                                           SpeakerArrangement* outputs, int32 numOuts) override;
     tresult PLUGIN_API process(ProcessData& data) override;

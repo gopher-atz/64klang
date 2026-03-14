@@ -721,13 +721,13 @@ void K64PluginView::runLinuxRenderLoop()
     glXMakeCurrent(linuxDisplay, None, nullptr);
 }
 
+} // namespace Vst
+} // namespace Steinberg
+
 static void* renderThreadEntryLinux(void* arg)
 {
-    static_cast<K64PluginView*>(arg)->runLinuxRenderLoop();
+    static_cast<Steinberg::Vst::K64PluginView*>(arg)->runLinuxRenderLoop();
     return nullptr;
 }
 
 #endif // Linux
-
-} // namespace Vst
-} // namespace Steinberg

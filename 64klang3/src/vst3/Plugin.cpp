@@ -58,6 +58,12 @@ tresult PLUGIN_API K64Plugin::setActive(TBool state)
     return AudioEffect::setActive(state);
 }
 
+tresult PLUGIN_API K64Plugin::setProcessing(TBool state)
+{
+    // TODO: Needs proper implementation
+    return kResultOk;
+}
+
 tresult PLUGIN_API K64Plugin::setBusArrangements(SpeakerArrangement* inputs, int32 numIns,
                                                   SpeakerArrangement* outputs, int32 numOuts)
 {

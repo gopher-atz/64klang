@@ -4588,7 +4588,7 @@ int mode = *(n->modePointer);
 			{
 				// end is always start + searchlen
 				seekEndIdx = seekStartIdx + targetSearch.i[1];
-				if (seekEndIdx >= s_toInt(n->v[10]).m128i_i32[0])
+				if (seekEndIdx >= sample_t(s_toInt(n->v[10])).i[0])
 					break;
 			}
 			else
@@ -4608,7 +4608,7 @@ int mode = *(n->modePointer);
 			while (samples--)
 			{
 				sample_t ipos = s_floor(pos);
-				*wtBuf++ = s_lerp(buf[s_toInt(ipos).m128i_i32[0]], buf[s_toInt(s_floor(pos + stepSize)).m128i_i32[0]], pos - ipos);
+				*wtBuf++ = s_lerp(buf[sample_t(s_toInt(ipos)).i[0]], buf[sample_t(s_toInt(s_floor(pos + stepSize))).i[0]], pos - ipos);
 				pos += stepSize;
 			}
 			// go to next start index including an optional skip

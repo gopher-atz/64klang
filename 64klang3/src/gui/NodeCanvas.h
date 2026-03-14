@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
+#include <cstdint>
 
 namespace K64GUI {
 
