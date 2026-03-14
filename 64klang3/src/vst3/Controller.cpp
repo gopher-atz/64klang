@@ -12,21 +12,21 @@ tresult PLUGIN_API K64Controller::initialize(FUnknown* context)
     if (result != kResultOk)
         return result;
 
-    // Add 2048 MIDI CC parameters (16 channels × 128 CCs) for IMidiMapping.
-    // ParamID = channel*128 + cc. Host maps incoming CC to these params.
+    // Add MIDI CC parameters (16 channels × kCountCtrlNumber CCs) for IMidiMapping.
+    // ParamID = channel*kCountCtrlNumber + cc. Host maps incoming CC to these params.
     parameters.init(kMidiCCParamCount, 256);
     char titleBuf[32];
     for (int32 ch = 0; ch < 16; ch++)
     {
-        for (int32 cc = 0; cc < 128; cc++)
+        for (int32 cc = 0; cc < kCountCtrlNumber; cc++)
         {
-            ParamID tag = (ParamID)ch * 128 + (ParamID)cc;
+            ParamID tag = (ParamID)ch * kCountCtrlNumber + (ParamID)cc;
             snprintf(titleBuf, sizeof(titleBuf), "Ch%d CC%d", ch + 1, cc);
             String str(titleBuf);
             parameters.addParameter(
                 str.text16(),  // title
                 STR16(""),    // units
-                128,          // stepCount (0..127)
+                kCountCtrlNumber,          // stepCount (0..127)
                 0.,           // defaultValueNormalized
                 ParameterInfo::kCanAutomate,
                 (ParamID)tag,
@@ -43,7 +43,7 @@ tresult PLUGIN_API K64Controller::getMidiControllerAssignment(int32 busIndex, in
                                                               CtrlNumber midiControllerNumber,
                                                               ParamID& id)
 {
-    if (busIndex != 0 || channel < 0 || channel >= 16 || midiControllerNumber < 0 || midiControllerNumber >= 128)
+    if (busIndex != 0 || channel < 0 || channel >= 16 || midiControllerNumber < 0 || midiControllerNumber >= kCountCtrlNumber)
         return kResultFalse;
     id = midiCCParamID(channel, midiControllerNumber);
     return kResultTrue;

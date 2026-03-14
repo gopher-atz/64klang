@@ -284,6 +284,11 @@ tresult PLUGIN_API K64PluginView::removed()
         timerID = 0;
         g_activeView = nullptr;
 
+        // Block until any in-progress renderFrame() finishes before touching
+        // D3D11 resources or ImGui state. The timer has been killed above so
+        // no new frame will start after we acquire the lock.
+        std::lock_guard<std::mutex> lock(renderMutex);
+
         // Restore original wndproc
         if (g_originalWndProc)
         {
@@ -359,6 +364,8 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
         ::GetClientRect((HWND)nativeHandle, &hwndRect);
         int hw = (hwndRect.right  > 0) ? (hwndRect.right  - hwndRect.left) : w;
         int hh = (hwndRect.bottom > 0) ? (hwndRect.bottom - hwndRect.top)  : h;
+        // Wait for any in-progress frame to finish before resizing D3D11 buffers.
+        std::lock_guard<std::mutex> lock(renderMutex);
         resizeSwapChain(hw, hh);
     }
 
@@ -371,6 +378,9 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
 
     if (guiInitialized && linuxDisplay && linuxWindow && w > 0 && h > 0)
     {
+        // Wait for any in-progress renderFrameLinux() to finish before
+        // modifying the dimensions the render thread reads each frame.
+        std::lock_guard<std::mutex> lock(renderMutex);
         viewWidth  = w;
         viewHeight = h;
         XResizeWindow(linuxDisplay, linuxWindow, (unsigned)w, (unsigned)h);
@@ -538,6 +548,19 @@ void K64PluginView::renderFrame()
     if (!d3dDevice || !swapChain || !mainRTV)
         return;
 
+    // Skip rendering when the window is minimized: Present(vsync=1) can block
+    // indefinitely or return DXGI_STATUS_OCCLUDED, and D3D11 resources may be
+    // in the middle of a resize triggered by the host.
+    if (IsIconic((HWND)nativeHandle))
+        return;
+
+    // Non-blocking acquire: if removed() or onSize() is currently holding the
+    // mutex to modify D3D11 resources, or a prior frame has not yet finished
+    // (e.g. a file-dialog pumped WM_TIMER before the frame completed), skip
+    // this tick rather than racing or re-entering ImGui.
+    if (!renderMutex.try_lock())
+        return;
+
     // Lazy position + size restore: applied on the first frame after attach so
     // the host has finished placing the window before we override it.
     if (s_pendingRestore && nativeHandle)
@@ -548,14 +571,6 @@ void K64PluginView::renderFrame()
                          s_savedPos.x, s_savedPos.y, s_savedWinW, s_savedWinH,
                          SWP_NOZORDER | SWP_NOACTIVATE);
     }
-
-    // Guard against re-entrant calls: blocking operations inside a frame
-    // (e.g. GetOpenFileNameA) pump the Win32 message loop which can fire
-    // WM_TIMER again, causing a second NewFrame() before the first Render().
-    static bool s_inFrame = false;
-    if (s_inFrame)
-        return;
-    s_inFrame = true;
 
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
@@ -603,7 +618,7 @@ void K64PluginView::renderFrame()
     }
 
     swapChain->Present(1, 0); // vsync
-    s_inFrame = false;
+    renderMutex.unlock();
 }
 
 #endif // _WIN32
@@ -629,6 +644,10 @@ void K64PluginView::renderFrameLinux()
 {
     if (!linuxDisplay || !linuxWindow || !linuxGLCtx)
         return;
+
+    // Hold the mutex for the entire frame so that onSize() (host thread) and
+    // removed() (after pthread_join) cannot race with resource access.
+    std::lock_guard<std::mutex> lock(renderMutex);
 
     // Handle X11 events (key/mouse) — forward to ImGui
     while (XPending(linuxDisplay))

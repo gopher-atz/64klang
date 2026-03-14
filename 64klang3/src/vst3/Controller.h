@@ -6,13 +6,14 @@
 namespace Steinberg {
 namespace Vst {
 
-// ParamID for MIDI CC: channel*128 + cc (0..2047). Matches SynthGlobalState.MidiSignals index.
+// ParamID for MIDI CC: channel*kCountCtrlNumber + cc.
+// VST3 seems to map pitchbend to "CC" 129, so we use kCountCtrlNumber instead of 128 for count per channel
 static const ParamID kMidiCCParamBase = 0;
-static const ParamID kMidiCCParamCount = 16 * 128;
+static const ParamID kMidiCCParamCount = 16 * kCountCtrlNumber;
 
 inline ParamID midiCCParamID(int16 channel, CtrlNumber cc)
 {
-    return kMidiCCParamBase + (ParamID)channel * 128 + (ParamID)cc;
+    return kMidiCCParamBase + (ParamID)channel * kCountCtrlNumber + (ParamID)cc;
 }
 
 class K64Controller : public EditController

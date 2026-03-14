@@ -722,7 +722,7 @@ void SynthController::getNodeInputDefault(DWORD typeID, DWORD inputIdx, bool isG
 	case VOICE_TRIGGER_ID:
 	case VOICE_GATE_ID:
 	case VOICE_AFTERTOUCH_ID:
-		DEFCONST(VOICEPARAM_SCALE, 0.0);
+		DEFCONST(VOICEPARAM_SCALE, 1.0);
 		break;
 	default: break;
 	}
@@ -736,15 +736,28 @@ void SynthController::getNodeInputDefault(DWORD typeID, DWORD inputIdx, bool isG
 
 void SynthController::resetNodeToDefaults(DWORD nodeID, DWORD typeID, bool isGlobal)
 {
+	// Mirror the same special case used in savePatch: SCALE, MIDISIGNAL, OSRAND, and all
+	// voice-param node types (id > CONSTANT_ID) store a float "Scale" constant at the
+	// index just above NodeMaxGUISignals, even though MAX_GUI_SIGNALS is left at 0 for
+	// these node types.  Without the bump that constant would be initialised as an integer
+	// mode (via setInputMode) rather than a float value (via setInputValue), leaving it
+	// at ~0 instead of the intended 1.0 default.
+	DWORD maxguisignals = NodeMaxGUISignals[typeID];
+	if (typeID == SCALE_ID     ||
+	    typeID == MIDISIGNAL_ID ||
+	    typeID == OSRAND_ID    ||
+	    typeID > CONSTANT_ID)
+		maxguisignals++;
+
 	// Reset parameter constant inputs to factory defaults
-	for (DWORD i = NodeReqGUISignals[typeID]; i < NodeMaxGUISignals[typeID]; i++)
+	for (DWORD i = NodeReqGUISignals[typeID]; i < maxguisignals; i++)
 	{
 		double defL, defR;
 		getNodeInputDefault(typeID, i, isGlobal, defL, defR);
 		setInputValue(nodeID, i, defL, defR);
 	}
 	// Reset mode inputs to factory defaults
-	for (DWORD i = NodeMaxGUISignals[typeID]; i < NodeInputs[typeID]; i++)
+	for (DWORD i = maxguisignals; i < NodeInputs[typeID]; i++)
 	{
 		double defVal, dummy;
 		getNodeInputDefault(typeID, i, isGlobal, defVal, dummy);

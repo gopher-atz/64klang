@@ -4,6 +4,7 @@
 #include "public.sdk/source/common/pluginview.h"
 
 #include <cstdint>    // uintptr_t
+#include <mutex>
 
 #ifdef _WIN32
 struct ID3D11Device;
@@ -83,6 +84,12 @@ private:
     // Timer ID for render loop (UINT_PTR on Win32, stored as uintptr_t to avoid Windows header in this header)
     uintptr_t timerID = 0;
 #endif // _WIN32
+
+    // Protects D3D11/GL resources and ImGui state against concurrent access
+    // between the timer-driven render and host lifecycle calls (removed/onSize).
+    // renderFrame() uses try_lock (skip tick if busy); lifecycle methods use
+    // lock (block until any in-progress frame completes before modifying state).
+    std::mutex  renderMutex;
 
 #if defined(__linux__) && !defined(__APPLE__)
     Display*    linuxDisplay = nullptr;

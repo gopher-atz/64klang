@@ -554,36 +554,36 @@ R"xml(					<ModeItem name="AATriSaw   " value="3"/>
 			<NodeInput name="Scale" minValue="-128" maxValue="128"/>
 			<NodeInput name="Mode">
 				<ModeGroup name="Channel" mask="3968" shift="7">
-					<ModeItem name="Channel 1" value="0"/>
-					<ModeItem name="Channel 2" value="1"/>
-					<ModeItem name="Channel 3" value="2"/>
-					<ModeItem name="Channel 4" value="3"/>
-					<ModeItem name="Channel 5" value="4"/>
-					<ModeItem name="Channel 6" value="5"/>
-					<ModeItem name="Channel 7" value="6"/>
-					<ModeItem name="Channel 8" value="7"/>
-					<ModeItem name="Channel 9" value="8"/>
-					<ModeItem name="Channel 10" value="9"/>
-					<ModeItem name="Channel 11" value="10"/>
-					<ModeItem name="Channel 12" value="11"/>
-					<ModeItem name="Channel 13" value="12"/>
-					<ModeItem name="Channel 14" value="13"/>
-					<ModeItem name="Channel 15" value="14"/>
-					<ModeItem name="Channel 16" value="15"/>
+					<ModeItem name="C 1" value="0"/>
+					<ModeItem name="C 2" value="1"/>
+					<ModeItem name="C 3" value="2"/>
+					<ModeItem name="C 4" value="3"/>
+					<ModeItem name="C 5" value="4"/>
+					<ModeItem name="C 6" value="5"/>
+					<ModeItem name="C 7" value="6"/>
+					<ModeItem name="C 8" value="7"/>
+					<ModeItem name="C 9" value="8"/>
+					<ModeItem name="C 10" value="9"/>
+					<ModeItem name="C 11" value="10"/>
+					<ModeItem name="C 12" value="11"/>
+					<ModeItem name="C 13" value="12"/>
+					<ModeItem name="C 14" value="13"/>
+					<ModeItem name="C 15" value="14"/>
+					<ModeItem name="C 16" value="15"/>
 				</ModeGroup>
 				<ModeGroup name="Controller" mask="127" shift="0">
-					<ModeItem name="CC 0" value="0"/>
-					<ModeItem name="CC 1" value="1"/>
+					<ModeItem name="CC 0  (Pitch Bend)" value="0"/>
+					<ModeItem name="CC 1  (Modulation Wheel)" value="1"/>
 					<ModeItem name="CC 2" value="2"/>
 					<ModeItem name="CC 3" value="3"/>
 					<ModeItem name="CC 4" value="4"/>
 					<ModeItem name="CC 5" value="5"/>
 					<ModeItem name="CC 6" value="6"/>
-					<ModeItem name="CC 7" value="7"/>
+					<ModeItem name="CC 7  (Channel Volume)" value="7"/>
 					<ModeItem name="CC 8" value="8"/>
 					<ModeItem name="CC 9" value="9"/>
-					<ModeItem name="CC 10" value="10"/>
-					<ModeItem name="CC 11" value="11"/>
+					<ModeItem name="CC 10 (Pan)" value="10"/>
+					<ModeItem name="CC 11 (Expression)" value="11"/>
 					<ModeItem name="CC 12" value="12"/>
 					<ModeItem name="CC 13" value="13"/>
 					<ModeItem name="CC 14" value="14"/>
@@ -646,7 +646,7 @@ R"xml(					<ModeItem name="AATriSaw   " value="3"/>
 					<ModeItem name="CC 71" value="71"/>
 					<ModeItem name="CC 72" value="72"/>
 					<ModeItem name="CC 73" value="73"/>
-					<ModeItem name="CC 74" value="74"/>
+					<ModeItem name="CC 74 (Brightness)" value="74"/>
 					<ModeItem name="CC 75" value="75"/>
 					<ModeItem name="CC 76" value="76"/>
 					<ModeItem name="CC 77" value="77"/>

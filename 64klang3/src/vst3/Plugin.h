@@ -1,6 +1,8 @@
 #pragma once
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
+#include <unordered_map>
+#include <cstdint>
 
 namespace Steinberg {
 namespace Vst {
@@ -28,6 +30,12 @@ public:
 
 private:
     bool synthInitialized = false;
+
+    // Tracks active notes by VST3 note ID so NoteExpressionValueEvents can
+    // find the right channel.  Note IDs are assigned by the host at note-on;
+    // -1 means "no ID" (host didn't assign one).
+    struct NoteInfo { int32 channel; int32 pitch; };
+    std::unordered_map<int32, NoteInfo> noteIdMap;
 };
 
 } // namespace Vst

@@ -4,6 +4,7 @@
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstprocesscontext.h"
+#include "pluginterfaces/vst/ivstnoteexpression.h"
 #include "core/SynthController.h"
 #include "core/Synth.h"
 #include "gui/ImGuiPlugin.h"
@@ -101,20 +102,88 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
             {
                 switch (e.type)
                 {
-                case Event::kNoteOnEvent:
-                    sc->noteOn(e.noteOn.channel, e.noteOn.pitch,
-                               (uint32_t)(e.noteOn.velocity * 127.f));
-                    break;
-                case Event::kNoteOffEvent:
-                    sc->noteOff(e.noteOff.channel, e.noteOff.pitch,
-                                (uint32_t)(e.noteOff.velocity * 127.f));
-                    break;
-                case Event::kPolyPressureEvent:
-                    sc->noteAftertouch(e.polyPressure.channel, e.polyPressure.pitch,
-                                       (uint32_t)(e.polyPressure.pressure * 127.f));
-                    break;
-                default:
-                    break;
+                    case Event::kNoteOnEvent:
+                        sc->noteOn(e.noteOn.channel, e.noteOn.pitch, (uint32_t)(e.noteOn.velocity * 127.f));
+                        // Track noteId → channel+pitch so NoteExpressionValueEvents
+                        // can route back to the correct channel.
+                        if (e.noteOn.noteId != -1)
+                            noteIdMap[e.noteOn.noteId] = { e.noteOn.channel, e.noteOn.pitch };
+                        break;
+                    case Event::kNoteOffEvent:
+                        sc->noteOff(e.noteOff.channel, e.noteOff.pitch, (uint32_t)(e.noteOff.velocity * 127.f));
+                        if (e.noteOff.noteId != -1)
+                            noteIdMap.erase(e.noteOff.noteId);
+                        break;
+                    case Event::kPolyPressureEvent:
+                        sc->noteAftertouch(e.polyPressure.channel, e.polyPressure.pitch, (uint32_t)(e.polyPressure.pressure * 127.f));
+                        break;
+                    //case Event::kNoteExpressionValueEvent:
+                    //{
+                    //    // Resolve the channel from the note ID.  If the host didn't
+                    //    // assign a note ID (-1) or we lost track of it, fall back to
+                    //    // channel 0 (best effort — 64klang has no per-voice targeting).
+                    //    int32 channel = 0;
+                    //    {
+                    //        auto it = noteIdMap.find(e.noteExpressionValue.noteId);
+                    //        if (it != noteIdMap.end())
+                    //            channel = it->second.channel;
+                    //    }
+
+                    //    // Normalized VST3 value [0.0, 1.0].  Each type has its own
+                    //    // center convention; comments show the mapping.
+                    //    const double v = e.noteExpressionValue.value;
+
+                    //    switch (e.noteExpressionValue.typeId)
+                    //    {
+                    //        case NoteExpressionTypeIDs::kTuningTypeID:
+                    //            // 0.5 = no detune, [0,1] = [-120,+120] semitones.
+                    //            // Re-use the pitch-bend CC slot (CC 0) with the same
+                    //            // 0–255 / center-128 scaling already used for MIDI pitch bend.
+                    //            sc->midiSignal(channel, (int)(v * 256.f), 0);
+                    //            break;
+
+                    //        case NoteExpressionTypeIDs::kVolumeTypeID:
+                    //            // 0.5 = 0 dB (unity), [0,1] → CC 7 (channel volume).
+                    //            sc->midiSignal(channel, (int)(v * 127.f), 7);
+                    //            break;
+
+                    //        case NoteExpressionTypeIDs::kPanTypeID:
+                    //            // 0.5 = centre, [0,1] → CC 10 (pan).
+                    //            sc->midiSignal(channel, (int)(v * 127.f), 10);
+                    //            break;
+
+                    //        case NoteExpressionTypeIDs::kVibratoTypeID:
+                    //            // [0,1] = depth → CC 1 (modulation wheel).
+                    //            sc->midiSignal(channel, (int)(v * 127.f), 1);
+                    //            break;
+
+                    //        case NoteExpressionTypeIDs::kExpressionTypeID:
+                    //            // [0,1] → CC 11 (expression).
+                    //            sc->midiSignal(channel, (int)(v * 127.f), 11);
+                    //            break;
+
+                    //        case NoteExpressionTypeIDs::kBrightnessTypeID:
+                    //            // [0,1] → CC 74 (filter cutoff / brightness).
+                    //            sc->midiSignal(channel, (int)(v * 127.f + 0.5), 74);
+                    //            break;
+
+                    //        default:
+                    //            break;
+                    //    }
+                    //    break;
+                    //}
+                    //case Event::kLegacyMIDICCOutEvent:
+                    //    if (e.midiCCOut.controlNumber == Vst::kPitchBend)
+                    //    {
+                    //        // Reconstruct 14-bit value: (value2 << 7) | value
+                    //        int32 value = ((int32)(e.midiCCOut.value2 & 0x7f) << 7) | (e.midiCCOut.value & 0x7f);
+                    //        // pitch bend precision is 0 - 16383, center 8192
+                    //        // we dont use full precision for the sake of equally sized streams
+                    //        sc->midiSignal(e.midiCCOut.channel, (value >> 6), 0); // 0 - 255, center 128
+                    //    }
+                    //    break;
+                    default:
+                        break;
                 }
             }
         }
@@ -140,8 +209,10 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
             ParamValue normVal;
             if (queue->getPoint(numPoints - 1, sampleOffset, normVal) != kResultOk)
                 continue;
-            int ch = (int)(paramID / 128);
-            int cc = (int)(paramID % 128);
+            int ch = (int)(paramID / kCountCtrlNumber);
+            int cc = (int)(paramID % kCountCtrlNumber);
+            if (cc == kPitchBend)
+                cc = 0; // map VST3's pitchbend from "CC"129 to 64klangs storage at CC0
             int value = (int)(normVal * 127.f);
             if (value < 0) value = 0;
             if (value > 127) value = 127;
