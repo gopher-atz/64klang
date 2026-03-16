@@ -218,7 +218,9 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
                 normVal*=2; // historically we transformed the pitchband range from 0..1 to 0..2 to get the full -/+ range with the same 128 steps, so we need to multiply by 2 here to restore that mapping.
             }
             int value = (int)(normVal * 127.f);
-            sc->midiSignal(ch, value, cc);
+            // VST3 maps "CC"128 to channel pressure (aftertouch) which we dont support (could map to note aftertouch CC 0-127)
+            if (cc != kAfterTouch)
+                sc->midiSignal(ch, value, cc);
         }
     }
 
