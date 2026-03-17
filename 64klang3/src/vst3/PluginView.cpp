@@ -51,8 +51,6 @@ void k64_macOS_renderFrame();
 #include <unistd.h>    // usleep
 #include <cstdio>      // fprintf
 
-static void* renderThreadEntryLinux(void* arg);
-
 #endif
 
 namespace Steinberg {
@@ -66,6 +64,9 @@ static POINT s_savedPos      = { -1, -1 };  // -1,-1 = not yet saved
 static int   s_savedWinW     = 0;
 static int   s_savedWinH     = 0;
 static bool  s_pendingRestore = false;
+#elif !defined(__APPLE__)
+// Linux: forward declaration — definition is at the bottom of this file
+static void* renderThreadEntryLinux(void* arg);
 #endif
 
 K64PluginView::K64PluginView()

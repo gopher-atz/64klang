@@ -15,3 +15,6 @@
 build/
 CMakeFiles/
 cmake-build-*/
+
+#Clangd
+.cache/
