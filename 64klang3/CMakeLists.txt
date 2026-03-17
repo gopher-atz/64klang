@@ -10,10 +10,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Disable VST3 SDK examples and hosting examples
-set(SMTG_ADD_VST3_PLUGINS_SAMPLES OFF CACHE BOOL "" FORCE)
-set(SMTG_ADD_VST3_HOSTING_SAMPLES OFF CACHE BOOL "" FORCE)
-set(SMTG_ADD_VSTGUI OFF CACHE BOOL "" FORCE)
+# Disable VST3 SDK examples and VSTGUI (we use ImGui). Must match option() names in vst3sdk CMakeLists.
+set(SMTG_ENABLE_VST3_PLUGIN_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SMTG_ENABLE_VST3_HOSTING_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(SMTG_ENABLE_VSTGUI_SUPPORT OFF CACHE BOOL "" FORCE)
 
 # Don't try to symlink to Program Files (needs admin)
 set(SMTG_PLUGIN_TARGET_PATH "" CACHE STRING "" FORCE)
@@ -67,6 +67,9 @@ elseif(APPLE)
         PROPERTIES COMPILE_FLAGS "-fobjc-arc"
     )
 else()
+    # exports ModuleEntry/ModuleExit expected by VST3 hosts on Linux.
+    set(public_sdk_SOURCE_DIR ${vst3sdk_SOURCE_DIR}/public.sdk)
+
     # Linux / other UNIX — X11 + OpenGL3
     target_sources(imgui PRIVATE
         ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp

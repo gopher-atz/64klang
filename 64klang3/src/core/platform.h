@@ -100,6 +100,9 @@
       ((uint32_t)(uint8_t)(ch0)        | ((uint32_t)(uint8_t)(ch1) << 8) | \
        ((uint32_t)(uint8_t)(ch2) << 16) | ((uint32_t)(uint8_t)(ch3) << 24))
   #endif
+  #ifndef WAVE_FORMAT_PCM
+    #define WAVE_FORMAT_PCM 0x0001
+  #endif
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

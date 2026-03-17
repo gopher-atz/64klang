@@ -73,23 +73,10 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
 
     SynthController* sc = SynthController::instance();
 
-    // Try to acquire mutex with 1ms timeout — output silence on failure
-    if (!SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(1)))
-    {
-        // Output silence
-        if (data.numOutputs > 0 && data.outputs[0].numChannels >= 2)
-        {
-            int32 numSamples = data.numSamples;
-            float* left = data.outputs[0].channelBuffers32[0];
-            float* right = data.outputs[0].channelBuffers32[1];
-            for (int32 i = 0; i < numSamples; i++)
-            {
-                left[i] = 0.f;
-                right[i] = 0.f;
-            }
-        }
-        return kResultOk;
-    }
+    // Try to acquire mutex with 1ms timeout — only the audio render is gated.
+    // MIDI events (especially note-offs) are processed unconditionally below so
+    // that a timeout never causes stuck notes by swallowing a note-off event.
+    bool mutexAcquired = SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(1));
 
     // Process MIDI events
     if (data.inputEvents)
@@ -218,7 +205,9 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
                 normVal*=2; // historically we transformed the pitchband range from 0..1 to 0..2 to get the full -/+ range with the same 128 steps, so we need to multiply by 2 here to restore that mapping.
             }
             int value = (int)(normVal * 127.f);
-            sc->midiSignal(ch, value, cc);
+            // VST3 maps "CC"128 to channel pressure (aftertouch) which we dont support (could map to note aftertouch CC 0-127)
+            if (cc != kAfterTouch)
+                sc->midiSignal(ch, value, cc);
         }
     }
 
@@ -228,15 +217,27 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
         _64klang_SetBPM((float)data.processContext->tempo);
     }
 
-    // Render audio
+    // Render audio — skipped (output silence) if mutex was not acquired in time
     if (data.numOutputs > 0 && data.outputs[0].numChannels >= 2)
     {
-        float* left = data.outputs[0].channelBuffers32[0];
+        float* left  = data.outputs[0].channelBuffers32[0];
         float* right = data.outputs[0].channelBuffers32[1];
-        sc->tick(left, right, data.numSamples);
+        if (mutexAcquired)
+        {
+            sc->tick(left, right, data.numSamples);
+        }
+        else
+        {
+            for (int32 i = 0; i < data.numSamples; i++)
+            {
+                left[i]  = 0.f;
+                right[i] = 0.f;
+            }
+        }
     }
 
-    SynthController::DataAccessMutex.unlock();
+    if (mutexAcquired)
+        SynthController::DataAccessMutex.unlock();
 
     return kResultOk;
 }

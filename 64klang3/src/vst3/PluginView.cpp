@@ -51,8 +51,6 @@ void k64_macOS_renderFrame();
 #include <unistd.h>    // usleep
 #include <cstdio>      // fprintf
 
-static void* renderThreadEntryLinux(void* arg);
-
 #endif
 
 namespace Steinberg {
@@ -66,6 +64,9 @@ static POINT s_savedPos      = { -1, -1 };  // -1,-1 = not yet saved
 static int   s_savedWinW     = 0;
 static int   s_savedWinH     = 0;
 static bool  s_pendingRestore = false;
+#elif !defined(__APPLE__)
+// Linux: forward declaration — definition is at the bottom of this file
+static void* renderThreadEntryLinux(void* arg);
 #endif
 
 K64PluginView::K64PluginView()
@@ -566,10 +567,21 @@ void K64PluginView::renderFrame()
     if (s_pendingRestore && nativeHandle)
     {
         s_pendingRestore = false;
+        // Must release renderMutex BEFORE calling SetWindowPos.  SetWindowPos
+        // sends WM_SIZE synchronously on the same calling thread when the size
+        // changes (resize→close→reopen scenario), which re-enters onSize() and
+        // tries to acquire renderMutex via lock_guard.  std::mutex on Windows
+        // uses SRWLOCK which is NOT re-entrant; acquiring it twice on the same
+        // thread deadlocks (and the host reports it as a plugin crash).
+        // Releasing here is safe: the timer is the only producer of frames, and
+        // we are returning immediately so D3D resources won't be touched until
+        // the next tick (by which time onSize() will have resized the swapchain).
+        renderMutex.unlock();
         if (s_savedPos.x != -1)
             SetWindowPos((HWND)nativeHandle, nullptr,
                          s_savedPos.x, s_savedPos.y, s_savedWinW, s_savedWinH,
                          SWP_NOZORDER | SWP_NOACTIVATE);
+        return; // skip this one frame; next tick renders with the correct swapchain size
     }
 
     ImGui_ImplDX11_NewFrame();
