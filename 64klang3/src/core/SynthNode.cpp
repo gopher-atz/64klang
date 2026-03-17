@@ -524,7 +524,7 @@ K64_CODE_SECTION(".sn01")
 void SYNTHCALL CHANNELROOT_tick(SynthNode* n)
 {
 	// check if at least one channel still above signal threshold
-	if (!_mm_testz_si128(n->v[0].pi, n->v[0].pi))
+	if (!s_testz_si128(n->v[0], n->v[0]))
 	{
 		MUL_tick(n);
 
@@ -735,7 +735,7 @@ void ArpeggiatorStep(SynthNode* n, int mode)
 			// new step?
 			n->v[17] -= SC[S_1_0];
 			sample_t arpstep = n->v[17] < sample_t::zero();			
-			if (!_mm_testz_si128(arpstep.pi, arpstep.pi))
+			if (!s_testz_si128(arpstep, arpstep))
 			{
 				// get current step pattern value
 				int value = W->ArpSequencePtr[n->v[19].i[0]];				
@@ -763,7 +763,7 @@ void ArpeggiatorStep(SynthNode* n, int mode)
 			// proceed gate time			
 			sample_t gateoff = n->v[18] < sample_t::zero();
 			// send note off to all voices when gate is over or new notes are due
-			if (velocity || !_mm_testz_si128(gateoff.pi, gateoff.pi))
+			if (velocity || !s_testz_si128(gateoff, gateoff))
 			{
 				// if gate is over set gate counter to some larger number
 				n->v[18] = s_ifthen(gateoff, SC[ADSR_SCALE], n->v[18]);
@@ -866,7 +866,7 @@ void SYNTHCALL VOICEMANAGER_tick(SynthNode* n)
 #ifndef VOICEMANAGER_GLIDE_SKIP
 		// no glide?
 		sample_t gi = INP(VOICEMANAGER_GLIDE);
-		if (_mm_testz_si128(gi.pi, gi.pi))
+		if (s_testz_si128(gi, gi))
 		{
 			n->v[31] = sample_t::zero();
 		}
@@ -896,7 +896,7 @@ void SYNTHCALL VOICEMANAGER_tick(SynthNode* n)
 #ifndef VOICEMANAGER_GLIDE_SKIP
 #ifdef COMPILE_VSTI
 					// is glide mode active?
-					if (!_mm_testz_si128(n->v[31].pi, n->v[31].pi))
+					if (!s_testz_si128(n->v[31], n->v[31]))
 					{
 #endif
 						// found the glider?
@@ -964,7 +964,7 @@ void SYNTHCALL VOICEMANAGER_tick(SynthNode* n)
 #ifndef VOICEMANAGER_GLIDE_SKIP
 #ifdef COMPILE_VSTI
 			// is glide mode active?
-			if (!_mm_testz_si128(n->v[31].pi, n->v[31].pi))
+			if (!s_testz_si128(n->v[31], n->v[31]))
 			{
 #endif
 				// we have a glider already?
@@ -1045,7 +1045,7 @@ VoiceManager_CreateVoice:
 
 #ifndef VOICEMANAGER_GLIDE_SKIP
 			// is glide mode active?
-			if (!_mm_testz_si128(n->v[31].pi, n->v[31].pi))
+			if (!s_testz_si128(n->v[31], n->v[31]))
 			{
 				// init glide for the new voice
 				W->Glider = voice;
@@ -1072,7 +1072,7 @@ VoiceManager_CreateVoice:
 #ifndef VOICEMANAGER_GLIDE_SKIP
 #ifdef COMPILE_VSTI
 		// is glide mode active?
-		if (!_mm_testz_si128(n->v[31].pi, n->v[31].pi))
+		if (!s_testz_si128(n->v[31], n->v[31]))
 		{
 #endif
 			if (voice == W->Glider)
@@ -1100,7 +1100,7 @@ VoiceManager_CreateVoice:
 		// remove voice trigger
 		voice->Trigger = sample_t::zero();
 		// voice done? destroy
-		if (_mm_testz_si128(voice->VoiceRoot->e.pi, voice->VoiceRoot->e.pi))
+		if (s_testz_si128(voice->VoiceRoot->e, voice->VoiceRoot->e))
 		{		
 			DestroyVoiceNodes(voice->VoiceRoot);			
 			voice->VoiceRoot = NULL;			
@@ -1213,7 +1213,7 @@ void SYNTHCALL ADSR_tick(SynthNode* n)
 	sample_t tmask = SynthGlobalState.CurrentVoice->Trigger >= SC[S_0_5];
 #endif
 	// at least one channel is triggered? switch to attack
-	if (!_mm_testz_si128(tmask.pi, tmask.pi))
+	if (!s_testz_si128(tmask, tmask))
 	{
 		// set attack state (0.5)
 		n->v[0] = ADSR_IFTHEN(tmask, SC[S_0_5], n->v[0]); 
@@ -1234,7 +1234,7 @@ void SYNTHCALL ADSR_tick(SynthNode* n)
 #endif
 	sample_t rbmask = (n->v[0] <= SC[S_2_0]) & rmask;
 	// at least one channel not yet in release? switch to release
-	if (!_mm_testz_si128(rbmask.pi, rbmask.pi))
+	if (!s_testz_si128(rbmask, rbmask))
 	{
 		// set release state (10.0)
 		n->v[0] = ADSR_IFTHEN(rbmask, SC[S_10_0], n->v[0]);
@@ -1262,7 +1262,7 @@ void SYNTHCALL ADSR_tick(SynthNode* n)
 	sample_t sustainlevel = s_max(INP(ADSR_SUSTAIN), sample_t::zero());
 	sample_t smask = n->v[0] != SC[S_2_0]; // state sustain = 2.0	
 	// at least one channel not yet in sustain? process
-	if (!_mm_testz_si128(smask.pi, smask.pi))
+	if (!s_testz_si128(smask, smask))
 	{	
 		// decay state? = 1.0
 		sample_t dmask = n->v[0] == SC[S_1_0];
@@ -1287,7 +1287,7 @@ void SYNTHCALL ADSR_tick(SynthNode* n)
 		n->v[1] = ADSR_IFTHEN(amask, s_min(n->v[1] + n->v[2], SC[S_1_0]), n->v[1]);
 		amask = (n->v[1] == SC[S_1_0]) & amask;
 		// at least one channel in attack and above 1.0 boundary? switch to decay
-		if (!_mm_testz_si128(amask.pi, amask.pi))
+		if (!s_testz_si128(amask, amask))
 		{
 			// set decay state (1.0)
 			n->v[0] = ADSR_IFTHEN(amask, SC[S_1_0], n->v[0]); // set state decay
@@ -1440,7 +1440,7 @@ sample_t SYNTHCALL Osc_Tick(SynthNode* n, int mode, int oscindex)
 		case LFO_RPSINE:
 		{
 			ret = s_sin(wrkphase*(oscwrk[2]+SC[S_1_0])*SC[S_2PI]);
-			if (!_mm_testz_si128(n->e.pi, n->e.pi))
+			if (!s_testz_si128(n->e, n->e))
 			{				
 				oscwrk[2] = s_ifthen(n->e, s_floor(color*color*SC[S_440_0]*(s_rand()+SC[S_1_0])), oscwrk[2]);
 			}
@@ -1452,7 +1452,7 @@ sample_t SYNTHCALL Osc_Tick(SynthNode* n, int mode, int oscindex)
 		case LFO_PNOISE:
 		{
 			// at least one channel is wrapped?
-			if (!_mm_testz_si128(n->e.pi, n->e.pi))
+			if (!s_testz_si128(n->e, n->e))
 			{
 				oscwrk[2] = s_ifthen(n->e, oscwrk[3], oscwrk[2]);
 				oscwrk[3] = s_ifthen(n->e, s_rand(), oscwrk[3]);
@@ -1483,7 +1483,7 @@ sample_t SYNTHCALL Osc_Tick(SynthNode* n, int mode, int oscindex)
 		{
 			sample_t tp = s_clamp(phase, SC[S_1_0], wrkfreq);
 			ret = s_ifthen(wrkphase < tp, s_sin(wrkphase*(oscwrk[2] + SC[S_1_0]) / tp*SC[S_2PI]), sample_t::zero());
-			if (!_mm_testz_si128(n->e.pi, n->e.pi))
+			if (!s_testz_si128(n->e, n->e))
 			{
 
 				oscwrk[2] += s_ifthen(n->e, SC[S_1_0], sample_t::zero());
@@ -1497,7 +1497,7 @@ sample_t SYNTHCALL Osc_Tick(SynthNode* n, int mode, int oscindex)
 		{
 			sample_t tp = s_clamp(phase, SC[S_1_0], wrkfreq);
 			ret = s_ifthen(wrkphase < tp, s_sin(wrkphase*(oscwrk[2] + SC[S_1_0]) / tp*SC[S_2PI]), sample_t::zero());
-			if (!_mm_testz_si128(n->e.pi, n->e.pi))
+			if (!s_testz_si128(n->e, n->e))
 			{
 
 				oscwrk[2] += s_ifthen(n->e, SC[S_1_0], sample_t::zero());
@@ -1549,7 +1549,7 @@ void SYNTHCALL LFO_tick(SynthNode* n)
 			
 #ifndef WAVE_SKIP_PNOISE
 		// init pnoise random
-		if (_mm_testz_si128(n->v[31].pi, n->v[31].pi))
+		if (s_testz_si128(n->v[31], n->v[31]))
 		{
 			n->v[31] = SC[S_1_0];
 			n->v[5] = s_rand();
@@ -1625,7 +1625,7 @@ void SYNTHCALL OSCILLATOR_tick(SynthNode* n)
 		}
 #endif
 		// first time init
-		if (_mm_testz_si128(n->v[31].pi, n->v[31].pi))
+		if (s_testz_si128(n->v[31], n->v[31]))
 		{
 			n->v[31] = SC[S_1_0];			
 			// random start phase
@@ -1680,7 +1680,7 @@ void SYNTHCALL NOISEGEN_tick(SynthNode* n)
 
 	// no mix in both channels? just white and done
 	sample_t mix = INP(NOISEGEN_MIX);
-	if (_mm_testz_si128(mix.pi, mix.pi))
+	if (s_testz_si128(mix, mix))
 	{
 		n->out = white;
 	}
@@ -1695,7 +1695,7 @@ void SYNTHCALL NOISEGEN_tick(SynthNode* n)
 #ifndef NOISEGEN_SKIP_BROWN
 		// brown noise loop
 		sample_t lastRand(white);
-		sample_t mask(SC[S_ALLBITS].pi);
+		sample_t mask(SC[S_ALLBITS]);
 		sample_t brown;		
 		while (true)
 		{
@@ -1704,7 +1704,7 @@ void SYNTHCALL NOISEGEN_tick(SynthNode* n)
 			// get mask
 			mask = (s_abs(n->v[3]) > SC[S_1_0]);
 			// leave loop as soon as both signals have magnitude below 1
-			if (_mm_testz_si128(mask.pi, mask.pi))
+			if (s_testz_si128(mask, mask))
 			{
 				brown = n->v[3];
 				break;
@@ -2518,7 +2518,7 @@ void SYNTHCALL PROCESS_tick(SynthNode* n)
 	// process
 	sample_t pmask = INP(PROCESS_CONDITION) >= SC[S_0_5];
 	// at least one channel is to be processed
-	if (!_mm_testz_si128(pmask.pi, pmask.pi))
+	if (!s_testz_si128(pmask, pmask))
 	{
 		NODE_CALL_INPUT(PROCESS_IN);
 		n->out = INP(PROCESS_IN);
@@ -3010,7 +3010,7 @@ void SYNTHCALL OSRAND_tick(SynthNode* n)
 	NODE_STATELESS_PROLOG;
 	
 	// process (once)
-	if (_mm_testz_si128(n->out.pi, n->out.pi))
+	if (s_testz_si128(n->out, n->out))
 	{
 		NODE_CALL_INPUT(OSRAND_SCALE);
 		n->out = s_rand() * INP(OSRAND_SCALE);
@@ -3073,7 +3073,7 @@ void SYNTHCALL REVERB_tick(SynthNode* n)
 	// update values
 	NODE_UPDATE_BEGIN
 
-		if (!_mm_testz_si128((feedback != n->v[NODE_MAX_WORKVARS-2]).pi, (feedback != n->v[NODE_MAX_WORKVARS-2]).pi))    
+		if (!s_testz_si128((feedback != n->v[NODE_MAX_WORKVARS-2]), (feedback != n->v[NODE_MAX_WORKVARS-2])))    
 		{
 			// calculate reverbaration time based on shortest comb delay and the feedback gain (base is the t60 criteria, which is time to reach -60db))
 			sample_t t60loops = s_log2(SC[S_0_001]) / s_log2(feedback);
@@ -3293,7 +3293,7 @@ void SYNTHCALL COMPEXP_tick(SynthNode* n)
 	sample_t cemask = (compflag & deltaflag) | !(compflag | deltaflag);
 	sample_t gain = SC[S_1_0];
 	// at least one channel needs processing?
-	if (!_mm_testz_si128(cemask.pi, cemask.pi))
+	if (!s_testz_si128(cemask, cemask))
 	{
 		// calculate new gain
 		gain = s_ifthen(cemask, s_db2lin(deltadb * (n->v[2] - SC[S_1_0] )), gain);
@@ -3362,7 +3362,7 @@ void SYNTHCALL TRIGGERSEQ_tick(SynthNode* n)
 	NODE_UPDATE_BEGIN   
 
 #ifdef COMPILE_VSTI
-		if (_mm_testz_si128(n->v[0].pi, n->v[0].pi))
+		if (s_testz_si128(n->v[0], n->v[0]))
 			n->v[0] = SC[S_1_0];
 
 		// v[0] = current step
@@ -3379,7 +3379,7 @@ void SYNTHCALL TRIGGERSEQ_tick(SynthNode* n)
 		*pattern++ = INP(TRIGGERSEQ_PATTERN12_15R).i[0];
 #else
 		// first time init, set step data pointer to the corresponding offset in the values
-		if (_mm_testz_si128(n->v[0].pi, n->v[0].pi))
+		if (s_testz_si128(n->v[0], n->v[0]))
 		{
 			n->v[0] = SC[S_1_0];
 			// in intro mode get direct pointers to values (right after the mode word)
@@ -3411,7 +3411,7 @@ void SYNTHCALL TRIGGERSEQ_tick(SynthNode* n)
 	sample_t nextpattern = n->v[0] >= (SC[S_128_0]+SC[S_128_0]);
 	n->v[0] = s_ifthen(nextpattern, SC[S_1_0], n->v[0]);	
 	// next pattern if needed
-	if (!_mm_testz_si128(nextpattern.pi, nextpattern.pi))
+	if (!s_testz_si128(nextpattern, nextpattern))
 	{
 		// random if trigger at pattern input
 		sample_t maxpattern = sample_t((double)(mode & TRIGGERSEQ_COUNTMASK));
@@ -3456,7 +3456,7 @@ void SYNTHCALL SAMPLEREC_tick(SynthNode* n)
 	//NODE_CALL_INPUT(SAMPLEREC_IN);
 	//NODE_CALL_INPUT(SAMPLEREC_MODE);
 
-	if (_mm_testz_si128(n->e.pi, n->e.pi))
+	if (s_testz_si128(n->e, n->e))
 	{
 		// gate signal for wavetable creation and also for no preocessing again
 		n->e = SC[S_1_0];
@@ -3618,7 +3618,7 @@ void SYNTHCALL SAMPLER_tick(SynthNode* n)
 	if (mode & SAMPLER_LOOP)
 	{
 		n->v[4] = n->v[4] | ((n->v[0] >= n->v[1]) & (n->v[0] <= n->v[2]));
-		if (!_mm_testz_si128(n->v[4].pi, n->v[4].pi))
+		if (!s_testz_si128(n->v[4], n->v[4]))
 		{
 			// keep in loop borders
 			n->v[0] = s_clamp(n->v[0], n->v[2], n->v[1]);
@@ -3769,10 +3769,10 @@ void SYNTHCALL GLITCH_tick(SynthNode* n)
 #endif
 
 	// effect active
-	if (!_mm_testz_si128((INP(GLITCH_ACTIVE) > SC[S_0_5]).pi, (INP(GLITCH_ACTIVE) > SC[S_0_5]).pi))
+	if (!s_testz_si128((INP(GLITCH_ACTIVE) > SC[S_0_5]), (INP(GLITCH_ACTIVE) > SC[S_0_5])))
 	{
 		// init needed?
-		if (_mm_testz_si128(n->e.pi, n->e.pi))
+		if (s_testz_si128(n->e, n->e))
 		{		
 			n->e = SC[S_1_0];
 			// buffer fill index for tapestop and retrigger
@@ -3781,9 +3781,17 @@ void SYNTHCALL GLITCH_tick(SynthNode* n)
 #ifndef GLITCH_SKIP_SHUFFLE			
 			// custom rand seed specified?
 			sample_t rands = s_dupright(INP(GLITCH_SHBACKRANGESEED));
-			if (!_mm_testz_si128(rands.pi, rands.pi))
+			if (!s_testz_si128(rands, rands))
 			{
+#if defined(K64_USE_NEON)
+				sample_t k = s_toInt(rands * SC[S_32768_0]);
+				n->v[21].i[0] = 0 + SC[S_EXP2_OFFSET].i[0];
+				n->v[21].i[1] = k.i[1] + SC[S_EXP2_OFFSET].i[1];
+				n->v[21].i[2] = 0 + SC[S_EXP2_OFFSET].i[2];
+				n->v[21].i[3] = k.i[0] + SC[S_EXP2_OFFSET].i[3];
+#else
 				n->v[21].pi = _mm_add_epi32(_mm_shuffle_epi32(s_toInt(rands*SC[S_32768_0]), _MM_SHUFFLE(3, 1, 2, 0)), SC[S_EXP2_OFFSET].pi);
+#endif
 			}
 			// use current rand seed
 			else
@@ -3811,7 +3819,7 @@ void SYNTHCALL GLITCH_tick(SynthNode* n)
 
 #if !((defined GLITCH_SKIP_TAPESTOP) && (defined GLITCH_SKIP_RETRIGGER))
 		// for tapestop and retrigger stop when buffer is full
-		if (mode < GLITCH_SHUFFLE && !_mm_testz_si128((n->v[0] < n->v[10]).pi, (n->v[0] < n->v[10]).pi))
+		if (mode < GLITCH_SHUFFLE && !s_testz_si128((n->v[0] < n->v[10]), (n->v[0] < n->v[10])))
 		{
 			sample_t bpos = s_toInt(n->v[0]);
 			(((sample_t*)n->customMem)[bpos.i[0]]).d[0] = out.d[0];
@@ -3853,7 +3861,7 @@ void SYNTHCALL GLITCH_tick(SynthNode* n)
 				// fadein to current slice
 				n->v[16] = s_lerp(n->v[16], n->v[18], n->v[17]/SC[S_32_0]);				
 				// slice loop done?
-				if (!_mm_testz_si128((n->v[1] >= slicesize).pi, (n->v[1] >= slicesize).pi))
+				if (!s_testz_si128((n->v[1] >= slicesize), (n->v[1] >= slicesize)))
 				{
 					// wrap index
 					n->v[1] = n->v[1] - slicesize;
@@ -3880,7 +3888,7 @@ void SYNTHCALL GLITCH_tick(SynthNode* n)
 				// decrement sample counter by speed factor
 				n->v[9] -= n->v[2];
 				// slice loop done?
-				if (!_mm_testz_si128((n->v[9] <= sample_t::zero()).pi, (n->v[9] <= sample_t::zero()).pi))
+				if (!s_testz_si128((n->v[9] <= sample_t::zero()), (n->v[9] <= sample_t::zero())))
 				{
 					// reset read index
 					n->v[1] -= n->v[12];
@@ -3893,7 +3901,7 @@ void SYNTHCALL GLITCH_tick(SynthNode* n)
 					n->v[17] = SC[S_32_0];
 				}				
 				// need a new slice?				
-				if (!_mm_testz_si128((n->v[8] <= sample_t::zero()).pi, (n->v[8] <= sample_t::zero()).pi))
+				if (!s_testz_si128((n->v[8] <= sample_t::zero()), (n->v[8] <= sample_t::zero())))
 				{	
 					// flip random seed
 					sample_t rand = SC[S_RAND_SEED];
@@ -4098,7 +4106,7 @@ void SYNTHCALL SAPI_tick(SynthNode* n)
 {
 	NODE_STATEFUL_PROLOG;
 
-	if (_mm_testz_si128(n->e.pi, n->e.pi))
+	if (s_testz_si128(n->e, n->e))
 	{
 		// gate signal for wavetable creation and also for no preocessing again
 		n->e = SC[S_1_0];
@@ -4458,7 +4466,7 @@ void SYNTHCALL SNH_tick(SynthNode* n)
 		n->v[1] -= s_floor(n->v[1]);
 	}
 	// at least one channel needs tick?
-	if (!_mm_testz_si128(tmask.pi, tmask.pi))
+	if (!s_testz_si128(tmask, tmask))
 	{
 		n->v[3] = s_ifthen(tmask, n->v[2], n->v[3]);
 		n->v[2] = s_ifthen(tmask, INP(SNH_IN), n->v[2]);
@@ -4489,7 +4497,7 @@ inline bool GetNextZeroCrossing(SynthNode* n, int& startIndex)
 	{
 		// require wave going UP
 		sample_t waveup = (buf[i] < sample_t::zero()) & (buf[i + 1] > sample_t::zero());
-		if (!_mm_testz_si128(waveup.pi, waveup.pi))
+		if (!s_testz_si128(waveup, waveup))
 		{
 			startIndex = i;
 			return true;
@@ -4520,7 +4528,7 @@ int mode = *(n->modePointer);
 #endif
 
 	// update/(re)scan the wave input only once
-	if (_mm_testz_si128(n->e.pi, n->e.pi))
+	if (s_testz_si128(n->e, n->e))
 	{
 		n->e = SC[S_1_0];
 
@@ -4649,7 +4657,7 @@ int mode = *(n->modePointer);
 		// update fadecounter
 		n->v[4] = s_max(n->v[4] - SC[S_1_0], sample_t::zero());
 		// on wrap reset fade counter and set last output
-		if (!_mm_testz_si128(wrap.pi, wrap.pi))
+		if (!s_testz_si128(wrap, wrap))
 		{
 			n->v[4] = s_ifthen(wrap, SC[S_10_0], n->v[4]);
 			n->v[5] = s_ifthen(wrap, n->out, n->v[5]);
@@ -4771,7 +4779,7 @@ int mode = *(n->modePointer)&0xffff;
 #endif
 
 	// calculate all formant coeffs once
-	if (_mm_testz_si128(n->e.pi, n->e.pi))
+	if (s_testz_si128(n->e, n->e))
 	{
 		n->e = SC[S_1_0];
 		n->customMem = (DWORD*)SynthMalloc(FORMANT_NUM_FILTERS * 5 * sizeof(sample_t));

@@ -1,10 +1,8 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// sample_t class for SSE4.1 based stereo sample processing (double, double).
-// based on Ralph Borsons (revivalizer) blog about simd for synths:
+// sample_t class for SIMD stereo sample processing (double, double).
+// SSE4.1 on x86/x64; NEON on ARM64. Based on Ralph Borsons (revivalizer) blog:
 //		http://revivalizer.dk/blog/2013/07/26/art-of-softsynth-development-simd-parallelization/
 //		http://revivalizer.dk/blog/2013/07/28/art-of-softsynth-development-using-sse-in-c-plus-plus-without-the-hassle/
-//		https://github.com/revivalizer
-// extended and fitted to my needs for 64klang
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifndef _SAMPLE_T_
@@ -14,6 +12,53 @@
 
 #define S_SKIP_UNUSED
 
+#if defined(K64_USE_NEON)
+K64_ALIGN16 union sample_t
+{
+	char		c[16];
+	short		s[8];
+	int			i[4];
+	int64_t		l[2];
+	uintptr_t	p[2];
+	double		d[2];
+	float64x2_t	pd;
+
+	// init (must call this)
+	static void init();
+
+	inline sample_t() {}
+	inline explicit sample_t(const double x)            : pd(vdupq_n_f64(x)) {}
+	inline explicit sample_t(double x1, double x2)       { double t[2] = {x1, x2}; pd = vld1q_f64(t); }
+	inline sample_t(double* ptr)                       : pd(vld1q_f64(ptr)) {}
+	inline sample_t(sample_t* ptr)                     : pd(vld1q_f64(ptr->d)) {}
+	inline sample_t(const float64x2_t& in)             : pd(in) {}
+	inline sample_t(const sample_t& x)                 : pd(x.pd) {}
+	inline explicit sample_t(int x)                    { i[0] = x; i[1] = x; i[2] = i[3] = 0; }
+
+	inline static sample_t zero()                      { return sample_t(vdupq_n_f64(0.0)); }
+	inline static sample_t load(const double* ptr)     { return sample_t(vld1q_f64(ptr)); }
+	inline static sample_t loadu(const double* ptr)    { double t[2]; t[0]=ptr[0]; t[1]=ptr[1]; return sample_t(vld1q_f64(t)); }
+	inline void store(double* ptr)                     { vst1q_f64(ptr, pd); }
+	inline void storeu(double* ptr)                    { vst1q_f64(ptr, pd); }
+
+	inline sample_t& operator=(const sample_t& x)      { pd = x.pd; return *this; }
+
+	inline sample_t& operator+=(const sample_t& x);
+	inline sample_t& operator-=(const sample_t& x);
+	inline sample_t& operator*=(const sample_t& x);
+	inline sample_t& operator/=(const sample_t& x);
+	inline sample_t& operator&=(const sample_t& x);
+	inline sample_t& operator|=(const sample_t& x);
+	inline sample_t& operator^=(const sample_t& x);
+
+	inline sample_t operator==(const sample_t& x);
+	inline sample_t operator!=(const sample_t& x);
+	inline sample_t operator<(const sample_t& x);
+	inline sample_t operator<=(const sample_t& x);
+	inline sample_t operator>(const sample_t& x);
+	inline sample_t operator>=(const sample_t& x);
+};
+#else
 K64_ALIGN16 union sample_t
 {
 	char		c[16];
@@ -26,10 +71,8 @@ K64_ALIGN16 union sample_t
 	__m128		ps;
 	__m128i		pi;
 
-	// init (must call this)
 	static void init();
 
-	// construction
 	inline sample_t() {}
 	inline explicit sample_t(const double x)			: pd(_mm_set1_pd(x)) {}
 	inline explicit sample_t(double x1, double x2)		: pd(_mm_set_pd(x2, x1)) {}
@@ -41,17 +84,14 @@ K64_ALIGN16 union sample_t
 	inline sample_t(const sample_t& x)					: pd(x.pd) {}
 	inline explicit sample_t(int x)						{ i[0] = x; i[1] = x; i[2] = i[3] = 0; }
 
-	// load/store/zero
 	inline static sample_t zero()						{ return sample_t(_mm_setzero_pd()); }
 	inline static sample_t load(const double* ptr)		{ return sample_t(_mm_load_pd(ptr)); }
 	inline static sample_t loadu(const double* ptr)		{ return sample_t(_mm_loadu_pd(ptr)); }
 	inline void store(double* ptr)						{ _mm_store_pd(ptr, pd); }
 	inline void storeu(double* ptr)						{ _mm_storeu_pd(ptr, pd); }
 
-	// assignment
 	inline sample_t& operator=(const sample_t& x)		{ pd = x.pd; return *this; }
 
-	// arithmetic
 	inline sample_t& operator+=(const sample_t& x);
 	inline sample_t& operator-=(const sample_t& x);
 	inline sample_t& operator*=(const sample_t& x);
@@ -60,7 +100,6 @@ K64_ALIGN16 union sample_t
 	inline sample_t& operator|=(const sample_t& x);
 	inline sample_t& operator^=(const sample_t& x);
 
-	// comparison
 	inline sample_t operator==(const sample_t& x);
 	inline sample_t operator!=(const sample_t& x);
 	inline sample_t operator<(const sample_t& x);
@@ -68,6 +107,7 @@ K64_ALIGN16 union sample_t
 	inline sample_t operator>(const sample_t& x);
 	inline sample_t operator>=(const sample_t& x);
 };
+#endif
 
 // constants
 enum
@@ -181,6 +221,59 @@ enum
 extern sample_t SC[S_MAX_CONSTANTS];
 
 // operator overloads
+#if defined(K64_USE_NEON)
+inline sample_t		operator+(const sample_t& a, const sample_t& b)						{ return sample_t(vaddq_f64(a.pd, b.pd)); }
+inline sample_t		operator-(const sample_t& a, const sample_t& b)						{ return sample_t(vsubq_f64(a.pd, b.pd)); }
+inline sample_t		operator*(const sample_t& a, const sample_t& b)						{ return sample_t(vmulq_f64(a.pd, b.pd)); }
+inline sample_t		operator/(const sample_t& a, const sample_t& b)						{ return sample_t(vdivq_f64(a.pd, b.pd)); }
+inline sample_t		operator&(const sample_t& a, const sample_t& b)						{ return sample_t(vreinterpretq_f64_u64(vandq_u64(vreinterpretq_u64_f64(a.pd), vreinterpretq_u64_f64(b.pd)))); }
+inline sample_t		operator|(const sample_t& a, const sample_t& b)						{ return sample_t(vreinterpretq_f64_u64(vorrq_u64(vreinterpretq_u64_f64(a.pd), vreinterpretq_u64_f64(b.pd)))); }
+inline sample_t		operator^(const sample_t& a, const sample_t& b)						{ return sample_t(vreinterpretq_f64_u64(veorq_u64(vreinterpretq_u64_f64(a.pd), vreinterpretq_u64_f64(b.pd)))); }
+inline sample_t		operator!(const sample_t& a)										{ return sample_t(vreinterpretq_f64_u64(veorq_u64(vreinterpretq_u64_f64(a.pd), vreinterpretq_u64_f64(SC[S_ALLBITS].pd)))); }
+inline sample_t		operator-(const sample_t& a)										{ return sample_t(vreinterpretq_f64_u64(veorq_u64(vreinterpretq_u64_f64(a.pd), vreinterpretq_u64_f64(SC[S_SIGN_MASK].pd)))); }
+
+inline sample_t&	sample_t::operator+=(const sample_t& x)								{ return *this=*this+x; }
+inline sample_t&	sample_t::operator-=(const sample_t& x)								{ return *this=*this-x; }
+inline sample_t&	sample_t::operator*=(const sample_t& x)								{ return *this=*this*x; }
+inline sample_t&	sample_t::operator/=(const sample_t& x)								{ return *this=*this/x; }
+inline sample_t&	sample_t::operator&=(const sample_t& x)								{ return *this=*this&x; }
+inline sample_t&	sample_t::operator|=(const sample_t& x)								{ return *this=*this|x; }
+inline sample_t&	sample_t::operator^=(const sample_t& x)								{ return *this=*this^x; }
+
+inline sample_t		sample_t::operator==(const sample_t& x)								{ return sample_t(vreinterpretq_f64_u64(vceqq_f64(pd, x.pd))); }
+inline sample_t		sample_t::operator!=(const sample_t& x)								{ return sample_t(vreinterpretq_f64_u64(veorq_u64(vceqq_f64(pd, x.pd), vdupq_n_u64(~0ULL)))); }
+inline sample_t		sample_t::operator< (const sample_t& x)								{ return sample_t(vreinterpretq_f64_u64(vcltq_f64(pd, x.pd))); }
+inline sample_t		sample_t::operator<=(const sample_t& x)								{ return sample_t(vreinterpretq_f64_u64(vcleq_f64(pd, x.pd))); }
+inline sample_t		sample_t::operator> (const sample_t& x)								{ return sample_t(vreinterpretq_f64_u64(vcgtq_f64(pd, x.pd))); }
+inline sample_t		sample_t::operator>=(const sample_t& x)								{ return sample_t(vreinterpretq_f64_u64(vcgeq_f64(pd, x.pd))); }
+
+inline sample_t		s_dupleft(const sample_t& x)										{ return sample_t(vdupq_laneq_f64(x.pd, 0)); }
+inline sample_t		s_dupright(const sample_t& x)										{ return sample_t(vdupq_laneq_f64(x.pd, 1)); }
+
+inline sample_t		s_min	(const sample_t& a, const sample_t& b)						{ return sample_t(vminq_f64(a.pd, b.pd)); }
+inline sample_t		s_max	(const sample_t& a, const sample_t& b)						{ return sample_t(vmaxq_f64(a.pd, b.pd)); }
+inline sample_t		s_sqrt	(const sample_t& x)											{ return sample_t(vsqrtq_f64(x.pd)); }
+inline sample_t		s_mad	(const sample_t& x, const sample_t& y, const sample_t& o)	{ return sample_t(vaddq_f64(vmulq_f64(x.pd, y.pd), o.pd)); }
+inline sample_t		s_ifthen(const sample_t& c, const sample_t& x, const sample_t& y)	{ return sample_t(vbslq_f64(vreinterpretq_u64_f64(c.pd), x.pd, y.pd)); }
+inline sample_t		s_floor	(const sample_t& x)											{ return sample_t(vrndmq_f64(x.pd)); }
+inline sample_t		s_ceil  (const sample_t& x)											{ return sample_t(vrndpq_f64(x.pd)); }
+inline sample_t		s_round (const sample_t& x)											{ return sample_t(vrndnq_f64(x.pd)); }
+inline sample_t		s_abs	(const sample_t& x)											{ return sample_t(vreinterpretq_f64_u64(vbicq_u64(vreinterpretq_u64_f64(x.pd), vreinterpretq_u64_f64(SC[S_SIGN_MASK].pd)))); }
+inline sample_t		s_neg	(const sample_t& x)											{ return sample_t(vreinterpretq_f64_u64(veorq_u64(vreinterpretq_u64_f64(x.pd), vreinterpretq_u64_f64(SC[S_SIGN_MASK].pd)))); }
+inline sample_t		s_cpsign(const sample_t& x, const sample_t& y)						{ return sample_t(vreinterpretq_f64_u64(vorrq_u64(vbicq_u64(vreinterpretq_u64_f64(x.pd), vreinterpretq_u64_f64(SC[S_SIGN_MASK].pd)), vandq_u64(vreinterpretq_u64_f64(SC[S_SIGN_MASK].pd), vreinterpretq_u64_f64(y.pd))))); }
+inline sample_t		s_mod	(const sample_t& x, const sample_t& m)						{ return x-(s_floor(x/m)*m); }
+inline sample_t		s_clamp (const sample_t& x, const sample_t& u, const sample_t& l)	{ return s_max(l, s_min(u, x)); }
+inline sample_t		s_lerp(const sample_t& x, const sample_t& y, const sample_t& f)		{ return (y - x)*f + x; }
+inline sample_t		s_shuffle(const sample_t& x, const sample_t& y)						{ return sample_t(vcombine_f64(vget_high_f64(x.pd), vget_low_f64(y.pd))); }
+
+// s_toInt / s_toSample / s_asSample: NEON implementations in sample_t.cpp
+sample_t s_toInt(const sample_t& x);
+sample_t s_toSample(const sample_t& x);
+sample_t s_asSample(const sample_t& x);
+inline sample_t s_asInt(const sample_t& x) { sample_t r; r.pd = x.pd; return r; }
+// Wrapper for "both lanes zero" test (SSE: _mm_testz_si128; NEON: .l[] check)
+inline int s_testz_si128(const sample_t& a, const sample_t& b) { (void)b; return (a.l[0] == 0 && a.l[1] == 0) ? 1 : 0; }
+#else
 inline sample_t		operator+(const sample_t& a, const sample_t& b)						{ return sample_t(_mm_add_pd(a.pd, b.pd)); }
 inline sample_t		operator-(const sample_t& a, const sample_t& b)						{ return sample_t(_mm_sub_pd(a.pd, b.pd)); }
 inline sample_t		operator*(const sample_t& a, const sample_t& b)						{ return sample_t(_mm_mul_pd(a.pd, b.pd)); }
@@ -191,7 +284,6 @@ inline sample_t		operator^(const sample_t& a, const sample_t& b)						{ return s
 inline sample_t		operator!(const sample_t& a)										{ return sample_t(_mm_xor_pd(a.pd, SC[S_ALLBITS].pd)); }
 inline sample_t		operator-(const sample_t& a)										{ return sample_t(_mm_xor_pd(a.pd, SC[S_SIGN_MASK].pd)); }
 
-// arithmetic
 inline sample_t&	sample_t::operator+=(const sample_t& x)								{ return *this=*this+x; }
 inline sample_t&	sample_t::operator-=(const sample_t& x)								{ return *this=*this-x; }
 inline sample_t&	sample_t::operator*=(const sample_t& x)								{ return *this=*this*x; }
@@ -200,24 +292,19 @@ inline sample_t&	sample_t::operator&=(const sample_t& x)								{ return *this=*
 inline sample_t&	sample_t::operator|=(const sample_t& x)								{ return *this=*this|x; }
 inline sample_t&	sample_t::operator^=(const sample_t& x)								{ return *this=*this^x; }
 
-// comparison
 inline sample_t		sample_t::operator==(const sample_t& x)								{ return sample_t(_mm_cmpeq_pd (pd, x.pd)); }
 inline sample_t		sample_t::operator!=(const sample_t& x)								{ return sample_t(_mm_cmpneq_pd(pd, x.pd)); }
 inline sample_t		sample_t::operator< (const sample_t& x)								{ return sample_t(_mm_cmplt_pd (pd, x.pd)); }
 inline sample_t		sample_t::operator<=(const sample_t& x)								{ return sample_t(_mm_cmple_pd (pd, x.pd)); }
 inline sample_t		sample_t::operator> (const sample_t& x)								{ return sample_t(_mm_cmpgt_pd (pd, x.pd)); }
 inline sample_t		sample_t::operator>=(const sample_t& x)								{ return sample_t(_mm_cmpge_pd (pd, x.pd)); }
-// bitwise casts
 inline __m128i		s_asInt(const sample_t& x)											{ return x.pi; }
 inline sample_t		s_asSample(__m128i x)												{ return sample_t(_mm_castsi128_pd(x)); }
-// conversion
 inline __m128i		s_toInt(const sample_t& x)											{ return _mm_cvtpd_epi32(x.pd); }
 inline sample_t		s_toSample(__m128i x)												{ return sample_t(_mm_cvtepi32_pd(x)); }
-// sample specific operations
 inline sample_t		s_dupleft(const sample_t& x)										{ return sample_t(_mm_movelh_ps(x.ps, x.ps)); }
 inline sample_t		s_dupright(const sample_t& x)										{ return sample_t(_mm_movehl_ps(x.ps, x.ps)); }
 
-// other math functions
 inline sample_t		s_min	(const sample_t& a, const sample_t& b)						{ return sample_t(_mm_min_pd(a.pd, b.pd)); }
 inline sample_t		s_max	(const sample_t& a, const sample_t& b)						{ return sample_t(_mm_max_pd(a.pd, b.pd)); }
 inline sample_t		s_sqrt	(const sample_t& x)											{ return sample_t(_mm_sqrt_pd(x.pd)); }
@@ -233,6 +320,8 @@ inline sample_t		s_mod	(const sample_t& x, const sample_t& m)						{ return x-(s
 inline sample_t		s_clamp (const sample_t& x, const sample_t& u, const sample_t& l)	{ return s_max(l, s_min(u, x)); }
 inline sample_t		s_lerp(const sample_t& x, const sample_t& y, const sample_t& f)		{ return (y - x)*f + x; }
 inline sample_t		s_shuffle(const sample_t& x, const sample_t& y)						{ return sample_t(_mm_shuffle_pd(x.pd, y.pd, 1)); }
+inline int s_testz_si128(const sample_t& a, const sample_t& b)							{ return _mm_testz_si128(a.pi, b.pi); }
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

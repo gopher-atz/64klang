@@ -3309,14 +3309,14 @@ void SynthController::setWaveFileReference(int index, int format, int frequency,
 	// number of samples to follow
 	sample_t ns;
 	ns.i[0] = ns.i[1] = numSamples;
-	*writeBuf++ = s_toSample(ns.pi);
+	*writeBuf++ = s_toSample(ns);
 	// copy/convert the samples
 	short* sourceBuffer = (short*)dstBuf;
 	for (int i = 0; i < numSamples; i++)
 	{
 		sample_t csi;
 		csi.i[0] = csi.i[1] = *sourceBuffer++;
-		*writeBuf++ = s_toSample(csi.pi)/SC[S_32768_0];
+		*writeBuf++ = s_toSample(csi)/SC[S_32768_0];
 	}
 	SynthFree(dstBuf);
 
