@@ -3170,7 +3170,7 @@ void NodeCanvas::render()
         float canvasMouseX = (io.MousePos.x - canvasPos.x) / zoom - offsetX;
         float canvasMouseY = (io.MousePos.y - canvasPos.y) / zoom - offsetY;
 
-        char dbg[4][256];
+        char dbg[6][256];
         snprintf(dbg[0], sizeof(dbg[0]),
                     "Frame=%-8llu  FPS=%.1f  dt=%.3fms",
                     (unsigned long long)debugFrameCount, io.Framerate, io.DeltaTime * 1000.f);
@@ -3195,9 +3195,9 @@ void NodeCanvas::render()
             maxW = std::max(maxW, ImGui::CalcTextSize(line).x);
         ImVec2 dbgPos(canvasPos.x + 4, canvasPos.y + 4);
         dl->AddRectFilled(dbgPos,
-                            ImVec2(dbgPos.x + maxW + 8, dbgPos.y + lineH * 4 + 6),
+                            ImVec2(dbgPos.x + maxW + 8, dbgPos.y + lineH * 6 + 6),
                             IM_COL32(0, 0, 0, 200));
-        for (int li = 0; li < 4; li++)
+        for (int li = 0; li < 6; li++)
             dl->AddText(ImVec2(dbgPos.x + 4, dbgPos.y + 3 + li * lineH),
                         IM_COL32(255, 255, 0, 255), dbg[li]);
     }

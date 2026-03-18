@@ -6,13 +6,7 @@
 #include <cstdint>    // uintptr_t
 #include <mutex>
 
-#ifdef _WIN32
-struct ID3D11Device;
-struct ID3D11DeviceContext;
-struct IDXGISwapChain;
-struct ID3D11RenderTargetView;
-struct ID3D11Texture2D;
-#endif
+
 
 #if defined(__linux__) && !defined(__APPLE__)
 #include <pthread.h>
@@ -47,7 +41,8 @@ public:
     static constexpr int32 kDefaultHeight = 800;
 
 #ifdef _WIN32
-    void renderFrame();            // called by Win32 timer callback
+    void renderFrameWin();         // called from Windows render thread
+    void runWinRenderLoop();       // render-thread entry: owns WGL context and loops
 #endif
 
 #ifdef __APPLE__
@@ -64,25 +59,18 @@ private:
     bool guiInitialized = false;
 
 #ifdef _WIN32
-    // D3D11 resources
-    ID3D11Device*            d3dDevice = nullptr;
-    ID3D11DeviceContext*     d3dContext = nullptr;
-    IDXGISwapChain*          swapChain = nullptr;
-    ID3D11RenderTargetView*  mainRTV = nullptr;
+    // WGL/OpenGL resources (void* to avoid <windows.h> in this header; HGLRC/HDC in .cpp)
+    void*     winGLCtx   = nullptr;   // HGLRC
+    void*     winDC      = nullptr;   // HDC
+    int       viewWidth  = kDefaultWidth;
+    int       viewHeight = kDefaultHeight;
 
-    // MSAA offscreen target
-    ID3D11Texture2D*         msaaTex = nullptr;
-    ID3D11RenderTargetView*  msaaRTV = nullptr;
-    int                      msaaWidth = 0;
-    int                      msaaHeight = 0;
+    bool createWGLContext(void* hwnd);
+    void destroyWGLContext();
 
-    bool createD3D11(void* hwnd);
-    void destroyD3D11();
-    void resizeSwapChain(int width, int height);
-    void createMSAATarget(int width, int height);
-
-    // Timer ID for render loop (UINT_PTR on Win32, stored as uintptr_t to avoid Windows header in this header)
-    uintptr_t timerID = 0;
+    // Render thread (mirrors Linux pattern)
+    void*         winRenderThread  = nullptr;  // HANDLE
+    volatile bool winRenderRunning = false;
 #endif // _WIN32
 
     // Protects D3D11/GL resources and ImGui state against concurrent access

@@ -45,10 +45,10 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR})
 if(WIN32)
     target_sources(imgui PRIVATE
         ${IMGUI_DIR}/backends/imgui_impl_win32.cpp
-        ${IMGUI_DIR}/backends/imgui_impl_dx11.cpp
+        ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
     )
     target_include_directories(imgui PUBLIC ${IMGUI_DIR}/backends)
-    target_link_libraries(imgui PUBLIC d3d11 dxgi)
+    target_link_libraries(imgui PUBLIC opengl32)
 elseif(APPLE)
     target_sources(imgui PRIVATE
         ${IMGUI_DIR}/backends/imgui_impl_osx.mm
@@ -249,8 +249,7 @@ if(WIN32)
         target_link_libraries(DebugExe PRIVATE
             64klang_core
             imgui
-            d3d11
-            dxgi
+            opengl32
             winmm
         )
         target_include_directories(DebugExe PRIVATE

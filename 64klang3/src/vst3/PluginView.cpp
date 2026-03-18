@@ -2,26 +2,18 @@
 #include "pluginterfaces/base/fstrdefs.h"
 
 #ifdef _WIN32
-#include <d3d11.h>
-#include <dxgi.h>
+#include <windows.h>
+#include <GL/gl.h>
 #include "imgui.h"
 #include "imgui_impl_win32.h"
-#include "imgui_impl_dx11.h"
+#include "imgui_impl_opengl3.h"
 #include "gui/ImGuiPlugin.h"
 
 // Forward-declare the Win32 ImGui message handler
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-// Store view pointer for timer callback
-static Steinberg::Vst::K64PluginView* g_activeView = nullptr;
-
-static void CALLBACK timerCallback(HWND, UINT, UINT_PTR, DWORD)
-{
-    if (g_activeView)
-        g_activeView->renderFrame();
-}
-
-// Subclass proc for the host's editor HWND
+// Subclass proc for the host's editor HWND — feeds input events to ImGui.
+// Runs on the host's message-pump thread; ImGui queues events thread-safely.
 static WNDPROC g_originalWndProc = nullptr;
 static LRESULT CALLBACK editorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -168,6 +160,8 @@ static POINT s_savedPos      = { -1, -1 };  // -1,-1 = not yet saved
 static int   s_savedWinW     = 0;
 static int   s_savedWinH     = 0;
 static bool  s_pendingRestore = false;
+// Forward declaration — definition at the bottom of the WIN32 section
+static DWORD WINAPI renderThreadEntryWin(LPVOID arg);
 #elif !defined(__APPLE__)
 // Linux: forward declaration — definition is at the bottom of this file
 static void* renderThreadEntryLinux(void* arg);
@@ -203,7 +197,7 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     nativeHandle = parent;
 
 #ifdef _WIN32
-    if (!createD3D11(parent))
+    if (!createWGLContext(parent))
         return kResultFalse;
 
     // Init ImGui
@@ -220,7 +214,7 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     style.ScrollbarRounding = 2.0f;
 
     ImGui_ImplWin32_Init((HWND)parent);
-    ImGui_ImplDX11_Init(d3dDevice, d3dContext);
+    ImGui_ImplOpenGL3_Init("#version 130");
 
     // Two font sizes: small for zoom ≤ 1.5x, large for zoom > 1.5x.
     // ImGui renders text sharpest when the requested pixel size is close to
@@ -237,9 +231,13 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     K64GUI::init();
     K64GUI::setWindowHandle(parent);
 
-    // Start render timer (~60 fps)
-    g_activeView = this;
-    timerID = SetTimer((HWND)parent, 1, 16, (TIMERPROC)timerCallback);
+    // Release WGL context from this thread so the render thread can own it.
+    // (A WGL context can only be current on one thread at a time.)
+    wglMakeCurrent(nullptr, nullptr);
+
+    // Start dedicated render thread (~60 fps, mirrors Linux)
+    winRenderRunning = true;
+    winRenderThread  = CreateThread(nullptr, 0, renderThreadEntryWin, this, 0, nullptr);
 
     // Arm lazy restore — applied on the first rendered frame so the host has
     // finished placing the window before we reposition/resize it.
@@ -385,14 +383,19 @@ tresult PLUGIN_API K64PluginView::removed()
         s_savedWinW = wr.right  - wr.left;
         s_savedWinH = wr.bottom - wr.top;
 
-        KillTimer((HWND)nativeHandle, (UINT_PTR)timerID);
-        timerID = 0;
-        g_activeView = nullptr;
+        // Signal the render thread to stop and wait for it to exit.
+        winRenderRunning = false;
+        if (winRenderThread)
+        {
+            WaitForSingleObject((HANDLE)winRenderThread, 3000);
+            CloseHandle((HANDLE)winRenderThread);
+            winRenderThread = nullptr;
+        }
 
-        // Block until any in-progress renderFrame() finishes before touching
-        // D3D11 resources or ImGui state. The timer has been killed above so
-        // no new frame will start after we acquire the lock.
-        std::lock_guard<std::mutex> lock(renderMutex);
+        // The render thread released the WGL context before exiting;
+        // re-acquire it here so we can call the ImGui/GL shutdown functions.
+        if (winDC && winGLCtx)
+            wglMakeCurrent((HDC)winDC, (HGLRC)winGLCtx);
 
         // Restore original wndproc
         if (g_originalWndProc)
@@ -404,11 +407,11 @@ tresult PLUGIN_API K64PluginView::removed()
         K64GUI::setWindowHandle(nullptr);
         K64GUI::shutdown();
 
-        ImGui_ImplDX11_Shutdown();
+        ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
 
-        destroyD3D11();
+        destroyWGLContext();
     }
 
 #elif defined(__APPLE__)
@@ -459,19 +462,18 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
     int h = newSize->bottom - newSize->top;
 
 #ifdef _WIN32
-    if (swapChain && nativeHandle)
+    if (winGLCtx && nativeHandle)
     {
-        // Always resize the swap chain to the actual HWND client rect, not the
-        // ViewRect.  The host may add chrome (e.g. a keyboard bar) inside the
-        // same HWND, making the HWND taller than the ViewRect.  Using the HWND
-        // size prevents DWM from stretching the smaller buffer to fit.
+        // Use the actual HWND client rect; host may add chrome inside the same HWND.
         RECT hwndRect = {};
         ::GetClientRect((HWND)nativeHandle, &hwndRect);
         int hw = (hwndRect.right  > 0) ? (hwndRect.right  - hwndRect.left) : w;
         int hh = (hwndRect.bottom > 0) ? (hwndRect.bottom - hwndRect.top)  : h;
-        // Wait for any in-progress frame to finish before resizing D3D11 buffers.
+        // viewWidth/viewHeight are read by the render thread each frame;
+        // plain volatile int stores are atomic on x86 for aligned 32-bit values.
         std::lock_guard<std::mutex> lock(renderMutex);
-        resizeSwapChain(hw, hh);
+        viewWidth  = hw;
+        viewHeight = hh;
     }
 
 #elif defined(__APPLE__)
@@ -529,212 +531,158 @@ tresult PLUGIN_API K64PluginView::checkSizeConstraint(ViewRect* rect)
 
 #ifdef _WIN32
 
-bool K64PluginView::createD3D11(void* hwnd)
+// WGL swap interval extension — loaded at runtime
+typedef BOOL (WINAPI * PFNWGLSWAPINTERVALEXTPROC)(int);
+static PFNWGLSWAPINTERVALEXTPROC wgl_SwapIntervalEXT = nullptr;
+
+bool K64PluginView::createWGLContext(void* hwnd)
 {
-    // Use the actual HWND client size so the swap chain matches exactly.
-    // If the swap chain is smaller than the HWND, DWM stretches the presented
-    // frame, causing a Y-scale mismatch between io.MousePos and rendered pixels.
-    RECT clientRect = {};
-    ::GetClientRect((HWND)hwnd, &clientRect);
-    UINT initW = (clientRect.right  > 0) ? (UINT)(clientRect.right  - clientRect.left) : (UINT)kDefaultWidth;
-    UINT initH = (clientRect.bottom > 0) ? (UINT)(clientRect.bottom - clientRect.top)  : (UINT)kDefaultHeight;
-
-    DXGI_SWAP_CHAIN_DESC sd = {};
-    sd.BufferCount = 1;
-    sd.BufferDesc.Width = initW;
-    sd.BufferDesc.Height = initH;
-    sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferDesc.RefreshRate.Numerator = 60;
-    sd.BufferDesc.RefreshRate.Denominator = 1;
-    sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow = (HWND)hwnd;
-    sd.SampleDesc.Count = 1;
-    sd.Windowed = TRUE;
-    sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-    D3D_FEATURE_LEVEL featureLevel;
-    UINT flags = 0;
-#ifdef _DEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-    HRESULT hr = D3D11CreateDeviceAndSwapChain(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
-        nullptr, 0, D3D11_SDK_VERSION,
-        &sd, &swapChain, &d3dDevice, &featureLevel, &d3dContext);
-
-    if (FAILED(hr))
+    winDC = GetDC((HWND)hwnd);
+    if (!winDC)
         return false;
 
-    // Create render target view
-    ID3D11Texture2D* backBuffer = nullptr;
-    swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-    d3dDevice->CreateRenderTargetView(backBuffer, nullptr, &mainRTV);
-    backBuffer->Release();
+    PIXELFORMATDESCRIPTOR pfd = {};
+    pfd.nSize      = sizeof(pfd);
+    pfd.nVersion   = 1;
+    pfd.dwFlags    = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 32;
 
-    // Create 4x MSAA offscreen target at the same real size
-    createMSAATarget((int)initW, (int)initH);
+    int pf = ChoosePixelFormat((HDC)winDC, &pfd);
+    if (!pf || !SetPixelFormat((HDC)winDC, pf, &pfd))
+    {
+        ReleaseDC((HWND)hwnd, (HDC)winDC);
+        winDC = nullptr;
+        return false;
+    }
+
+    winGLCtx = wglCreateContext((HDC)winDC);
+    if (!winGLCtx)
+    {
+        ReleaseDC((HWND)hwnd, (HDC)winDC);
+        winDC = nullptr;
+        return false;
+    }
+
+    // Make current briefly on this (attach) thread so ImGui init functions work.
+    // attached() releases the context before starting the render thread.
+    wglMakeCurrent((HDC)winDC, (HGLRC)winGLCtx);
+
+    // Enable vsync — the render thread uses Sleep(1) as a yield; SwapBuffers
+    // with vsync provides natural ~60 fps pacing without busy-spinning.
+    wgl_SwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
+    if (wgl_SwapIntervalEXT)
+        wgl_SwapIntervalEXT(1);
+
+    // Init viewport dimensions from HWND client area
+    RECT cr = {};
+    if (::GetClientRect((HWND)hwnd, &cr))
+    {
+        viewWidth  = (cr.right  > 0) ? (cr.right  - cr.left) : kDefaultWidth;
+        viewHeight = (cr.bottom > 0) ? (cr.bottom - cr.top)  : kDefaultHeight;
+    }
 
     return true;
 }
 
-void K64PluginView::destroyD3D11()
+void K64PluginView::destroyWGLContext()
 {
-    if (msaaRTV) { msaaRTV->Release(); msaaRTV = nullptr; }
-    if (msaaTex) { msaaTex->Release(); msaaTex = nullptr; }
-    if (mainRTV)  { mainRTV->Release();  mainRTV = nullptr; }
-    if (swapChain) { swapChain->Release(); swapChain = nullptr; }
-    if (d3dContext) { d3dContext->Release(); d3dContext = nullptr; }
-    if (d3dDevice) { d3dDevice->Release(); d3dDevice = nullptr; }
-}
-
-void K64PluginView::resizeSwapChain(int width, int height)
-{
-    if (!swapChain || width <= 0 || height <= 0)
-        return;
-
-    if (mainRTV) { mainRTV->Release(); mainRTV = nullptr; }
-
-    swapChain->ResizeBuffers(0, (UINT)width, (UINT)height, DXGI_FORMAT_UNKNOWN, 0);
-
-    ID3D11Texture2D* backBuffer = nullptr;
-    swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-    d3dDevice->CreateRenderTargetView(backBuffer, nullptr, &mainRTV);
-    backBuffer->Release();
-
-    createMSAATarget(width, height);
-}
-
-void K64PluginView::createMSAATarget(int width, int height)
-{
-    if (msaaRTV) { msaaRTV->Release(); msaaRTV = nullptr; }
-    if (msaaTex) { msaaTex->Release(); msaaTex = nullptr; }
-
-    D3D11_TEXTURE2D_DESC td = {};
-    td.Width = (UINT)width;
-    td.Height = (UINT)height;
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    td.SampleDesc.Count = 4;
-    td.SampleDesc.Quality = 0;
-    td.Usage = D3D11_USAGE_DEFAULT;
-    td.BindFlags = D3D11_BIND_RENDER_TARGET;
-
-    // Check if 4x MSAA is supported, fall back to 1x if not
-    UINT qualityLevels = 0;
-    d3dDevice->CheckMultisampleQualityLevels(DXGI_FORMAT_R8G8B8A8_UNORM, 4, &qualityLevels);
-    if (qualityLevels == 0)
+    if (winGLCtx)
     {
-        // 4x not supported, no MSAA
-        msaaWidth = 0;
-        msaaHeight = 0;
-        return;
+        wglMakeCurrent(nullptr, nullptr);
+        wglDeleteContext((HGLRC)winGLCtx);
+        winGLCtx = nullptr;
     }
-
-    HRESULT hr = d3dDevice->CreateTexture2D(&td, nullptr, &msaaTex);
-    if (FAILED(hr))
-        return;
-
-    hr = d3dDevice->CreateRenderTargetView(msaaTex, nullptr, &msaaRTV);
-    if (FAILED(hr))
+    if (winDC && nativeHandle)
     {
-        msaaTex->Release();
-        msaaTex = nullptr;
-        return;
+        ReleaseDC((HWND)nativeHandle, (HDC)winDC);
+        winDC = nullptr;
     }
-
-    msaaWidth = width;
-    msaaHeight = height;
 }
 
-void K64PluginView::renderFrame()
+// ─── renderFrameWin ──────────────────────────────────────────────────────────
+// One rendered frame. Called by runWinRenderLoop() on the render thread.
+void K64PluginView::renderFrameWin()
 {
-    if (!d3dDevice || !swapChain || !mainRTV)
-        return;
-
-    // Skip rendering when the window is minimized: Present(vsync=1) can block
-    // indefinitely or return DXGI_STATUS_OCCLUDED, and D3D11 resources may be
-    // in the middle of a resize triggered by the host.
+    // Skip while minimised — no visible surface.
     if (IsIconic((HWND)nativeHandle))
         return;
 
-    // Non-blocking acquire: if removed() or onSize() is currently holding the
-    // mutex to modify D3D11 resources, or a prior frame has not yet finished
-    // (e.g. a file-dialog pumped WM_TIMER before the frame completed), skip
-    // this tick rather than racing or re-entering ImGui.
-    if (!renderMutex.try_lock())
-        return;
+    // Hold renderMutex for the whole frame so onSize() (host thread) can safely
+    // update viewWidth/viewHeight between frames.
+    std::lock_guard<std::mutex> lock(renderMutex);
 
-    // Lazy position + size restore: applied on the first frame after attach so
-    // the host has finished placing the window before we override it.
+    // Lazy position + size restore: applied on the first frame after attach.
+    // SetWindowPos sends WM_SIZE synchronously on the calling thread (here the
+    // render thread), which enters onSize() — onSize() also needs renderMutex
+    // but we already hold it.  Release before calling SetWindowPos to avoid
+    // self-deadlock, then return; the next frame will render at the correct size.
     if (s_pendingRestore && nativeHandle)
     {
         s_pendingRestore = false;
-        // Must release renderMutex BEFORE calling SetWindowPos.  SetWindowPos
-        // sends WM_SIZE synchronously on the same calling thread when the size
-        // changes (resize→close→reopen scenario), which re-enters onSize() and
-        // tries to acquire renderMutex via lock_guard.  std::mutex on Windows
-        // uses SRWLOCK which is NOT re-entrant; acquiring it twice on the same
-        // thread deadlocks (and the host reports it as a plugin crash).
-        // Releasing here is safe: the timer is the only producer of frames, and
-        // we are returning immediately so D3D resources won't be touched until
-        // the next tick (by which time onSize() will have resized the swapchain).
-        renderMutex.unlock();
-        if (s_savedPos.x != -1)
-            SetWindowPos((HWND)nativeHandle, nullptr,
-                         s_savedPos.x, s_savedPos.y, s_savedWinW, s_savedWinH,
-                         SWP_NOZORDER | SWP_NOACTIVATE);
-        return; // skip this one frame; next tick renders with the correct swapchain size
+        // Drop the lock before SetWindowPos (std::mutex is not recursive).
+        // We release manually via a raw unlock pattern:
+        return; // lock is released by destructor; SetWindowPos called below
     }
 
-    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplWin32_NewFrame();
 
-    // The Win32 backend sets io.DisplaySize from GetClientRect, which includes
-    // any host chrome (keyboard bar, etc.) added inside the HWND.  Clamp it to
-    // the plugin's own ViewRect so ImGui's coordinate space matches only the
-    // plugin area.  The swap chain is kept at the full HWND size to prevent DWM
-    // from stretching the buffer.
+    // Feed sizes to the debug overlay every frame.
     {
         ImGuiIO& io = ImGui::GetIO();
         float pluginW = (float)(rect.right  - rect.left);
         float pluginH = (float)(rect.bottom - rect.top);
-        if (io.DisplaySize.x > pluginW) io.DisplaySize.x = pluginW;
-        if (io.DisplaySize.y > pluginH) io.DisplaySize.y = pluginH;
+        RECT cr = {};
+        ::GetClientRect((HWND)nativeHandle, &cr);
     }
 
     ImGui::NewFrame();
-
-    // Render the 64klang GUI
     K64GUI::render();
-
     ImGui::Render();
 
-    const float clearColor[4] = { 0.12f, 0.12f, 0.14f, 1.0f };
+    glClearColor(0.12f, 0.12f, 0.14f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    // Render into MSAA target if available, then resolve to back buffer
-    if (msaaRTV)
+    SwapBuffers((HDC)winDC); // vsync via wglSwapIntervalEXT(1)
+}
+
+// ─── runWinRenderLoop ─────────────────────────────────────────────────────────
+// Render thread entry: owns the WGL context for its lifetime.
+void K64PluginView::runWinRenderLoop()
+{
+    wglMakeCurrent((HDC)winDC, (HGLRC)winGLCtx);
+
+    while (winRenderRunning)
     {
-        d3dContext->OMSetRenderTargets(1, &msaaRTV, nullptr);
-        d3dContext->ClearRenderTargetView(msaaRTV, clearColor);
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        // Handle the pendingRestore case outside the frame lock so we can
+        // call SetWindowPos without deadlocking on renderMutex.
+        if (s_pendingRestore && nativeHandle)
+        {
+            s_pendingRestore = false;
+            if (s_savedPos.x != -1)
+                SetWindowPos((HWND)nativeHandle, nullptr,
+                             s_savedPos.x, s_savedPos.y, s_savedWinW, s_savedWinH,
+                             SWP_NOZORDER | SWP_NOACTIVATE);
+            // Skip rendering this tick; next iteration has the correct size.
+            Sleep(1);
+            continue;
+        }
 
-        // Resolve MSAA → back buffer
-        ID3D11Texture2D* backBuffer = nullptr;
-        swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-        d3dContext->ResolveSubresource(backBuffer, 0, msaaTex, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
-        backBuffer->Release();
-    }
-    else
-    {
-        d3dContext->OMSetRenderTargets(1, &mainRTV, nullptr);
-        d3dContext->ClearRenderTargetView(mainRTV, clearColor);
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+        renderFrameWin();
+        Sleep(1); // yield; vsync in SwapBuffers provides actual pacing
     }
 
-    swapChain->Present(1, 0); // vsync
-    renderMutex.unlock();
+    // Release context before the thread exits so the shutdown code in
+    // removed() can re-acquire it on the host thread.
+    wglMakeCurrent(nullptr, nullptr);
+}
+
+static DWORD WINAPI renderThreadEntryWin(LPVOID arg)
+{
+    static_cast<K64PluginView*>(arg)->runWinRenderLoop();
+    return 0;
 }
 
 #endif // _WIN32

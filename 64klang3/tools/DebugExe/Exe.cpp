@@ -1,9 +1,8 @@
 // 64klang3 DebugExe — standalone test host
-// No C++/CLI. Direct SynthController calls + D3D11 ImGui window.
+// No C++/CLI. Direct SynthController calls + OpenGL/WGL ImGui window.
 
 #include <windows.h>
-#include <d3d11.h>
-#include <dxgi.h>
+#include <GL/gl.h>
 #include <chrono>
 
 #include "core/SynthController.h"
@@ -11,7 +10,7 @@
 
 #include "imgui.h"
 #include "imgui_impl_win32.h"
-#include "imgui_impl_dx11.h"
+#include "imgui_impl_opengl3.h"
 
 // AudioOut.h must come before MidiIn.h (defines CHECK and helper templates)
 #include "AudioOut.h"
@@ -106,111 +105,60 @@ silence:
 }
 
 // ---------------------------------------------------------------------------
-// D3D11 resources
+// WGL/OpenGL resources
 // ---------------------------------------------------------------------------
 
-static ID3D11Device*           g_d3dDevice  = nullptr;
-static ID3D11DeviceContext*    g_d3dContext = nullptr;
-static IDXGISwapChain*         g_swapChain  = nullptr;
-static ID3D11RenderTargetView* g_mainRTV    = nullptr;
-static ID3D11Texture2D*        g_msaaTex    = nullptr;
-static ID3D11RenderTargetView* g_msaaRTV    = nullptr;
+typedef BOOL (WINAPI * PFNWGLSWAPINTERVALEXTPROC)(int);
+static HDC   g_hdc    = nullptr;
+static HGLRC g_glCtx  = nullptr;
+static int   g_winW   = 1280;
+static int   g_winH   = 800;
 
-static void createMSAATarget(int w, int h)
+static bool createWGLContext(HWND hwnd)
 {
-    if (g_msaaRTV) { g_msaaRTV->Release(); g_msaaRTV = nullptr; }
-    if (g_msaaTex) { g_msaaTex->Release(); g_msaaTex = nullptr; }
+    g_hdc = GetDC(hwnd);
+    if (!g_hdc) return false;
 
-    UINT qualityLevels = 0;
-    g_d3dDevice->CheckMultisampleQualityLevels(DXGI_FORMAT_R8G8B8A8_UNORM, 4, &qualityLevels);
-    if (qualityLevels == 0)
-        return;
+    PIXELFORMATDESCRIPTOR pfd = {};
+    pfd.nSize      = sizeof(pfd);
+    pfd.nVersion   = 1;
+    pfd.dwFlags    = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.iPixelType = PFD_TYPE_RGBA;
+    pfd.cColorBits = 32;
 
-    D3D11_TEXTURE2D_DESC td = {};
-    td.Width            = (UINT)w;
-    td.Height           = (UINT)h;
-    td.MipLevels        = 1;
-    td.ArraySize        = 1;
-    td.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
-    td.SampleDesc.Count = 4;
-    td.Usage            = D3D11_USAGE_DEFAULT;
-    td.BindFlags        = D3D11_BIND_RENDER_TARGET;
-
-    if (FAILED(g_d3dDevice->CreateTexture2D(&td, nullptr, &g_msaaTex)))
-        return;
-    if (FAILED(g_d3dDevice->CreateRenderTargetView(g_msaaTex, nullptr, &g_msaaRTV)))
+    int pf = ChoosePixelFormat(g_hdc, &pfd);
+    if (!pf || !SetPixelFormat(g_hdc, pf, &pfd))
     {
-        g_msaaTex->Release(); g_msaaTex = nullptr;
-    }
-}
-
-static bool createD3D11(HWND hwnd)
-{
-    RECT cr = {};
-    GetClientRect(hwnd, &cr);
-    UINT w = Max((int)(cr.right - cr.left), 1);
-    UINT h = Max((int)(cr.bottom - cr.top), 1);
-
-    DXGI_SWAP_CHAIN_DESC sd = {};
-    sd.BufferCount                        = 1;
-    sd.BufferDesc.Width                   = w;
-    sd.BufferDesc.Height                  = h;
-    sd.BufferDesc.Format                  = DXGI_FORMAT_R8G8B8A8_UNORM;
-    sd.BufferDesc.RefreshRate.Numerator   = 60;
-    sd.BufferDesc.RefreshRate.Denominator = 1;
-    sd.BufferUsage                        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    sd.OutputWindow                       = hwnd;
-    sd.SampleDesc.Count                   = 1;
-    sd.Windowed                           = TRUE;
-    sd.SwapEffect                         = DXGI_SWAP_EFFECT_DISCARD;
-
-    UINT flags = 0;
-#ifdef _DEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-    D3D_FEATURE_LEVEL featureLevel;
-    HRESULT hr = D3D11CreateDeviceAndSwapChain(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags,
-        nullptr, 0, D3D11_SDK_VERSION,
-        &sd, &g_swapChain, &g_d3dDevice, &featureLevel, &g_d3dContext);
-    if (FAILED(hr))
+        ReleaseDC(hwnd, g_hdc); g_hdc = nullptr;
         return false;
+    }
 
-    ID3D11Texture2D* backBuffer = nullptr;
-    g_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-    g_d3dDevice->CreateRenderTargetView(backBuffer, nullptr, &g_mainRTV);
-    backBuffer->Release();
+    g_glCtx = wglCreateContext(g_hdc);
+    if (!g_glCtx)
+    {
+        ReleaseDC(hwnd, g_hdc); g_hdc = nullptr;
+        return false;
+    }
 
-    createMSAATarget((int)w, (int)h);
+    wglMakeCurrent(g_hdc, g_glCtx);
+
+    // Disable vsync so the 16 ms timer controls pacing
+    auto wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
+    if (wglSwapIntervalEXT) wglSwapIntervalEXT(0);
+
+    RECT cr = {};
+    if (GetClientRect(hwnd, &cr))
+    {
+        g_winW = (cr.right  > 0) ? cr.right  - cr.left : 1280;
+        g_winH = (cr.bottom > 0) ? cr.bottom - cr.top  : 800;
+    }
     return true;
 }
 
-static void resizeSwapChain(int w, int h)
+static void destroyWGLContext(HWND hwnd)
 {
-    if (!g_swapChain || w <= 0 || h <= 0)
-        return;
-
-    if (g_mainRTV) { g_mainRTV->Release(); g_mainRTV = nullptr; }
-
-    g_swapChain->ResizeBuffers(0, (UINT)w, (UINT)h, DXGI_FORMAT_UNKNOWN, 0);
-
-    ID3D11Texture2D* backBuffer = nullptr;
-    g_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-    g_d3dDevice->CreateRenderTargetView(backBuffer, nullptr, &g_mainRTV);
-    backBuffer->Release();
-
-    createMSAATarget(w, h);
-}
-
-static void destroyD3D11()
-{
-    if (g_msaaRTV)  { g_msaaRTV->Release();  g_msaaRTV  = nullptr; }
-    if (g_msaaTex)  { g_msaaTex->Release();  g_msaaTex  = nullptr; }
-    if (g_mainRTV)  { g_mainRTV->Release();  g_mainRTV  = nullptr; }
-    if (g_swapChain){ g_swapChain->Release(); g_swapChain= nullptr; }
-    if (g_d3dContext){ g_d3dContext->Release();g_d3dContext=nullptr;}
-    if (g_d3dDevice){ g_d3dDevice->Release(); g_d3dDevice= nullptr; }
+    if (g_glCtx) { wglMakeCurrent(nullptr, nullptr); wglDeleteContext(g_glCtx); g_glCtx = nullptr; }
+    if (g_hdc)   { ReleaseDC(hwnd, g_hdc); g_hdc = nullptr; }
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +167,7 @@ static void destroyD3D11()
 
 static void renderFrame()
 {
-    if (!g_d3dDevice || !g_swapChain || !g_mainRTV)
+    if (!g_glCtx || !g_hdc)
         return;
 
     // Guard against re-entrant calls: file dialogs pump the message loop,
@@ -229,7 +177,9 @@ static void renderFrame()
         return;
     s_inFrame = true;
 
-    ImGui_ImplDX11_NewFrame();
+    wglMakeCurrent(g_hdc, g_glCtx);
+
+    ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
@@ -237,27 +187,12 @@ static void renderFrame()
 
     ImGui::Render();
 
-    const float clearColor[4] = { 0.12f, 0.12f, 0.14f, 1.0f };
+    glViewport(0, 0, g_winW, g_winH);
+    glClearColor(0.12f, 0.12f, 0.14f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    if (g_msaaRTV)
-    {
-        g_d3dContext->OMSetRenderTargets(1, &g_msaaRTV, nullptr);
-        g_d3dContext->ClearRenderTargetView(g_msaaRTV, clearColor);
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-
-        ID3D11Texture2D* backBuffer = nullptr;
-        g_swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
-        g_d3dContext->ResolveSubresource(backBuffer, 0, g_msaaTex, 0, DXGI_FORMAT_R8G8B8A8_UNORM);
-        backBuffer->Release();
-    }
-    else
-    {
-        g_d3dContext->OMSetRenderTargets(1, &g_mainRTV, nullptr);
-        g_d3dContext->ClearRenderTargetView(g_mainRTV, clearColor);
-        ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-    }
-
-    g_swapChain->Present(1, 0);
+    SwapBuffers(g_hdc);
     s_inFrame = false;
 }
 
@@ -275,8 +210,11 @@ static LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPara
     switch (msg)
     {
     case WM_SIZE:
-        if (g_swapChain && wParam != SIZE_MINIMIZED)
-            resizeSwapChain(LOWORD(lParam), HIWORD(lParam));
+        if (g_glCtx && wParam != SIZE_MINIMIZED)
+        {
+            g_winW = LOWORD(lParam);
+            g_winH = HIWORD(lParam);
+        }
         return 0;
 
     case WM_TIMER:
@@ -312,7 +250,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
         CW_USEDEFAULT, CW_USEDEFAULT, 1280, 800,
         nullptr, nullptr, hInstance, nullptr);
 
-    if (!createD3D11(hwnd))
+    if (!createWGLContext(hwnd))
         return 1;
 
     // ImGui
@@ -329,7 +267,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     style.ScrollbarRounding= 2.0f;
 
     ImGui_ImplWin32_Init(hwnd);
-    ImGui_ImplDX11_Init(g_d3dDevice, g_d3dContext);
+    ImGui_ImplOpenGL3_Init("#version 130");
 
     io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 14.0f);
     io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 32.0f);
@@ -368,11 +306,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow)
     K64GUI::shutdown();
     K64GUI::destroyCanvas();
 
-    ImGui_ImplDX11_Shutdown();
+    ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();
 
-    destroyD3D11();
+    destroyWGLContext(hwnd);
     CoUninitialize();
 
     return (int)msg.wParam;
