@@ -34,6 +34,7 @@ public:
 
     // Toolbar integration
     void toggleWaveFileDialog() { showWaveFileDialog = !showWaveFileDialog; }
+    void toggleDebugOverlay()   { showDebugOverlay   = !showDebugOverlay;   }
     void jumpToChannel(int channel);           // scroll canvas to center on ChannelRoot N
     void setSearchFilter(const char* text) { searchFilter = text; }
 

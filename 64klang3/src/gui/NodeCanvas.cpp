@@ -1141,137 +1141,140 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         sc->numGUINodes(); // refresh accessor
     }
 
-    // ── Copy (Ctrl+C) ──
-    if (canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
-    {
-        clipboard.clear();
-        if (!selectedNodeIDs.empty())
-        {
-            // Compute centroid
-            double cx = 0, cy = 0;
-            int count = 0;
-            std::vector<int> selIDs(selectedNodeIDs.begin(), selectedNodeIDs.end());
-            for (int id : selIDs)
-            {
-                int gi = findGuiIndex(id);
-                if (gi >= 0)
-                {
-                    cx += sc->gnX(gi);
-                    cy += sc->gnY(gi);
-                    count++;
-                }
-            }
-            if (count > 0) { cx /= count; cy /= count; }
+    // copy/paste based on keys is not working reliably as we dont get key events from the DAW in some cases
+    // TODO: rewrite this to reflect the original logic from SynthCanvas.xaml.cs including CTRL and shift keys for switching nodes from global to local or vice versa
+    // // ── Copy (Ctrl+C) ──
+    // if (canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
+    // {
+    //     clipboard.clear();
+    //     if (!selectedNodeIDs.empty())
+    //     {
+    //         // Compute centroid
+    //         double cx = 0, cy = 0;
+    //         int count = 0;
+    //         std::vector<int> selIDs(selectedNodeIDs.begin(), selectedNodeIDs.end());
+    //         for (int id : selIDs)
+    //         {
+    //             int gi = findGuiIndex(id);
+    //             if (gi >= 0)
+    //             {
+    //                 cx += sc->gnX(gi);
+    //                 cy += sc->gnY(gi);
+    //                 count++;
+    //             }
+    //         }
+    //         if (count > 0) { cx /= count; cy /= count; }
 
-            // Build ID→clipboard index map
-            std::unordered_map<int, int> idToClipIdx;
-            for (int idx = 0; idx < (int)selIDs.size(); idx++)
-                idToClipIdx[selIDs[idx]] = idx;
+    //         // Build ID→clipboard index map
+    //         std::unordered_map<int, int> idToClipIdx;
+    //         for (int idx = 0; idx < (int)selIDs.size(); idx++)
+    //             idToClipIdx[selIDs[idx]] = idx;
 
-            for (int id : selIDs)
-            {
-                int gi = findGuiIndex(id);
-                if (gi < 0) continue;
+    //         for (int id : selIDs)
+    //         {
+    //             int gi = findGuiIndex(id);
+    //             if (gi < 0) continue;
 
-                ClipboardNode cn;
-                cn.typeID = sc->gnType(gi);
-                cn.channel = sc->gnChannel(gi);
-                cn.isGlobal = sc->gnIsGlobal(gi);
-                cn.relX = sc->gnX(gi) - cx;
-                cn.relY = sc->gnY(gi) - cy;
+    //             ClipboardNode cn;
+    //             cn.typeID = sc->gnType(gi);
+    //             cn.channel = sc->gnChannel(gi);
+    //             cn.isGlobal = sc->gnIsGlobal(gi);
+    //             cn.relX = sc->gnX(gi) - cx;
+    //             cn.relY = sc->gnY(gi) - cy;
 
-                int numSignals = effectiveInputCount(gi);
-                cn.inputs.resize(numSignals);
-                cn.internalWires.resize(numSignals, -1);
+    //             int numSignals = effectiveInputCount(gi);
+    //             cn.inputs.resize(numSignals);
+    //             cn.internalWires.resize(numSignals, -1);
 
-                for (int p = 0; p < numSignals; p++)
-                {
-                    cn.inputs[p].valL = sc->gnInputValue(gi, p, 0);
-                    cn.inputs[p].valR = sc->gnInputValue(gi, p, 1);
-                    cn.inputs[p].mode = sc->gnInputMode(gi, p);
+    //             for (int p = 0; p < numSignals; p++)
+    //             {
+    //                 cn.inputs[p].valL = sc->gnInputValue(gi, p, 0);
+    //                 cn.inputs[p].valR = sc->gnInputValue(gi, p, 1);
+    //                 cn.inputs[p].mode = sc->gnInputMode(gi, p);
 
-                    int srcID = sc->gnInput(gi, p);
-                    if (isRealConnection(srcID, sc))
-                    {
-                        auto it = idToClipIdx.find(srcID);
-                        if (it != idToClipIdx.end())
-                            cn.internalWires[p] = it->second;
-                    }
-                }
+    //                 int srcID = sc->gnInput(gi, p);
+    //                 if (isRealConnection(srcID, sc))
+    //                 {
+    //                     auto it = idToClipIdx.find(srcID);
+    //                     if (it != idToClipIdx.end())
+    //                         cn.internalWires[p] = it->second;
+    //                 }
+    //             }
 
-                clipboard.push_back(std::move(cn));
-            }
-        }
-    }
+    //             clipboard.push_back(std::move(cn));
+    //         }
+    //     }
+    // }
 
-    // ── Paste (Ctrl+V) ──
-    if (canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V))
-    {
-        if (!clipboard.empty())
-        {
-            // Convert mouse pos to canvas coords
-            double mouseCanvasX = (mousePos.x - canvasPos.x) / zoom - offsetX;
-            double mouseCanvasY = (mousePos.y - canvasPos.y) / zoom - offsetY;
+    // // ── Paste (Ctrl+V) ──
+    // if (canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V))
+    // {
+    //     if (!clipboard.empty())
+    //     {
+    //         // Convert mouse pos to canvas coords
+    //         double mouseCanvasX = (mousePos.x - canvasPos.x) / zoom - offsetX;
+    //         double mouseCanvasY = (mousePos.y - canvasPos.y) / zoom - offsetY;
 
-            sc->killVoices();
+    //         sc->killVoices();
 
-            std::vector<int> newNodeIDs;
-            for (const auto& cn : clipboard)
-            {
-                double px = mouseCanvasX + cn.relX;
-                double py = mouseCanvasY + cn.relY;
-                // Voice type inputs (id > CONSTANT_ID) can never be global
-                DWORD pasteGlobal = (cn.typeID > (int)CONSTANT_ID) ? 0u : (cn.isGlobal ? 1u : 0u);
-                SynthNode* newNode = sc->createGUINode((DWORD)cn.typeID, (DWORD)cn.channel,
-                                                        pasteGlobal, px, py);
-                int newID = newNode ? (int)newNode->valueOffset : -1;
-                newNodeIDs.push_back(newID);
-            }
+    //         std::vector<int> newNodeIDs;
+    //         for (int i = 0; i < (int)clipboard.size(); i++)
+    //         {
+    //             const auto& cn = clipboard[i];
+    //             double px = mouseCanvasX + cn.relX;
+    //             double py = mouseCanvasY + cn.relY;
+    //             // Voice type inputs (id > CONSTANT_ID) can never be global
+    //             DWORD pasteGlobal = (cn.typeID > (int)CONSTANT_ID) ? 0u : (cn.isGlobal ? 1u : 0u);
+    //             SynthNode* newNode = sc->createGUINode((DWORD)cn.typeID, (DWORD)cn.channel,
+    //                                                     pasteGlobal, px, py);
+    //             int newID = newNode ? (int)newNode->valueOffset : -1;
+    //             newNodeIDs.push_back(newID);
+    //         }
 
-            // Set values and modes
-            for (int i = 0; i < (int)clipboard.size(); i++)
-            {
-                if (newNodeIDs[i] < 0) continue;
-                const auto& cn = clipboard[i];
-                int numParams = std::min((int)cn.inputs.size(), 16);
-                for (int p = 0; p < numParams; p++)
-                {
-                    sc->setInputValue((DWORD)newNodeIDs[i], (DWORD)p,
-                                      cn.inputs[p].valL, cn.inputs[p].valR);
-                    if (cn.inputs[p].mode != 0)
-                        sc->setInputMode((DWORD)newNodeIDs[i], (DWORD)p,
-                                         (DWORD)cn.inputs[p].mode);
-                }
-            }
+    //         // Set values and modes
+    //         for (int i = 0; i < (int)clipboard.size(); i++)
+    //         {
+    //             if (newNodeIDs[i] < 0) continue;
+    //             const auto& cn = clipboard[i];
+    //             int numParams = std::min((int)cn.inputs.size(), 16);
+    //             for (int p = 0; p < numParams; p++)
+    //             {
+    //                 sc->setInputValue((DWORD)newNodeIDs[i], (DWORD)p,
+    //                                   cn.inputs[p].valL, cn.inputs[p].valR);
+    //                 if (cn.inputs[p].mode != 0)
+    //                     sc->setInputMode((DWORD)newNodeIDs[i], (DWORD)p,
+    //                                      (DWORD)cn.inputs[p].mode);
+    //             }
+    //         }
 
-            // Reconnect internal wires
-            for (int i = 0; i < (int)clipboard.size(); i++)
-            {
-                if (newNodeIDs[i] < 0) continue;
-                const auto& cn = clipboard[i];
-                for (int p = 0; p < (int)cn.internalWires.size(); p++)
-                {
-                    int srcClipIdx = cn.internalWires[p];
-                    if (srcClipIdx >= 0 && srcClipIdx < (int)newNodeIDs.size() && newNodeIDs[srcClipIdx] >= 0)
-                    {
-                        sc->connectInput((DWORD)newNodeIDs[srcClipIdx], (DWORD)newNodeIDs[i], (DWORD)p);
-                    }
-                }
-            }
+    //         // Reconnect internal wires
+    //         for (int i = 0; i < (int)clipboard.size(); i++)
+    //         {
+    //             if (newNodeIDs[i] < 0) continue;
+    //             const auto& cn = clipboard[i];
+    //             for (int p = 0; p < (int)cn.internalWires.size(); p++)
+    //             {
+    //                 int srcClipIdx = cn.internalWires[p];
+    //                 if (srcClipIdx >= 0 && srcClipIdx < (int)newNodeIDs.size() && newNodeIDs[srcClipIdx] >= 0)
+    //                 {
+    //                     sc->connectInput((DWORD)newNodeIDs[srcClipIdx], (DWORD)newNodeIDs[i], (DWORD)p);
+    //                 }
+    //             }
+    //         }
 
-            // Select all pasted nodes
-            selectedNodeIDs.clear();
-            for (int id : newNodeIDs)
-                if (id >= 0) bringToFront(id);
-            for (int id : newNodeIDs)
-            {
-                if (id >= 0)
-                    selectedNodeIDs.insert(id);
-            }
-            syncSelectionToCore();
-            sc->numGUINodes(); // refresh
-        }
-    }
+    //         // Select all pasted nodes
+    //         selectedNodeIDs.clear();
+    //         for (int id : newNodeIDs)
+    //             if (id >= 0) bringToFront(id);
+    //         for (int id : newNodeIDs)
+    //         {
+    //             if (id >= 0)
+    //                 selectedNodeIDs.insert(id);
+    //         }
+    //         syncSelectionToCore();
+    //         sc->numGUINodes(); // refresh
+    //     }
+    // }
 }
 
 // ── Edit Panel helpers ────────────────────────────────────────────────────────
@@ -3146,57 +3149,50 @@ void NodeCanvas::render()
                     IM_COL32(180, 180, 180, 255), msg);
     }
 
-    // Toggle debug overlay with Ctrl+Shift+D; Wave File dialog with Ctrl+W
+    // Show debug overlay
+    if (showDebugOverlay)
     {
         ImGuiIO& io = ImGui::GetIO();
-        if (io.KeyCtrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_D, false))
-            showDebugOverlay = !showDebugOverlay;
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_W, false))
-            showWaveFileDialog = !showWaveFileDialog;
-
-        if (showDebugOverlay)
+        SynthController* sc2 = SynthController::instance();
+        bool winHovered = ImGui::IsWindowHovered();
+        int hitID = -1;
+        int numNodes2 = 0;
+        if (sc2 && sc2->isInitialized())
         {
-            SynthController* sc2 = SynthController::instance();
-            bool winHovered = ImGui::IsWindowHovered();
-            int hitID = -1;
-            int numNodes2 = 0;
-            if (sc2 && sc2->isInitialized())
-            {
-                numNodes2 = sc2->numGUINodes();
-                hitID = hitTestNode(io.MousePos, canvasPos);
-            }
-            // Canvas-projected mouse position: inverse of nodeScreenPos
-            float canvasMouseX = (io.MousePos.x - canvasPos.x) / zoom - offsetX;
-            float canvasMouseY = (io.MousePos.y - canvasPos.y) / zoom - offsetY;
-
-            char dbg[3][256];
-            snprintf(dbg[0], sizeof(dbg[0]),
-                     "Mouse=%.1f,%.1f  CanvasOrigin=%.1f,%.1f  DisplaySize=%.0fx%.0f",
-                     io.MousePos.x, io.MousePos.y,
-                     canvasPos.x, canvasPos.y,
-                     io.DisplaySize.x, io.DisplaySize.y);
-            snprintf(dbg[1], sizeof(dbg[1]),
-                     "CanvasXY=%.1f,%.1f  Zoom=%.3f  Offset=%.1f,%.1f",
-                     canvasMouseX, canvasMouseY,
-                     zoom, offsetX, offsetY);
-            snprintf(dbg[2], sizeof(dbg[2]),
-                     "ItemHov=%d WinHov=%d MB0=%d MB1=%d  Hit=%d Sel=%d Nodes=%d",
-                     (int)canvasHovered, (int)winHovered,
-                     (int)io.MouseDown[0], (int)io.MouseDown[1],
-                     hitID, (int)selectedNodeIDs.size(), numNodes2);
-
-            float lineH = ImGui::CalcTextSize("X").y + 2.f;
-            float maxW = 0;
-            for (auto& line : dbg)
-                maxW = std::max(maxW, ImGui::CalcTextSize(line).x);
-            ImVec2 dbgPos(canvasPos.x + 4, canvasPos.y + 4);
-            dl->AddRectFilled(dbgPos,
-                              ImVec2(dbgPos.x + maxW + 8, dbgPos.y + lineH * 3 + 6),
-                              IM_COL32(0, 0, 0, 200));
-            for (int li = 0; li < 3; li++)
-                dl->AddText(ImVec2(dbgPos.x + 4, dbgPos.y + 3 + li * lineH),
-                            IM_COL32(255, 255, 0, 255), dbg[li]);
+            numNodes2 = sc2->numGUINodes();
+            hitID = hitTestNode(io.MousePos, canvasPos);
         }
+        // Canvas-projected mouse position: inverse of nodeScreenPos
+        float canvasMouseX = (io.MousePos.x - canvasPos.x) / zoom - offsetX;
+        float canvasMouseY = (io.MousePos.y - canvasPos.y) / zoom - offsetY;
+
+        char dbg[3][256];
+        snprintf(dbg[0], sizeof(dbg[0]),
+                    "Mouse=%.1f,%.1f  CanvasOrigin=%.1f,%.1f  DisplaySize=%.0fx%.0f",
+                    io.MousePos.x, io.MousePos.y,
+                    canvasPos.x, canvasPos.y,
+                    io.DisplaySize.x, io.DisplaySize.y);
+        snprintf(dbg[1], sizeof(dbg[1]),
+                    "CanvasXY=%.1f,%.1f  Zoom=%.3f  Offset=%.1f,%.1f",
+                    canvasMouseX, canvasMouseY,
+                    zoom, offsetX, offsetY);
+        snprintf(dbg[2], sizeof(dbg[2]),
+                    "ItemHov=%d WinHov=%d MB0=%d MB1=%d  Hit=%d Sel=%d Nodes=%d",
+                    (int)canvasHovered, (int)winHovered,
+                    (int)io.MouseDown[0], (int)io.MouseDown[1],
+                    hitID, (int)selectedNodeIDs.size(), numNodes2);
+
+        float lineH = ImGui::CalcTextSize("X").y + 2.f;
+        float maxW = 0;
+        for (auto& line : dbg)
+            maxW = std::max(maxW, ImGui::CalcTextSize(line).x);
+        ImVec2 dbgPos(canvasPos.x + 4, canvasPos.y + 4);
+        dl->AddRectFilled(dbgPos,
+                            ImVec2(dbgPos.x + maxW + 8, dbgPos.y + lineH * 3 + 6),
+                            IM_COL32(0, 0, 0, 200));
+        for (int li = 0; li < 3; li++)
+            dl->AddText(ImVec2(dbgPos.x + 4, dbgPos.y + 3 + li * lineH),
+                        IM_COL32(255, 255, 0, 255), dbg[li]);
     }
 
     // Draw edit panels (world-space, inside clip rect)

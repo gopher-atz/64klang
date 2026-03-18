@@ -352,11 +352,15 @@ static void renderToolbar()
         if (ImGui::Button("P.A.N.I.C") && sc)
             sc->panic();
 
-        // Voices label (left of P.A.N.I.C)
-        ImGui::SetCursorScreenPos(ImVec2(
+        // Voices label (left of P.A.N.I.C) — click to toggle debug overlay
+        ImVec2 voicePos(
             rightEdge - panicW - 8.f - voiceTextW,
-            tbPos.y + (tbH - ImGui::GetTextLineHeight()) * 0.5f));
+            tbPos.y + (tbH - ImGui::GetTextLineHeight()) * 0.5f);
+        ImGui::SetCursorScreenPos(voicePos);
         ImGui::TextUnformatted(voiceBuf);
+        ImGui::SetCursorScreenPos(voicePos);
+        if (ImGui::InvisibleButton("##voicesToggle", ImVec2(voiceTextW, ImGui::GetTextLineHeight())) && s_canvas)
+            s_canvas->toggleDebugOverlay();
     }
 
     ImGui::PopFont();
