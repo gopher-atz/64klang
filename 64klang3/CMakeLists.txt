@@ -187,6 +187,7 @@ if(APPLE)
     )
 endif()
 
+set(SMTG_PACKAGE_ICON_PATH ${CMAKE_CURRENT_SOURCE_DIR}/alcatraz.ico CACHE STRING "" FORCE)
 smtg_add_vst3plugin(64klang3 ${VST3_COMMON_SOURCES})
 
 target_link_libraries(64klang3 PRIVATE
