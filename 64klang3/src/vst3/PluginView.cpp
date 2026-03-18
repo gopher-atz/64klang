@@ -46,11 +46,115 @@ void k64_macOS_renderFrame();
 #include "gui/ImGuiPlugin.h"
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/keysym.h>
 #include <GL/gl.h>
 #include <GL/glx.h>
 #include <unistd.h>    // usleep
 #include <cstdio>      // fprintf
 
+#endif
+
+#if defined(__linux__) && !defined(__APPLE__)
+static inline void k64_updateImGuiModsFromXState(ImGuiIO& io, unsigned int state)
+{
+    io.AddKeyEvent(ImGuiMod_Ctrl,  (state & ControlMask) != 0);
+    io.AddKeyEvent(ImGuiMod_Shift, (state & ShiftMask)   != 0);
+    io.AddKeyEvent(ImGuiMod_Alt,   (state & Mod1Mask)    != 0);
+    io.AddKeyEvent(ImGuiMod_Super, (state & Mod4Mask)    != 0);
+}
+
+static ImGuiKey k64_x11KeysymToImGuiKey(KeySym sym)
+{
+    switch (sym)
+    {
+    case XK_Tab: return ImGuiKey_Tab;
+    case XK_ISO_Left_Tab: return ImGuiKey_Tab;
+    case XK_Left: return ImGuiKey_LeftArrow;
+    case XK_Right: return ImGuiKey_RightArrow;
+    case XK_Up: return ImGuiKey_UpArrow;
+    case XK_Down: return ImGuiKey_DownArrow;
+    case XK_Page_Up: return ImGuiKey_PageUp;
+    case XK_Page_Down: return ImGuiKey_PageDown;
+    case XK_Home: return ImGuiKey_Home;
+    case XK_End: return ImGuiKey_End;
+    case XK_Insert: return ImGuiKey_Insert;
+    case XK_Delete: return ImGuiKey_Delete;
+    case XK_BackSpace: return ImGuiKey_Backspace;
+    case XK_space: return ImGuiKey_Space;
+    case XK_Return: return ImGuiKey_Enter;
+    case XK_KP_Enter: return ImGuiKey_KeypadEnter;
+    case XK_Escape: return ImGuiKey_Escape;
+
+    case XK_apostrophe: return ImGuiKey_Apostrophe;
+    case XK_comma: return ImGuiKey_Comma;
+    case XK_minus: return ImGuiKey_Minus;
+    case XK_period: return ImGuiKey_Period;
+    case XK_slash: return ImGuiKey_Slash;
+    case XK_semicolon: return ImGuiKey_Semicolon;
+    case XK_equal: return ImGuiKey_Equal;
+    case XK_bracketleft: return ImGuiKey_LeftBracket;
+    case XK_backslash: return ImGuiKey_Backslash;
+    case XK_bracketright: return ImGuiKey_RightBracket;
+    case XK_grave: return ImGuiKey_GraveAccent;
+
+    case XK_Caps_Lock: return ImGuiKey_CapsLock;
+    case XK_Scroll_Lock: return ImGuiKey_ScrollLock;
+    case XK_Num_Lock: return ImGuiKey_NumLock;
+    case XK_Print: return ImGuiKey_PrintScreen;
+    case XK_Pause: return ImGuiKey_Pause;
+
+    case XK_Shift_L: return ImGuiKey_LeftShift;
+    case XK_Shift_R: return ImGuiKey_RightShift;
+    case XK_Control_L: return ImGuiKey_LeftCtrl;
+    case XK_Control_R: return ImGuiKey_RightCtrl;
+    case XK_Alt_L: return ImGuiKey_LeftAlt;
+    case XK_Alt_R: return ImGuiKey_RightAlt;
+    case XK_Super_L: return ImGuiKey_LeftSuper;
+    case XK_Super_R: return ImGuiKey_RightSuper;
+    case XK_Menu: return ImGuiKey_Menu;
+
+    case XK_KP_0: return ImGuiKey_Keypad0;
+    case XK_KP_1: return ImGuiKey_Keypad1;
+    case XK_KP_2: return ImGuiKey_Keypad2;
+    case XK_KP_3: return ImGuiKey_Keypad3;
+    case XK_KP_4: return ImGuiKey_Keypad4;
+    case XK_KP_5: return ImGuiKey_Keypad5;
+    case XK_KP_6: return ImGuiKey_Keypad6;
+    case XK_KP_7: return ImGuiKey_Keypad7;
+    case XK_KP_8: return ImGuiKey_Keypad8;
+    case XK_KP_9: return ImGuiKey_Keypad9;
+    case XK_KP_Decimal: return ImGuiKey_KeypadDecimal;
+    case XK_KP_Divide: return ImGuiKey_KeypadDivide;
+    case XK_KP_Multiply: return ImGuiKey_KeypadMultiply;
+    case XK_KP_Subtract: return ImGuiKey_KeypadSubtract;
+    case XK_KP_Add: return ImGuiKey_KeypadAdd;
+
+    case XK_F1: return ImGuiKey_F1;
+    case XK_F2: return ImGuiKey_F2;
+    case XK_F3: return ImGuiKey_F3;
+    case XK_F4: return ImGuiKey_F4;
+    case XK_F5: return ImGuiKey_F5;
+    case XK_F6: return ImGuiKey_F6;
+    case XK_F7: return ImGuiKey_F7;
+    case XK_F8: return ImGuiKey_F8;
+    case XK_F9: return ImGuiKey_F9;
+    case XK_F10: return ImGuiKey_F10;
+    case XK_F11: return ImGuiKey_F11;
+    case XK_F12: return ImGuiKey_F12;
+    default:
+        break;
+    }
+
+    if (sym >= XK_0 && sym <= XK_9)
+        return (ImGuiKey)((int)ImGuiKey_0 + (int)(sym - XK_0));
+
+    if (sym >= XK_a && sym <= XK_z)
+        return (ImGuiKey)((int)ImGuiKey_A + (int)(sym - XK_a));
+    if (sym >= XK_A && sym <= XK_Z)
+        return (ImGuiKey)((int)ImGuiKey_A + (int)(sym - XK_A));
+
+    return ImGuiKey_None;
+}
 #endif
 
 namespace Steinberg {
@@ -191,7 +295,7 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
                                      vi->visual, AllocNone);
     swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask
                    | ButtonPressMask | ButtonReleaseMask | PointerMotionMask
-                   | StructureNotifyMask;
+                   | StructureNotifyMask | FocusChangeMask | EnterWindowMask | LeaveWindowMask;
 
     linuxWindow = XCreateWindow(
         linuxDisplay,
@@ -671,14 +775,17 @@ void K64PluginView::renderFrameLinux()
         switch (ev.type)
         {
         case MotionNotify:
+            k64_updateImGuiModsFromXState(io, ev.xmotion.state);
             io.AddMousePosEvent((float)ev.xmotion.x, (float)ev.xmotion.y);
             break;
         case ButtonPress:
         case ButtonRelease:
         {
             bool down = (ev.type == ButtonPress);
+            k64_updateImGuiModsFromXState(io, ev.xbutton.state);
             if (ev.xbutton.button == Button1) io.AddMouseButtonEvent(0, down);
             if (ev.xbutton.button == Button3) io.AddMouseButtonEvent(1, down);
+            if (ev.xbutton.button == Button2) io.AddMouseButtonEvent(2, down);
             if (ev.xbutton.button == Button4) io.AddMouseWheelEvent(0.0f, +1.0f);
             if (ev.xbutton.button == Button5) io.AddMouseWheelEvent(0.0f, -1.0f);
             break;
@@ -686,13 +793,43 @@ void K64PluginView::renderFrameLinux()
         case KeyPress:
         case KeyRelease:
         {
-            // Minimal key forwarding — translate keycode to ImGuiKey
-            // (full mapping omitted for brevity; extend as needed)
             bool down = (ev.type == KeyPress);
-            KeySym sym = XLookupKeysym(&ev.xkey, 0);
-            (void)sym; (void)down;
+            KeySym sym = NoSymbol;
+            char text[8] = {};
+            int textLen = XLookupString(&ev.xkey, text, (int)sizeof(text), &sym, nullptr);
+
+            k64_updateImGuiModsFromXState(io, ev.xkey.state);
+
+            ImGuiKey key = k64_x11KeysymToImGuiKey(sym);
+            if (key != ImGuiKey_None)
+                io.AddKeyEvent(key, down);
+
+            if (down)
+            {
+                // Feed text input only for regular character entry, not when
+                // Ctrl/Alt combinations are active.
+                bool ctrlOrAlt = (ev.xkey.state & (ControlMask | Mod1Mask)) != 0;
+                if (!ctrlOrAlt)
+                {
+                    for (int i = 0; i < textLen; ++i)
+                    {
+                        const unsigned char c = (unsigned char)text[i];
+                        if (c >= 32)
+                            io.AddInputCharacter((unsigned int)c);
+                    }
+                }
+            }
             break;
         }
+        case FocusIn:
+            io.AddFocusEvent(true);
+            break;
+        case FocusOut:
+            io.AddFocusEvent(false);
+            break;
+        case LeaveNotify:
+            io.AddMousePosEvent(-1.0f, -1.0f);
+            break;
         case ConfigureNotify:
             io.DisplaySize = ImVec2((float)ev.xconfigure.width,
                                     (float)ev.xconfigure.height);
