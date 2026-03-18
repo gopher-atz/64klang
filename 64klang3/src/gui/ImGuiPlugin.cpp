@@ -218,6 +218,8 @@ static void renderToolbar()
         {
             sc->killVoices();
             sc->loadPatch(std::string(buf));
+            if (s_canvas)
+                s_canvas->rebuildZOrder();
         }
     }
     ImGui::SameLine();
@@ -236,6 +238,8 @@ static void renderToolbar()
         {
             sc->killVoices();
             sc->resetPatch(true, true);
+            if (s_canvas)
+                s_canvas->rebuildZOrder();
         }
     }
 

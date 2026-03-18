@@ -102,6 +102,8 @@ void NodeCanvas::jumpToChannel(int channel)
             std::unordered_set<int> visited;
             recursiveSelect(nodeID, visited);
         }
+        for (int nid : selectedNodeIDs)
+            bringToFront(nid);
         syncSelectionToCore();
         return;
     }
@@ -308,6 +310,46 @@ ImVec2 NodeCanvas::inputPinPos(const ImVec2& nodePos, int pinIndex) const
     return ImVec2(nodePos.x + kPinInset * zoom, nodePos.y + (kFirstPinY + (float)pinIndex * kRowHeight) * zoom);
 }
 
+// ── Z-order management ───────────────────────────────────────────────────
+
+void NodeCanvas::rebuildZOrder()
+{
+    SynthController* sc = SynthController::instance();
+    if (!sc) return;
+    int n = sc->numGUINodes();
+    // Preserve existing order for surviving nodes, append any new ones at the back.
+    std::vector<int> old = nodeZOrder;
+    nodeZOrder.clear();
+    std::unordered_set<int> seen;
+    for (int nid : old)
+    {
+        if (findGuiIndex(nid) >= 0)
+        {
+            nodeZOrder.push_back(nid);
+            seen.insert(nid);
+        }
+    }
+    for (int i = 0; i < n; i++)
+    {
+        if (!sc->gnIsVisible(i)) continue;
+        int nid = sc->gnID(i);
+        if (!seen.count(nid))
+            nodeZOrder.push_back(nid);
+    }
+}
+
+void NodeCanvas::bringToFront(int nodeID)
+{
+    auto it = std::find(nodeZOrder.begin(), nodeZOrder.end(), nodeID);
+    if (it == nodeZOrder.end())
+        nodeZOrder.push_back(nodeID);
+    else if (std::next(it) != nodeZOrder.end())
+    {
+        nodeZOrder.erase(it);
+        nodeZOrder.push_back(nodeID);
+    }
+}
+
 // ── Hit Testing ──────────────────────────────────────────────────────────
 
 int NodeCanvas::hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) const
@@ -315,13 +357,13 @@ int NodeCanvas::hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) 
     SynthController* sc = SynthController::instance();
     if (!sc) return -1;
 
-    int numNodes = sc->numGUINodes();
     int hitID = -1;
 
-    // Iterate forward; last match = topmost (painter's order)
-    for (int i = 0; i < numNodes; i++)
+    // Iterate in Z-order (back = frontmost); last match = topmost node.
+    for (int nid : nodeZOrder)
     {
-        if (!sc->gnIsVisible(i))
+        int i = findGuiIndex(nid);
+        if (i < 0 || !sc->gnIsVisible(i))
             continue;
         double nx = sc->gnX(i);
         double ny = sc->gnY(i);
@@ -338,7 +380,7 @@ int NodeCanvas::hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) 
         if (mousePos.x >= pos.x && mousePos.x <= pos.x + w &&
             mousePos.y >= pos.y && mousePos.y <= pos.y + h)
         {
-            hitID = sc->gnID(i);
+            hitID = nid;
         }
     }
     return hitID;
@@ -358,8 +400,8 @@ int NodeCanvas::findGuiIndex(int nodeID) const
     return -1;
 }
 
-bool NodeCanvas::nodeFullyInsideRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax,
-                                     const ImVec2& canvasOrigin) const
+bool NodeCanvas::nodeOverlapsRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax,
+                                  const ImVec2& canvasOrigin) const
 {
     SynthController* sc = SynthController::instance();
     if (!sc) return false;
@@ -382,8 +424,8 @@ bool NodeCanvas::nodeFullyInsideRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMa
     float rMaxX = std::max(rectMin.x, rectMax.x);
     float rMaxY = std::max(rectMin.y, rectMax.y);
 
-    return pos.x >= rMinX && pos.y >= rMinY &&
-           pos.x + w <= rMaxX && pos.y + h <= rMaxY;
+    return pos.x < rMaxX && pos.x + w > rMinX &&
+           pos.y < rMaxY && pos.y + h > rMinY;
 }
 
 void NodeCanvas::recursiveSelect(int nodeID, std::unordered_set<int>& visited)
@@ -420,6 +462,8 @@ void NodeCanvas::syncSelectionToCore()
 
 void NodeCanvas::deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly)
 {
+    nodeZOrder.erase(std::remove(nodeZOrder.begin(), nodeZOrder.end(), nodeID), nodeZOrder.end());
+
     SynthController* sc = SynthController::instance();
     if (!sc) return;
 
@@ -465,24 +509,23 @@ int NodeCanvas::hitTestOutputPin(const ImVec2& mousePos, const ImVec2& canvasOri
     SynthController* sc = SynthController::instance();
     if (!sc) return -1;
 
-    int numNodes = sc->numGUINodes();
     float hitRadius = kPinRadius * zoom * 1.5f;
+    int hitID = -1;
 
-    for (int i = 0; i < numNodes; i++)
+    for (int nid : nodeZOrder)
     {
-        if (!sc->gnIsVisible(i))
+        int i = findGuiIndex(nid);
+        if (i < 0 || !sc->gnIsVisible(i))
             continue;
-        double nx = sc->gnX(i);
-        double ny = sc->gnY(i);
-        ImVec2 pos = nodeScreenPos(nx, ny, canvasOrigin);
+        ImVec2 pos = nodeScreenPos(sc->gnX(i), sc->gnY(i), canvasOrigin);
         ImVec2 pin = outputPinPos(pos);
 
         float dx = mousePos.x - pin.x;
         float dy = mousePos.y - pin.y;
         if (dx * dx + dy * dy <= hitRadius * hitRadius)
-            return sc->gnID(i);
+            hitID = nid;
     }
-    return -1;
+    return hitID;
 }
 
 NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImVec2& canvasOrigin) const
@@ -490,33 +533,29 @@ NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImV
     SynthController* sc = SynthController::instance();
     if (!sc) return {-1, -1};
 
-    int numNodes = sc->numGUINodes();
     float hitRadius = kPinRadius * zoom * 1.5f;
+    PinHit best = {-1, -1};
 
-    for (int i = 0; i < numNodes; i++)
+    for (int nid : nodeZOrder)
     {
-        if (!sc->gnIsVisible(i))
+        int i = findGuiIndex(nid);
+        if (i < 0 || !sc->gnIsVisible(i))
             continue;
-        double nx = sc->gnX(i);
-        double ny = sc->gnY(i);
         int numSignals = effectiveInputCount(i);
         int nodeTypeHT = sc->gnType(i);
         bool hasEditBtnHT = nodeHasEditButton(i);
-        ImVec2 pos = nodeScreenPos(nx, ny, canvasOrigin);
+        ImVec2 pos = nodeScreenPos(sc->gnX(i), sc->gnY(i), canvasOrigin);
         float w = kNodeWidth * zoom;
 
-        // Regular input pins
         for (int pin = 0; pin < numSignals; pin++)
         {
             ImVec2 pinPos = inputPinPos(pos, pin);
             float dx = mousePos.x - pinPos.x;
             float dy = mousePos.y - pinPos.y;
             if (dx * dx + dy * dy <= hitRadius * hitRadius)
-                return {sc->gnID(i), pin};
+                best = {nid, pin};
         }
 
-        // "Add Input" pill for variable-input nodes. For NoteController, ONLY this pill adds;
-        // existing pins replace. MULTIADD still uses any pin to add (legacy behavior).
         if ((nodeTypeHT == MULTIADD_ID || nodeTypeHT == NOTECONTROLLER_ID) && numSignals < 16)
         {
             float pillBaseY = pos.y + nodeHeight(numSignals, hasEditBtnHT, false) * zoom;
@@ -526,10 +565,10 @@ NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImV
             ImVec2 pillMax(pos.x + w - pillInset, pillBaseY + pillH - 2.f * zoom);
             if (mousePos.x >= pillMin.x && mousePos.x <= pillMax.x &&
                 mousePos.y >= pillMin.y && mousePos.y <= pillMax.y)
-                return {sc->gnID(i), numSignals}; // Add-input dropzone
+                best = {nid, numSignals};
         }
     }
-    return {-1, -1};
+    return best;
 }
 
 // Point-to-segment squared distance (avoids sqrt)
@@ -760,6 +799,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                     sc->killVoices();
                     sc->connectInput((DWORD)wireDragFromNodeID, (DWORD)target.nodeID, (DWORD)target.pinIndex);
                     sc->numGUINodes();
+                    bringToFront(wireDragFromNodeID);
+                    bringToFront(target.nodeID);
                 }
                 return; // stay in wire drag mode
             }
@@ -792,7 +833,10 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             return;
         }
 
-        // Test pins BEFORE node body
+        // Node body hit is computed first — a foreground node body occludes pins of nodes behind it.
+        int hitID = hitTestNode(mousePos, canvasPos);
+
+        // Test pins BEFORE node body selection, but AFTER node occlusion check.
         // Shift+click on output pin = recursive select; only start wire drag when shift not held.
         bool shiftHeld = isShiftHeld();
         int outputHit = hitTestOutputPin(mousePos, canvasPos);
@@ -803,11 +847,13 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             wireDragFromNodeID = outputHit;
             wireDragCurrentPos = mousePos;
             pressedNodeID = -1;
+            bringToFront(outputHit);
             return;
         }
 
         PinHit inputHit = hitTestInputPin(mousePos, canvasPos);
-        if (inputHit.nodeID != -1)
+        // Only disconnect if no node body is occluding this pin from a different node.
+        if (inputHit.nodeID != -1 && (hitID == -1 || hitID == inputHit.nodeID))
         {
             // Check if this input is already wired — disconnect it.
             // Guard: skip the "Add Input" pill (pinIndex == numInputs for variable-input nodes).
@@ -824,6 +870,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                     if (isRealConnection(srcID, sc))
                     {
                         sc->killVoices();
+                        bringToFront(inputHit.nodeID);
                         sc->disconnectInput((DWORD)inputHit.nodeID, (DWORD)inputHit.pinIndex);
                         sc->numGUINodes(); // refresh accessor
                         return;
@@ -831,8 +878,6 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                 }
             }
         }
-
-        int hitID = hitTestNode(mousePos, canvasPos);
         double now = ImGui::GetTime();
 
         // Double-click detection
@@ -852,6 +897,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
 
         if (hitID != -1)
         {
+            bringToFront(hitID);
             if (isDoubleClick)
             {
                 // Double-click: mute toggle for ChannelRoot/VoiceManager, rename for others
@@ -903,6 +949,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                             selectedNodeIDs.clear();
                         std::unordered_set<int> visited;
                         recursiveSelect(hitID, visited);
+                        for (int nid : selectedNodeIDs)
+                            bringToFront(nid);
                     }
                     else if (ctrl)
                     {
@@ -998,8 +1046,12 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             int numNodes = sc->numGUINodes();
             for (int i = 0; i < numNodes; i++)
             {
-                if (nodeFullyInsideRect(i, rubberBandStart, rubberBandCurrent, canvasPos))
-                    selectedNodeIDs.insert(sc->gnID(i));
+                if (nodeOverlapsRect(i, rubberBandStart, rubberBandCurrent, canvasPos))
+                {
+                    int nid = sc->gnID(i);
+                    selectedNodeIDs.insert(nid);
+                    bringToFront(nid);
+                }
             }
             syncSelectionToCore();
         }
@@ -1210,6 +1262,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             // Select all pasted nodes
             selectedNodeIDs.clear();
             for (int id : newNodeIDs)
+                if (id >= 0) bringToFront(id);
+            for (int id : newNodeIDs)
             {
                 if (id >= 0)
                     selectedNodeIDs.insert(id);
@@ -1405,6 +1459,10 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
     // While any ImGui popup is open, suppress all custom click handling.
     if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
         topmostUnderMouse = -1;
+
+    // Bring the interacted panel's node to front on click.
+    if (topmostUnderMouse != -1 && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        bringToFront(topmostUnderMouse);
 
     for (int nodeID : panelIDs)
     {
@@ -2489,7 +2547,8 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
         // Hit-test X button
         ImGuiIO& io = ImGui::GetIO();
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered)
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered
+                && hitTestNode(io.MousePos, canvasOrigin) == nodeID)
         {
             ImVec2 mpos = io.MousePos;
             if (mpos.x >= xMin.x && mpos.x <= xMax.x &&
@@ -2691,7 +2750,8 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
         // Hit-test: detect click on button to open/toggle edit panel
         ImGuiIO& io = ImGui::GetIO();
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered)
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered
+                && hitTestNode(io.MousePos, canvasOrigin) == nodeID)
         {
             ImVec2 mpos = io.MousePos;
             if (mpos.x >= btnMin.x && mpos.x <= btnMax.x &&
@@ -2703,6 +2763,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                         closeEditPanel(nodeID);
                     else
                         openEditPanels.push_back(nodeID);  // push_back = topmost (last drawn)
+                    bringToFront(nodeID);
                 }
             }
         }
@@ -2765,6 +2826,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                                 selectedNodeIDs.clear();
                                 syncSelectionToCore();
                                 sc->numGUINodes(); // rebuild _nodesGUIAccessor — loadChannel invalidated it
+                                rebuildZOrder();   // new channel nodes weren't in nodeZOrder yet
                                 return true;       // break draw loop, same as node deletion
                             }
                         }
@@ -2960,10 +3022,15 @@ void NodeCanvas::render()
                 showContextMenu = false;
                 openEditPanels.clear();
                 paramSyncState.clear();
+                nodeZOrder.clear();
                 syncSelectionToCore();
             }
             lastNodeCount = currentCount;
         }
+
+        // Rebuild Z-order if empty (first frame after patch load, or first boot).
+        if (nodeZOrder.empty() && sc->numGUINodes() > 0)
+            rebuildZOrder();
 
         // Center view on the node graph (nodes are placed around 16384,16384)
         if (needsInitialView && canvasSize.x > 0 && canvasSize.y > 0)
@@ -3056,13 +3123,11 @@ void NodeCanvas::render()
         // Draw ghost wire during wire drag
         drawGhostWire(dl, canvasPos);
 
-        // Draw nodes (skip internal/helper nodes)
-        // drawNode returns true if the node was deleted; stop the loop immediately
-        // to avoid accessing the now-stale numNodes count.
-        int numNodes = sc->numGUINodes();
-        for (int i = 0; i < numNodes; i++)
+        // Draw nodes in Z-order (back-to-front, back = first drawn = behind)
+        for (int zid : nodeZOrder)
         {
-            if (!sc->gnIsVisible(i))
+            int i = findGuiIndex(zid);
+            if (i < 0 || !sc->gnIsVisible(i))
                 continue;
             if (drawNode(dl, i, canvasPos))
                 break;
@@ -3252,6 +3317,8 @@ void NodeCanvas::render()
                                     SynthNode* newNode = sc->createGUINode((DWORD)nodeDef->id, (DWORD)channel,
                                                                            (DWORD)(isGlobal ? 1 : 0),
                                                                            createPos.x, createPos.y);
+                                    if (newNode)
+                                        bringToFront((int)newNode->valueOffset);
                                     if (doWireDragInsert && newNode)
                                     {
                                         int newID = (int)newNode->valueOffset;

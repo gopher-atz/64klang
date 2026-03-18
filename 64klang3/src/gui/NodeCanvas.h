@@ -17,6 +17,7 @@ public:
     ~NodeCanvas();
 
     void render();
+    void rebuildZOrder();
 
     void setOffset(float x, float y) { offsetX = x; offsetY = y; }
     void getOffset(float& x, float& y) const { x = offsetX; y = offsetY; }
@@ -81,6 +82,10 @@ private:
     // Edit panels (multiple can be open); vector preserves open order (back = topmost/last-opened)
     std::vector<int> openEditPanels;
     bool   mouseOverEditPanel = false;  // set per-frame, blocks canvas interaction
+
+    // Node Z-order: nodeIDs in back-to-front paint / event order (back = frontmost).
+    // Kept in sync on every interaction and structural change.
+    std::vector<int> nodeZOrder;
 
     // Per-parameter sync state: key = (uint64_t)nodeID<<32 | paramIdx
     // Initialised lazily when a panel opens (from L==R equality).
@@ -202,9 +207,12 @@ private:
     void handlePanZoom(const ImVec2& canvasPos, const ImVec2& canvasSize);
     void handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& canvasSize);
 
+    // Z-order management
+    void bringToFront(int nodeID);
+
     int  hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) const;
     int  findGuiIndex(int nodeID) const;
-    bool nodeFullyInsideRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax, const ImVec2& canvasOrigin) const;
+    bool nodeOverlapsRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax, const ImVec2& canvasOrigin) const;
     void recursiveSelect(int nodeID, std::unordered_set<int>& visited);
     void syncSelectionToCore();
     void deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly);
