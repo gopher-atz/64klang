@@ -154,8 +154,9 @@ private:
     // Cached per-frame hover state from InvisibleButton
     bool   canvasHovered = false;
 
-    // Debug overlay toggle (Ctrl+Shift+D)
-    bool   showDebugOverlay = false;
+    // Debug overlay toggle
+    bool     showDebugOverlay = false;
+    uint64_t debugFrameCount  = 0;
 
     // Wave File References dialog (Ctrl+W)
     bool   showWaveFileDialog = false;

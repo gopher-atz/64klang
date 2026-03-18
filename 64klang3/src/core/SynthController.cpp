@@ -436,6 +436,7 @@ SynthNode* SynthController::createNode(DWORD id, DWORD channel, DWORD isGlobal)
 		info.FixedChannel = channel;
 	info.Outputs.clear();
 	_nodeGUIInfo[slot*NODE_SLOTS] = info;
+	_accessorDirty = true;
 
 	return _nodes[slot];
 }
@@ -778,6 +779,7 @@ void SynthController::deleteNode(DWORD node)
 		_massDataUpdate = true;
 		DataAccessMutex.lock();
 	}
+	_accessorDirty = true; // node entries will be erased below
 
 	// parameters and modadders are destroyed when their owner nodes are destroyed
 	if (_nodeGUIInfo[node].IsParameter || _nodeGUIInfo[node].IsModAdder)
@@ -1553,12 +1555,13 @@ void SynthController::setNodeProcessingFlags(DWORD nodeid, DWORD flags)
 
 int SynthController::numGUINodes()
 {
-	// rebuild accessor list
-	_nodesGUIAccessor.clear();
-	std::map<DWORD, NodeGUIInfo>::iterator it;
-	for (it = _nodeGUIInfo.begin(); it != _nodeGUIInfo.end(); it++)
+	if (_accessorDirty)
 	{
-		_nodesGUIAccessor.push_back(&(it->second));
+		// rebuild accessor list
+		_nodesGUIAccessor.clear();
+		for (auto it = _nodeGUIInfo.begin(); it != _nodeGUIInfo.end(); it++)
+			_nodesGUIAccessor.push_back(&(it->second));
+		_accessorDirty = false;
 	}
 	return (int)_nodesGUIAccessor.size();
 }

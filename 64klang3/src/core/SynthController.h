@@ -199,6 +199,10 @@ private:
 	std::map<DWORD, NodeGUIInfo>		_nodeGUIInfo;
 
 	std::vector<NodeGUIInfo*>			_nodesGUIAccessor;
+	// Set to true whenever _nodeGUIInfo entries are inserted or erased;
+	// numGUINodes() only rebuilds _nodesGUIAccessor when dirty.
+	bool _accessorDirty = true;
+
 	std::vector<void*>					_deferredFreeNodes;
 
 	bool _massDataUpdate;
