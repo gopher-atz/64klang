@@ -19,6 +19,40 @@
 
 namespace K64GUI {
 
+// ── Named color constants for edit panels and knobs ──────────────────────────
+static constexpr ImU32 kColPanelBg      = IM_COL32(180, 180, 180, 255);
+static constexpr ImU32 kColPanelBorder  = IM_COL32(100, 100, 105, 255);
+static constexpr ImU32 kColPanelHeader  = IM_COL32(160, 160, 165, 255);
+static constexpr ImU32 kColPanelText    = IM_COL32(  0,   0,   0, 255);
+static constexpr ImU32 kColPanelDimText = IM_COL32( 50,  50,  55, 255);
+
+static constexpr ImU32 kColCheckboxBg   = IM_COL32( 30,  30,  35, 255);
+static constexpr ImU32 kColCheckboxRim  = IM_COL32(120, 120, 125, 255);
+static constexpr ImU32 kColCheckmark    = IM_COL32(100, 200, 255, 255);
+static constexpr ImU32 kColCloseBtnBg   = IM_COL32(200,  40,  40, 255);
+static constexpr ImU32 kColResetBtnBg   = IM_COL32( 30,  90, 200, 255);
+static constexpr ImU32 kColGhostWire    = IM_COL32(255,  50,  50, 200);
+
+// ── Platform-agnostic Ctrl key query ─────────────────────────────────────────
+static inline bool isCtrlHeld()
+{
+#ifdef _WIN32
+    return (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+#else
+    return ImGui::GetIO().KeyCtrl;
+#endif
+}
+
+// ── Platform-agnostic Shift key query ────────────────────────────────────────
+static inline bool isShiftHeld()
+{
+#ifdef _WIN32
+    return (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+#else
+    return ImGui::GetIO().KeyShift;
+#endif
+}
+
 NodeCanvas::NodeCanvas() {}
 NodeCanvas::~NodeCanvas() {}
 
@@ -573,7 +607,7 @@ void NodeCanvas::drawGhostWire(ImDrawList* dl, const ImVec2& canvasOrigin)
     ImVec2 p1 = ImVec2(p0.x + kWireStubLen * zoom, p0.y);
     ImVec2 p2 = ImVec2(p3.x - kWireStubLen * zoom, p3.y);
 
-    ImU32 ghostColor = IM_COL32(255, 50, 50, 200);
+    ImU32 ghostColor = kColGhostWire;
     dl->AddLine(p0, p1, ghostColor, kWireThickness * zoom);
     dl->AddLine(p1, p2, ghostColor, kWireThickness * zoom);
     dl->AddLine(p2, p3, ghostColor, kWireThickness * zoom);
@@ -650,6 +684,12 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                     if (valid && toType == NOTECONTROLLER_ID && fromType != VOICEMANAGER_ID)
                     {
                         showToast("Only Voice Manager can be input for Note Controller!");
+                        valid = false;
+                    }
+                    // Case 4b: VoiceManager output only connects to NoteController
+                    if (valid && fromType == VOICEMANAGER_ID && toType != NOTECONTROLLER_ID)
+                    {
+                        showToast("VoiceManager can only connect to NoteController!");
                         valid = false;
                     }
                     // Case 5: SampleRecorder → only SamplePlayer[0], WTFOsc[0], or EventSignal
@@ -729,6 +769,18 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             if (nodeHit != -1)
                 return;
 
+            // VoiceManager output can only connect to NoteController — no valid intermediate node exists.
+            {
+                int fromGI = findGuiIndex(wireDragFromNodeID);
+                if (fromGI >= 0 && sc->gnType(fromGI) == (int)VOICEMANAGER_ID)
+                {
+                    showToast("VoiceManager can only connect to NoteController!");
+                    isWireDragging = false;
+                    wireDragFromNodeID = -1;
+                    return;
+                }
+            }
+
             // Click on empty background — open menu to insert node and continue (continuous wire)
             // If user dismisses menu without selecting, wire drag ends (handled in popup close)
             wireDragInsertMode = true;
@@ -742,11 +794,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
 
         // Test pins BEFORE node body
         // Shift+click on output pin = recursive select; only start wire drag when shift not held.
-#ifdef _WIN32
-        bool shiftHeld = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
-#else
-        bool shiftHeld = io.KeyShift;
-#endif
+        bool shiftHeld = isShiftHeld();
         int outputHit = hitTestOutputPin(mousePos, canvasPos);
         if (outputHit != -1 && !shiftHeld)
         {
@@ -845,12 +893,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
 
                 if (!clickedChannelBtn)
                 {
-                    // Use GetKeyState for Ctrl so modifiers work when plugin lacks keyboard focus
-#ifdef _WIN32
-                    bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-#else
-                    bool ctrl = io.KeyCtrl;
-#endif
+                    bool ctrl = isCtrlHeld();
                     // shiftHeld already computed above for output-pin check
 
                     if (shiftHeld)
@@ -892,11 +935,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         else
         {
             // Click on empty canvas
-#ifdef _WIN32
-            if ((GetKeyState(VK_CONTROL) & 0x8000) == 0)
-#else
-            if (!io.KeyCtrl)
-#endif
+            if (!isCtrlHeld())
             {
                 selectedNodeIDs.clear();
                 syncSelectionToCore();
@@ -1181,7 +1220,83 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
     }
 }
 
-// ── Edit Panel ──────────────────────────────────────────────────────────
+// ── Edit Panel helpers ────────────────────────────────────────────────────────
+
+// Compute the pixel size of an edit panel (before zoom) for a given node.
+// Called by updateMouseOverEditPanel, drawEditPanel pre-pass, and drawEditPanel main loop.
+NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType,
+                                                         const NodeTypeDef* typeDef) const
+{
+    SynthController* sc = SynthController::instance();
+
+    float pw = kEditPanelWidth;
+
+    int modeInputIdx = typeDef->numMaxGUIInputs;
+    if (!(modeInputIdx < typeDef->numInputs && modeInputIdx < (int)typeDef->inputs.size()))
+        modeInputIdx = -1;
+    if (nodeType == MIDISIGNAL_ID)
+        modeInputIdx = 1;
+
+    int numParams = 0;
+    for (int i = typeDef->numReqGUIInputs; i < typeDef->numMaxGUIInputs && i < (int)typeDef->inputs.size(); i++)
+        numParams++;
+    if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || nodeType > CONSTANT_ID)
+        numParams = 1;
+
+    float flagsH = 0.f;
+    if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
+    {
+        const InputDef& modeDef = typeDef->inputs[modeInputIdx];
+        if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
+        {
+            flagsH = kEditLabelH + kEditFlagH;
+            flagsH += (float)modeDef.modeGroups.size() * kEditFlagH;
+        }
+    }
+
+    float ph = kEditHeaderH + (float)numParams * kEditKnobDiam + flagsH + 4.f;
+
+    if (nodeType == VOICEMANAGER_ID)
+    {
+        pw = std::max(pw, ArpEditor::kTotalW + 8.f);
+        ph += 4.f + ArpEditor::kTotalH + 4.f;
+    }
+    if (nodeType == TRIGGERSEQ_ID && sc)
+    {
+        int tsMode  = sc->getInputMode((DWORD)nodeID, TRIGGERSEQ_MODE);
+        int tsCount = tsMode & (int)TRIGGERSEQ_COUNTMASK;
+        if (tsCount < 1 || tsCount > 16) tsCount = 16;
+        ph += 4.f + 20.f + 20.f + 12.f + tsCount * 14.f + 4.f;
+    }
+    if (nodeType == SAPI_ID || nodeType == FORMULA_ID)
+        ph += 4.f + 72.f + 4.f + 20.f + 8.f;
+
+    return { pw, ph };
+}
+
+// Remove an edit panel and clean up all associated per-panel state.
+void NodeCanvas::closeEditPanel(int nodeID)
+{
+    openEditPanels.erase(std::find(openEditPanels.begin(), openEditPanels.end(), nodeID));
+    for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
+        it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
+    textEditBuffers.erase(nodeID);
+}
+
+// Draw a checkbox (bg + border + optional checkmark) at the given screen position.
+void NodeCanvas::drawCheckbox(ImDrawList* dl, ImVec2 min, float sz, bool checked, float z) const
+{
+    ImVec2 max(min.x + sz, min.y + sz);
+    dl->AddRectFilled(min, max, kColCheckboxBg);
+    dl->AddRect(min, max, kColCheckboxRim, 0.f, 0, 1.f);
+    if (checked)
+    {
+        dl->AddLine(ImVec2(min.x + 2*z, min.y + sz*0.5f),
+                    ImVec2(min.x + sz*0.4f, max.y - 2*z), kColCheckmark, 1.5f);
+        dl->AddLine(ImVec2(min.x + sz*0.4f, max.y - 2*z),
+                    ImVec2(max.x - 2*z, min.y + 2*z), kColCheckmark, 1.5f);
+    }
+}
 
 void NodeCanvas::updateMouseOverEditPanel(const ImVec2& canvasOrigin)
 {
@@ -1189,7 +1304,6 @@ void NodeCanvas::updateMouseOverEditPanel(const ImVec2& canvasOrigin)
     if (openEditPanels.empty())
         return;
 
-    // Also consider mouse captured if a knob is being dragged
     if (knobDragNodeID >= 0)
     {
         mouseOverEditPanel = true;
@@ -1202,7 +1316,6 @@ void NodeCanvas::updateMouseOverEditPanel(const ImVec2& canvasOrigin)
 
     ImVec2 mousePos = ImGui::GetIO().MousePos;
 
-    // Iterate in reverse (last = topmost visually); stop on first hit.
     for (int j = (int)openEditPanels.size() - 1; j >= 0; --j)
     {
         int nodeID = openEditPanels[j];
@@ -1216,56 +1329,12 @@ void NodeCanvas::updateMouseOverEditPanel(const ImVec2& canvasOrigin)
         double nx = sc->gnX(gi);
         double ny = sc->gnY(gi);
         ImVec2 nodePos = nodeScreenPos(nx, ny, canvasOrigin);
-        float nodeW = kNodeWidth * zoom;
-        float px = nodePos.x + nodeW;
+        float px = nodePos.x + kNodeWidth * zoom;
         float py = nodePos.y;
-        float pw = kEditPanelWidth * zoom;
 
-        // Estimate panel height (same formula as in drawEditPanel)
-        int modeInputIdx = typeDef->numMaxGUIInputs;
-        if (!(modeInputIdx < typeDef->numInputs && modeInputIdx < (int)typeDef->inputs.size()))
-            modeInputIdx = -1;
-        // Midi CC: Mode is at inputs[1], not inputs[numMaxGUIInputs=0]
-        if (nodeType == MIDISIGNAL_ID)
-            modeInputIdx = 1;
-
-        int paramStart = typeDef->numReqGUIInputs;
-        int paramEnd = typeDef->numMaxGUIInputs;
-        int numParams = 0;
-        for (int i = paramStart; i < paramEnd && i < (int)typeDef->inputs.size(); i++)
-            numParams++;
-        if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || nodeType > CONSTANT_ID)
-            numParams = 1;
-
-        float paramRowH = (kEditKnobDiam);
-        float flagsH = 0.f;
-        if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
-        {
-            const InputDef& modeDef = typeDef->inputs[modeInputIdx];
-            if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
-            {
-                flagsH = kEditLabelH + kEditFlagH;
-                for (size_t j = 0; j < modeDef.modeGroups.size(); j++)
-                    flagsH += kEditFlagH;
-            }
-        }
-        float totalH = kEditHeaderH + (float)numParams * paramRowH + flagsH + 4.f;
-        float ph = totalH * zoom;
-
-        if (nodeType == VOICEMANAGER_ID)
-        {
-            pw = std::max(pw, ArpEditor::kTotalW * zoom + 8.f * zoom);
-            ph += 4.f * zoom + ArpEditor::kTotalH * zoom + 4.f * zoom;
-        }
-        if (nodeType == TRIGGERSEQ_ID)
-        {
-            int tsMode  = sc->getInputMode((DWORD)nodeID, TRIGGERSEQ_MODE);
-            int tsCount = tsMode & (int)TRIGGERSEQ_COUNTMASK;
-            if (tsCount < 1 || tsCount > 16) tsCount = 16;
-            ph += (4.f + 20.f + 20.f + 12.f + tsCount * 14.f + 4.f) * zoom;
-        }
-        if (nodeType == SAPI_ID || nodeType == FORMULA_ID)
-            ph += (4.f + 72.f + 4.f + 20.f + 8.f) * zoom;
+        EditPanelSize eps = calcEditPanelSize(nodeID, nodeType, typeDef);
+        float pw = eps.pw * zoom;
+        float ph = eps.ph * zoom;
 
         if (mousePos.x >= px && mousePos.x <= px + pw &&
             mousePos.y >= py && mousePos.y <= py + ph)
@@ -1290,17 +1359,8 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
 
     ImGuiIO& io = ImGui::GetIO();
     ImVec2 mousePos = io.MousePos;
-    const float PI = 3.14159265359f;
-    const float sweepDeg = 280.f;
-    const float startAngle = (180.f + (360.f - sweepDeg) * 0.5f);
 
-    // Use GetKeyState so Ctrl works even when the plugin window lacks keyboard focus
-    // (io.KeyCtrl requires WM_KEYDOWN, which many hosts don't forward to plugin windows).
-#ifdef _WIN32
-    const bool ctrlHeld = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-#else
-    const bool ctrlHeld = io.KeyCtrl;
-#endif
+    const bool ctrlHeld = isCtrlHeld();
 
     // Release knob drag when mouse released
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
@@ -1327,47 +1387,13 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             const NodeTypeDef* pdef = NodeConfig::instance().getNodeType(ptype);
             if (!pdef) continue;
 
-            float z2   = zoom;
             ImVec2 np2 = nodeScreenPos(sc->gnX(pgi), sc->gnY(pgi), canvasOrigin);
-            float ppx  = np2.x + kNodeWidth * z2;
-            float ppy  = np2.y;
-            float ppw  = kEditPanelWidth * z2;
+            float ppx = np2.x + kNodeWidth * zoom;
+            float ppy = np2.y;
+            EditPanelSize eps = calcEditPanelSize(pid, ptype, pdef);
+            float ppw = eps.pw * zoom;
+            float pph = eps.ph * zoom;
 
-            int pmodeIdx = pdef->numMaxGUIInputs;
-            if (!(pmodeIdx < pdef->numInputs && pmodeIdx < (int)pdef->inputs.size()))
-                pmodeIdx = -1;
-            if (ptype == MIDISIGNAL_ID)
-                pmodeIdx = 1;
-            int pnp = 0;
-            for (int k = pdef->numReqGUIInputs; k < pdef->numMaxGUIInputs && k < (int)pdef->inputs.size(); k++)
-                pnp++;
-            if (ptype == MIDISIGNAL_ID || ptype >= CONSTANT_ID)
-                pnp = 1;
-            float pfh = 0.f;
-            if (pmodeIdx >= 0 && pmodeIdx < (int)pdef->inputs.size())
-            {
-                const InputDef& md = pdef->inputs[pmodeIdx];
-                if (!md.modeGroups.empty() || !md.modeFlags.empty())
-                    pfh = (kEditLabelH + kEditFlagH) + (float)md.modeGroups.size() * kEditFlagH;
-            }
-            float pph = (kEditHeaderH + pnp * (kEditKnobDiam) + pfh + 4.f) * z2;
-            if (ptype == VOICEMANAGER_ID)
-            {
-                ppw = std::max(ppw, ArpEditor::kTotalW * z2 + 8.f * z2);
-                pph += 4.f * z2 + ArpEditor::kTotalH * z2 + 4.f * z2;
-            }
-            if (ptype == TRIGGERSEQ_ID)
-            {
-                int tsMode  = sc->getInputMode((DWORD)pid, TRIGGERSEQ_MODE);
-                int tsCount = tsMode & (int)TRIGGERSEQ_COUNTMASK;
-                if (tsCount < 1 || tsCount > 16) tsCount = 16;
-                pph += (4.f + 20.f + 20.f + 12.f + tsCount * 14.f + 4.f) * z2;
-            }
-            if (ptype == SAPI_ID || ptype == FORMULA_ID)
-            {
-                // text area (72px) + separator + button row (20px) + padding
-                pph += (4.f + 72.f + 4.f + 20.f + 8.f) * z2;
-            }
             if (mpos.x >= ppx && mpos.x <= ppx + ppw && mpos.y >= ppy && mpos.y <= ppy + pph)
             {
                 topmostUnderMouse = pid;
@@ -1376,10 +1402,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         }
     }
 
-    // While any ImGui popup is open (e.g. a combo dropdown), suppress all custom
-    // click handling so a selectable inside the popup cannot inadvertently trigger
-    // knobs, checkboxes, or other controls on panels rendered behind the popup.
-    // The popup's own Selectable input is managed by ImGui internally and is unaffected.
+    // While any ImGui popup is open, suppress all custom click handling.
     if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
         topmostUnderMouse = -1;
 
@@ -1388,10 +1411,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         int gi = findGuiIndex(nodeID);
         if (gi < 0)
         {
-            openEditPanels.erase(std::find(openEditPanels.begin(), openEditPanels.end(), nodeID));
-            for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
-                it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
-            textEditBuffers.erase(nodeID);
+            closeEditPanel(nodeID);
             continue;
         }
 
@@ -1399,10 +1419,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
         if (!typeDef)
         {
-            openEditPanels.erase(std::find(openEditPanels.begin(), openEditPanels.end(), nodeID));
-            for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
-                it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
-            textEditBuffers.erase(nodeID);
+            closeEditPanel(nodeID);
             continue;
         }
 
@@ -1419,7 +1436,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         float fontSize = 12.f * z;
         float headerFontSize = 15.f * z;
 
-        // Compute panel height
+        // Resolve mode input index and current mode
         int modeInputIdx = typeDef->numMaxGUIInputs;
         if (!(modeInputIdx < typeDef->numInputs && modeInputIdx < (int)typeDef->inputs.size()))
             modeInputIdx = -1;
@@ -1454,8 +1471,17 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             signalRangeDef.singleInput    = false;
         }
 
-        // Per param row: knob height + padding (label+sync fit in left column at same height)
-        float paramRowH = (kEditKnobDiam);
+        // Panel size from shared helper
+        EditPanelSize eps = calcEditPanelSize(nodeID, nodeType, typeDef);
+        pw = eps.pw * z;
+        float ph = eps.ph * z;
+
+        bool isVoiceManager = (nodeType == VOICEMANAGER_ID);
+        bool isTriggerSeq   = (nodeType == TRIGGERSEQ_ID);
+        bool isSAPI         = (nodeType == SAPI_ID);
+        bool isFormula      = (nodeType == FORMULA_ID);
+
+        // Count visible flags (for layout)
         float flagsH = 0.f;
         int numFlags = 0;
         if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
@@ -1463,8 +1489,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             const InputDef& modeDef = typeDef->inputs[modeInputIdx];
             if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
             {
-                flagsH = kEditLabelH; // "Flags" label
-                // Count visible flags for inline layout
+                flagsH = kEditLabelH;
                 bool isGlobal = sc->gnIsGlobal(gi);
                 for (const auto& mf : modeDef.modeFlags)
                 {
@@ -1473,7 +1498,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         continue;
                     numFlags++;
                 }
-                flagsH += kEditFlagH; // one row of inline checkboxes
+                flagsH += kEditFlagH;
                 for (const auto& mg : modeDef.modeGroups)
                 {
                     flagsH += kEditFlagH;
@@ -1482,63 +1507,25 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             }
         }
 
-        float totalH = kEditHeaderH + (float)numParams * paramRowH + flagsH + 4.f;
-        float ph = totalH * z;
-
-        // VoiceManager: widen/extend panel to include arpeggiator section below params+modes
-        bool isVoiceManager = (nodeType == VOICEMANAGER_ID);
-        if (isVoiceManager)
-        {
-            pw = std::max(pw, ArpEditor::kTotalW * z + 8.f * z);
-            ph += 4.f * z + ArpEditor::kTotalH * z + 4.f * z;
-        }
-
-        // TriggerSequencer: extend panel for Max Patterns control + BPM row + N pattern rows
-        bool isTriggerSeq = (nodeType == TRIGGERSEQ_ID);
-        if (isTriggerSeq)
-        {
-            int tsMode  = sc->getInputMode((DWORD)nodeID, TRIGGERSEQ_MODE);
-            int tsCount = tsMode & (int)TRIGGERSEQ_COUNTMASK;
-            if (tsCount < 1 || tsCount > 16) tsCount = 16;
-            ph += (4.f + 20.f + 20.f + 12.f + tsCount * 14.f + 4.f) * z;
-        }
-
-        // TextToSpeech / Formula: extend for text area + button
-        bool isSAPI    = (nodeType == SAPI_ID);
-        bool isFormula = (nodeType == FORMULA_ID);
-        if (isSAPI || isFormula)
-            ph += (4.f + 72.f + 4.f + 20.f + 8.f) * z;
-
-        // Only the topmost panel under the mouse may consume click events.
         const bool canClick = (nodeID == topmostUnderMouse);
 
-        // ── Draw panel background ──
-        ImU32 panelBg = IM_COL32(180, 180, 180, 255);
-        ImU32 panelBorder = IM_COL32(100, 100, 105, 255);
-        ImU32 headerBg = IM_COL32(160, 160, 165, 255);
-        ImU32 textCol = IM_COL32(0, 0, 0, 255);
-        ImU32 dimTextCol = IM_COL32(50, 50, 55, 255);
+        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + ph), kColPanelBg);
+        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + kEditHeaderH * z), kColPanelHeader);
+        dl->AddRect(ImVec2(px, py), ImVec2(px + pw, py + ph), kColPanelBorder, 0.f, 0, 1.f);
 
-        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + ph), panelBg);
-        dl->AddRectFilled(ImVec2(px, py), ImVec2(px + pw, py + kEditHeaderH * z), headerBg);
-        dl->AddRect(ImVec2(px, py), ImVec2(px + pw, py + ph), panelBorder, 0.f, 0, 1.f);
-
-        // ── Header: title + X button ──
         if (headerFontSize >= 6.f)
         {
-            ImVec2 ts = ImGui::CalcTextSize(typeDef->name.c_str());
-            float tscale = headerFontSize / ImGui::GetFontSize();
             float tx = px + 6.f * z;
             float ty = py + (kEditHeaderH * z - headerFontSize) * 0.5f;
-            dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(tx, ty), textCol, typeDef->name.c_str());
-            dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(tx + 1.f, ty), textCol, typeDef->name.c_str());
+            dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(tx, ty),      kColPanelText, typeDef->name.c_str());
+            dl->AddText(pickFont(headerFontSize), headerFontSize, ImVec2(tx + 1.f, ty), kColPanelText, typeDef->name.c_str());
         }
 
-        // Red X close button (top-right, same style as node delete button)
+        // Red X close button (top-right)
         float xbSz = kDeleteBtnSize * z;
         ImVec2 xbMin(px + pw - xbSz - 2.f * z, py + 2.f * z);
         ImVec2 xbMax(xbMin.x + xbSz, xbMin.y + xbSz);
-        dl->AddRectFilled(xbMin, xbMax, IM_COL32(200, 40, 40, 255));
+        dl->AddRectFilled(xbMin, xbMax, kColCloseBtnBg);
         float xpad = 3.f * z;
         dl->AddLine(ImVec2(xbMin.x + xpad, xbMin.y + xpad), ImVec2(xbMax.x - xpad, xbMax.y - xpad), IM_COL32(255, 255, 255, 255), 1.5f);
         dl->AddLine(ImVec2(xbMax.x - xpad, xbMin.y + xpad), ImVec2(xbMin.x + xpad, xbMax.y - xpad), IM_COL32(255, 255, 255, 255), 1.5f);
@@ -1547,7 +1534,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         float rbSz = xbSz;
         ImVec2 rbMin(xbMin.x - rbSz - 3.f * z, py + 2.f * z);
         ImVec2 rbMax(rbMin.x + rbSz, rbMin.y + rbSz);
-        dl->AddRectFilled(rbMin, rbMax, IM_COL32(30, 90, 200, 255));
+        dl->AddRectFilled(rbMin, rbMax, kColResetBtnBg);
         if (fontSize >= 6.f)
         {
             float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, "0").x;
@@ -1561,10 +1548,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             mousePos.x >= xbMin.x && mousePos.x <= xbMax.x &&
             mousePos.y >= xbMin.y && mousePos.y <= xbMax.y)
         {
-            openEditPanels.erase(std::find(openEditPanels.begin(), openEditPanels.end(), nodeID));
-            for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
-                it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
-            textEditBuffers.erase(nodeID);
+            closeEditPanel(nodeID);
             continue;
         }
 
@@ -1581,7 +1565,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
 
         // Separator line under header
         float sepY = py + kEditHeaderH * z;
-        dl->AddLine(ImVec2(px, sepY), ImVec2(px + pw, sepY), panelBorder, 1.f);
+        dl->AddLine(ImVec2(px, sepY), ImVec2(px + pw, sepY), kColPanelBorder, 1.f);
 
         // ── Parameter rows ──
         float curY = sepY;
@@ -1614,21 +1598,21 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             bool synced = paramSyncState[syncKey];
 
             // Separator line
-            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), panelBorder, 0.5f);
+            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
 
             // Row geometry: left column (label+sync), right area (two knobs)
             float rowH   = (kEditKnobDiam) * z;
-            float knobR  = kEditKnobDiam * 0.5f * z;  // outer boundary — ticks fill to here
-            float bodyR  = knobR * (17.f / 25.f);     // knob circle (WPF: 17px of 25px half-cell)
-            float needleTipR = knobR * 0.82f;         // tip extends past inner tick edge (19/25=0.76)
+            float knobR  = kEditKnobDiam * 0.5f * z;
+            float bodyR  = knobR * (17.f / 25.f);
+            float needleTipR = knobR * 0.82f;
             float leftColW   = 80.f * z;
             float rightAreaX = px + leftColW;
             float rightAreaW = pw - leftColW;
-            float knobCY     = curY + rowH * 0.5f;   // knob center Y (vertically centered)
+            float knobCY     = curY + rowH * 0.5f;
 
-            // ── Left column: label on top, sync checkbox below ──
+            // Left column: label + sync checkbox
             if (fontSize >= 6.f)
-                dl->AddText(pickFont(fontSize), fontSize, ImVec2(px + 6.f * z, curY + 2.f * z), textCol, inputDef.name.c_str());
+                dl->AddText(pickFont(fontSize), fontSize, ImVec2(px + 6.f * z, curY + 2.f * z), kColPanelText, inputDef.name.c_str());
 
             if (!inputDef.singleInput && fontSize >= 6.f)
             {
@@ -1636,24 +1620,14 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 float cbX  = px + 6.f * z;
                 float cbY  = curY + (kEditLabelH + 2.f) * z;
                 ImVec2 cbMin(cbX, cbY);
-                ImVec2 cbMax(cbX + cbSz, cbY + cbSz);
-                dl->AddRectFilled(cbMin, cbMax, IM_COL32(30, 30, 35, 255));
-                dl->AddRect(cbMin, cbMax, IM_COL32(120, 120, 125, 255), 0.f, 0, 1.f);
-                if (synced)
-                {
-                    dl->AddLine(ImVec2(cbMin.x + 2*z, cbMin.y + cbSz*0.5f),
-                                ImVec2(cbMin.x + cbSz*0.4f, cbMax.y - 2*z), IM_COL32(100, 200, 255, 255), 1.5f);
-                    dl->AddLine(ImVec2(cbMin.x + cbSz*0.4f, cbMax.y - 2*z),
-                                ImVec2(cbMax.x - 2*z, cbMin.y + 2*z), IM_COL32(100, 200, 255, 255), 1.5f);
-                }
+                drawCheckbox(dl, cbMin, cbSz, synced, z);
                 dl->AddText(pickFont(fontSize * 0.9f), fontSize * 0.9f,
-                            ImVec2(cbMax.x + 3.f * z, cbY), textCol, "Sync");
+                            ImVec2(cbMin.x + cbSz + 3.f * z, cbY), kColPanelText, "Sync");
 
-                // Click to toggle sync
                 if (canClick &&
                     ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                    mousePos.x >= cbMin.x && mousePos.x <= cbMax.x + 35.f * z &&
-                    mousePos.y >= cbMin.y && mousePos.y <= cbMax.y)
+                    mousePos.x >= cbMin.x && mousePos.x <= cbMin.x + cbSz + 35.f * z &&
+                    mousePos.y >= cbMin.y && mousePos.y <= cbMin.y + cbSz)
                 {
                     bool newSynced = !synced;
                     paramSyncState[syncKey] = newSynced;
@@ -1662,112 +1636,45 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 }
             }
 
-            // ── Right area: left knob and right knob side by side ──
-            // Each knob occupies half of the right area; value text to its right
+            // Right area: left knob and right knob
             float slotW    = rightAreaW * 0.5f;
             float knobL_cx = rightAreaX + knobR + 4.f * z;
             float knobR_cx = rightAreaX + slotW + knobR + 4.f * z;
 
-            // Tick table: WPF-derived. 17 ticks at 17.5° intervals over ±140°.
-            // type 2=fat(5 ticks), 1=medium(4 ticks), 0=thin(8 ticks).
-            static const struct { float a; int t; } kKnobTicks[] = {
-                {   0.f, 2 },
-                {  17.5f, 0 }, {  35.f, 1 }, {  52.5f, 0 }, {  70.f, 2 },
-                {  87.5f, 0 }, { 105.f, 1 }, { 122.5f, 0 }, { 140.f, 2 },
-                { -17.5f, 0 }, { -35.f, 1 }, { -52.5f, 0 }, { -70.f, 2 },
-                { -87.5f, 0 }, {-105.f, 1 }, {-122.5f, 0 }, {-140.f, 2 },
-            };
-
-            // Modulator needle: drawn when a wire is connected, or for MidiCC/voice inputs with live data.
-            // MidiCC uses getNodeSignal(..., -3); voice params use getNodeSignal(..., -4).
             bool showModNeedle = !isConstant && (sc->inputIsModulated((DWORD)nodeID, paramIdx) || isVoiceInput);
             int sigInp = (nodeType == MIDISIGNAL_ID) ? -3 : (nodeType > CONSTANT_ID) ? -4 : (int)paramIdx;
 
-            // ── Left knob ──
+            // Left knob
             {
                 ImVec2 center(knobL_cx, knobCY);
-
-                // Tick marks: radii as exact WPF fractions of knobR (bounding=25, inner edge=19)
-                // Ticks are shifted 1 px left (scaled) to align visually with the needle.
-                const float tickOffX = -.2f * z;
-                for (const auto& tk : kKnobTicks)
-                {
-                    float rad = tk.a * PI / 180.f;
-                    float rO = (tk.t == 2) ? knobR : (tk.t == 1) ? knobR * (23.f/25.f) : knobR * (22.5f/25.f);
-                    float rI = knobR * (19.f / 25.f);
-                    float th = (tk.t == 2) ? 2.f * z : (tk.t == 1) ? 1.2f * z : 0.75f * z;
-                    dl->AddLine(ImVec2(center.x + tickOffX + sinf(rad) * rO, center.y - cosf(rad) * rO),
-                                ImVec2(center.x + tickOffX + sinf(rad) * rI, center.y - cosf(rad) * rI),
-                                IM_COL32(20, 20, 20, 220), th);
-                }
-
-                dl->AddCircleFilled(center, bodyR, IM_COL32(40, 40, 45, 255));
-                dl->AddCircle(center, bodyR, IM_COL32(80, 80, 85, 255), 0, 1.5f);
-
-                // Needle: filled triangle, tip extends into tick ring.
-                // Perp direction in screen space: (cos a, sin a) for forward (sin a, -cos a).
-                float normL = (valRange > 0.f) ? (valL - minVal) / valRange : 0.f;
-                normL = std::max(0.f, std::min(1.f, normL));
-                float angleDeg = startAngle + normL * sweepDeg;
-                float angleRad = angleDeg * PI / 180.f;
-                {
-                    float sa = sinf(angleRad), ca = cosf(angleRad);
-                    float hw = 2.5f * z;
-                    dl->AddTriangleFilled(
-                        ImVec2(center.x - ca * hw, center.y - sa * hw),
-                        ImVec2(center.x + ca * hw, center.y + sa * hw),
-                        ImVec2(center.x + sa * needleTipR, center.y - ca * needleTipR),
-                        IM_COL32(255, 255, 255, 230));
-                    dl->AddCircleFilled(center, hw, IM_COL32(100, 100, 105, 255));
-                }
-
-                // Modulator needle: drawn when a wire is connected, or for MidiCC when live MIDI data arrives.
-                // getNodeSignal reads the ModAdder's stale out field — gate on connection state first.
-                // MidiCC has no modulation wire; its "modulation" is the live CC value from getNodeSignal(..., -3).
+                float normL = (valRange > 0.f) ? std::max(0.f, std::min(1.f, (valL - minVal) / valRange)) : 0.f;
+                float normModL = 0.f;
                 if (showModNeedle)
                 {
                     double liveL = sc->getNodeSignal((DWORD)nodeID, 0, sigInp);
-                    float normModL = (valRange > 0.f) ? ((float)(liveL * range) - minVal) / valRange : 0.f;
-                    normModL = std::max(0.f, std::min(1.f, normModL));
-                    float mr = (startAngle + normModL * sweepDeg) * PI / 180.f;
-                    float sm = sinf(mr), cm = cosf(mr), hw = 1.5f * z;
-                    dl->AddTriangleFilled(
-                        ImVec2(center.x - cm * hw, center.y - sm * hw),
-                        ImVec2(center.x + cm * hw, center.y + sm * hw),
-                        ImVec2(center.x + sm * needleTipR, center.y - cm * needleTipR),
-                        IM_COL32(255, 60, 60, 200));
+                    normModL = (valRange > 0.f) ? std::max(0.f, std::min(1.f, ((float)(liveL * range) - minVal) / valRange)) : 0.f;
                 }
+                Widgets::drawKnob(dl, center, bodyR, knobR, needleTipR, normL, normModL, showModNeedle, 255, z);
 
-                // Knob drag interaction
-                float dxm = mousePos.x - center.x;
-                float dym = mousePos.y - center.y;
+                float dxm = mousePos.x - center.x, dym = mousePos.y - center.y;
                 if (canClick && dxm*dxm + dym*dym <= knobR*knobR)
                 {
                     if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                     {
-                        // Reset left channel (and right if synced) to factory default
                         if (isConstant)
-                        {
                             sc->setInputValue((DWORD)nodeID, paramIdx, 0.0, synced ? 0.0 : (double)rawR);
-                        }
                         else
                         {
                             double defL, defR;
                             sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->gnIsGlobal(gi), defL, defR);
-                            if (synced)
-                                sc->setInputValue((DWORD)nodeID, paramIdx, defL, defL);
-                            else
-                                sc->setInputValue((DWORD)nodeID, paramIdx, defL, (double)rawR);
+                            sc->setInputValue((DWORD)nodeID, paramIdx, defL, synced ? defL : (double)rawR);
                         }
-                        knobDragNodeID = -1;
-                        knobDragParam  = -1;
+                        knobDragNodeID = -1; knobDragParam = -1;
                     }
                     else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                     {
-                        knobDragNodeID  = nodeID;
-                        knobDragParam   = i;
-                        knobDragIsRight = false;
-                        knobDragAccum   = 0.f;
+                        knobDragNodeID = nodeID; knobDragParam = i;
+                        knobDragIsRight = false; knobDragAccum = 0.f;
                     }
                 }
                 if (knobDragNodeID == nodeID && knobDragParam == i && !knobDragIsRight &&
@@ -1775,18 +1682,8 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 {
                     float delta = -io.MouseDelta.y * 0.5f;
                     float quantStep;
-                    if (isSignalRange)
-                    {
-                        // Signal-range (-1..1): fine step in normal mode, very fine with Ctrl.
-                        delta /= 128.f;
-                        quantStep = ctrlHeld ? (1.f / (128.f * 128.f)) : (1.f / 128.f);
-                    }
-                    else
-                    {
-                        // Normal: integer steps, ~2px each. Ctrl (fine): 1/128 steps.
-                        quantStep = ctrlHeld ? (1.f / 128.f) : 1.f;
-                        if (ctrlHeld) delta /= 128.f;
-                    }
+                    if (isSignalRange) { delta /= 128.f; quantStep = ctrlHeld ? (1.f/(128.f*128.f)) : (1.f/128.f); }
+                    else               { quantStep = ctrlHeld ? (1.f/128.f) : 1.f; if (ctrlHeld) delta /= 128.f; }
                     knobDragAccum += delta;
                     int stepCount = (int)(knobDragAccum / quantStep);
                     if (stepCount != 0)
@@ -1794,118 +1691,62 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         float applied = (float)stepCount * quantStep;
                         valL = std::max(minVal, std::min(maxVal, valL + applied));
                         knobDragAccum -= applied;
-                        if (synced)
-                            sc->setInputValue((DWORD)nodeID, paramIdx, (double)(valL/range), (double)(valL/range));
-                        else
-                            sc->setInputValue((DWORD)nodeID, paramIdx, (double)(valL/range), (double)(valR/range));
+                        sc->setInputValue((DWORD)nodeID, paramIdx, (double)(valL/range),
+                                          synced ? (double)(valL/range) : (double)(valR/range));
                     }
                 }
 
-                // Value text to the right of knob, vertically centered (two lines when applicable)
                 if (fontSize >= 6.f)
                 {
                     Widgets::KnobLabel vlbl = Widgets::formatKnobValue(valL, range, inputDef.displayMapping, currentMode, nodeType);
                     float valFontSz = fontSize * 0.85f;
                     float valX = center.x + knobR + 3.f * z;
                     if (vlbl.line2.empty())
-                    {
-                        float valY = center.y - valFontSz * 0.5f;
-                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, valY), dimTextCol, vlbl.line1.c_str());
-                    }
+                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, center.y - valFontSz * 0.5f), kColPanelDimText, vlbl.line1.c_str());
                     else
                     {
-                        float valY = center.y - valFontSz;
-                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, valY),              dimTextCol, vlbl.line1.c_str());
-                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, valY + valFontSz),  dimTextCol, vlbl.line2.c_str());
+                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, center.y - valFontSz),             kColPanelDimText, vlbl.line1.c_str());
+                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, center.y), kColPanelDimText, vlbl.line2.c_str());
                     }
                 }
             }
 
-            // ── Right knob (if stereo) ──
+            // Right knob (stereo only)
             if (!inputDef.singleInput)
             {
                 ImVec2 center(knobR_cx, knobCY);
+                unsigned int knobAlpha = synced ? 128u : 255u;
 
-                // 50% transparent when synced, fully opaque when independent
-                unsigned int knobAlpha = synced ? 128 : 255;
-                unsigned int tickAlpha = synced ? 100 : 200;
-
-                // Tick marks (same WPF proportions as left knob, faded when synced)
-                // Ticks are shifted 1 px left (scaled) to align visually with the needle.
-                const float tickOffX = -.2f * z;
-                for (const auto& tk : kKnobTicks)
-                {
-                    float rad = tk.a * PI / 180.f;
-                    float rO = (tk.t == 2) ? knobR : (tk.t == 1) ? knobR * (23.f/25.f) : knobR * (22.5f/25.f);
-                    float rI = knobR * (19.f / 25.f);
-                    float th = (tk.t == 2) ? 2.f * z : (tk.t == 1) ? 1.2f * z : 0.75f * z;
-                    dl->AddLine(ImVec2(center.x + tickOffX + sinf(rad) * rO, center.y - cosf(rad) * rO),
-                                ImVec2(center.x + tickOffX + sinf(rad) * rI, center.y - cosf(rad) * rI),
-                                IM_COL32(20, 20, 20, tickAlpha), th);
-                }
-
-                dl->AddCircleFilled(center, bodyR, IM_COL32(40, 40, 45, knobAlpha));
-                dl->AddCircle(center, bodyR, IM_COL32(80, 80, 85, knobAlpha), 0, 1.5f);
-
-                float normR = (valRange > 0.f) ? (valR - minVal) / valRange : 0.f;
-                normR = std::max(0.f, std::min(1.f, normR));
-                float angleDeg = startAngle + normR * sweepDeg;
-                float angleRad = angleDeg * PI / 180.f;
-                {
-                    float sa = sinf(angleRad), ca = cosf(angleRad);
-                    float hw = 2.5f * z;
-                    dl->AddTriangleFilled(
-                        ImVec2(center.x - ca * hw, center.y - sa * hw),
-                        ImVec2(center.x + ca * hw, center.y + sa * hw),
-                        ImVec2(center.x + sa * needleTipR, center.y - ca * needleTipR),
-                        IM_COL32(255, 255, 255, knobAlpha));
-                    dl->AddCircleFilled(center, hw, IM_COL32(100, 100, 105, knobAlpha));
-                }
-
-                // Modulator needle for right channel (wire connected or MidiCC live data)
+                float normR = (valRange > 0.f) ? std::max(0.f, std::min(1.f, (valR - minVal) / valRange)) : 0.f;
+                float normModR = 0.f;
                 if (showModNeedle)
                 {
                     double liveR = sc->getNodeSignal((DWORD)nodeID, 1, sigInp);
-                    float normModR = (valRange > 0.f) ? ((float)(liveR * range) - minVal) / valRange : 0.f;
-                    normModR = std::max(0.f, std::min(1.f, normModR));
-                    float mr = (startAngle + normModR * sweepDeg) * PI / 180.f;
-                    float sm = sinf(mr), cm = cosf(mr), hw = 1.5f * z;
-                    dl->AddTriangleFilled(
-                        ImVec2(center.x - cm * hw, center.y - sm * hw),
-                        ImVec2(center.x + cm * hw, center.y + sm * hw),
-                        ImVec2(center.x + sm * needleTipR, center.y - cm * needleTipR),
-                        IM_COL32(255, 60, 60, 200));
+                    normModR = (valRange > 0.f) ? std::max(0.f, std::min(1.f, ((float)(liveR * range) - minVal) / valRange)) : 0.f;
                 }
+                Widgets::drawKnob(dl, center, bodyR, knobR, needleTipR, normR, normModR, showModNeedle, knobAlpha, z);
 
-                // Only allow interaction when not synced
                 if (!synced)
                 {
-                    float dxm = mousePos.x - center.x;
-                    float dym = mousePos.y - center.y;
+                    float dxm = mousePos.x - center.x, dym = mousePos.y - center.y;
                     if (canClick && dxm*dxm + dym*dym <= knobR*knobR)
                     {
                         if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                         {
-                            // Reset right channel only to factory default
                             if (isConstant)
-                            {
                                 sc->setInputValue((DWORD)nodeID, paramIdx, (double)rawL, 0.0);
-                            }
                             else
                             {
                                 double defL, defR;
                                 sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->gnIsGlobal(gi), defL, defR);
                                 sc->setInputValue((DWORD)nodeID, paramIdx, (double)rawL, defR);
                             }
-                            knobDragNodeID = -1;
-                            knobDragParam  = -1;
+                            knobDragNodeID = -1; knobDragParam = -1;
                         }
                         else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
                         {
-                            knobDragNodeID  = nodeID;
-                            knobDragParam   = i;
-                            knobDragIsRight = true;
-                            knobDragAccum   = 0.f;
+                            knobDragNodeID = nodeID; knobDragParam = i;
+                            knobDragIsRight = true; knobDragAccum = 0.f;
                         }
                     }
                     if (knobDragNodeID == nodeID && knobDragParam == i && knobDragIsRight &&
@@ -1913,16 +1754,8 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                     {
                         float delta = -io.MouseDelta.y * 0.5f;
                         float quantStep;
-                        if (isSignalRange)
-                        {
-                            delta /= 128.f;
-                            quantStep = ctrlHeld ? (1.f / (128.f * 128.f)) : (1.f / 128.f);
-                        }
-                        else
-                        {
-                            quantStep = ctrlHeld ? (1.f / 128.f) : 1.f;
-                            if (ctrlHeld) delta /= 128.f;
-                        }
+                        if (isSignalRange) { delta /= 128.f; quantStep = ctrlHeld ? (1.f/(128.f*128.f)) : (1.f/128.f); }
+                        else               { quantStep = ctrlHeld ? (1.f/128.f) : 1.f; if (ctrlHeld) delta /= 128.f; }
                         knobDragAccum += delta;
                         int stepCount = (int)(knobDragAccum / quantStep);
                         if (stepCount != 0)
@@ -1938,20 +1771,18 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 if (fontSize >= 6.f)
                 {
                     Widgets::KnobLabel vlbl = Widgets::formatKnobValue(valR, range, inputDef.displayMapping, currentMode, nodeType);
-                    float valFontSz  = fontSize * 0.85f;
+                    float valFontSz = fontSize * 0.85f;
                     float valX = center.x + knobR + 3.f * z;
-                    unsigned int txtAlpha = synced ? 128 : 255;
-                    ImU32 valCol = IM_COL32(50, 50, 55, txtAlpha);
+                    ImU32 valCol = (kColPanelDimText & 0x00FFFFFF) | ((unsigned int)(50 * knobAlpha / 255) << 24);
+                    // reuse alpha scaling more simply:
+                    unsigned int txtAlpha = knobAlpha;
+                    ImU32 dimCol = IM_COL32(50, 50, 55, txtAlpha);
                     if (vlbl.line2.empty())
-                    {
-                        float valY = center.y - valFontSz * 0.5f;
-                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, valY), valCol, vlbl.line1.c_str());
-                    }
+                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, center.y - valFontSz * 0.5f), dimCol, vlbl.line1.c_str());
                     else
                     {
-                        float valY = center.y - valFontSz;
-                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, valY),              valCol, vlbl.line1.c_str());
-                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, valY + valFontSz),  valCol, vlbl.line2.c_str());
+                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, center.y - valFontSz),  dimCol, vlbl.line1.c_str());
+                        dl->AddText(pickFont(valFontSz), valFontSz, ImVec2(valX, center.y), dimCol, vlbl.line2.c_str());
                     }
                 }
             }
@@ -1959,7 +1790,6 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             curY += rowH;
         }
 
-        // ── Flags section ──
         if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
         {
             const InputDef& modeDef = typeDef->inputs[modeInputIdx];
@@ -1967,10 +1797,10 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
 
             if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
             {
-                dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), panelBorder, 0.5f);
+                dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
 
                 if (fontSize >= 6.f)
-                    dl->AddText(pickFont(fontSize), fontSize, ImVec2(px + 6.f * z, curY + 2.f * z), textCol, "Flags");
+                    dl->AddText(pickFont(fontSize), fontSize, ImVec2(px + 6.f * z, curY + 2.f * z), kColPanelText, "Flags");
                 curY += kEditLabelH * z;
 
                 int currentBits = sc->getInputMode((DWORD)nodeID, (DWORD)modeInputIdx);
@@ -2088,27 +1918,18 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
 
                     float cbY = curY + 1.f * z;
                     ImVec2 cbMin(flagX, cbY);
-                    ImVec2 cbMax(flagX + cbSz, cbY + cbSz);
-                    dl->AddRectFilled(cbMin, cbMax, IM_COL32(30, 30, 35, 255));
-                    dl->AddRect(cbMin, cbMax, IM_COL32(120, 120, 125, 255), 0.f, 0, 1.f);
-                    if (flagSet)
-                    {
-                        dl->AddLine(ImVec2(cbMin.x + 2*z, cbMin.y + cbSz*0.5f),
-                                    ImVec2(cbMin.x + cbSz*0.4f, cbMax.y - 2*z), IM_COL32(100, 200, 255, 255), 1.5f);
-                        dl->AddLine(ImVec2(cbMin.x + cbSz*0.4f, cbMax.y - 2*z),
-                                    ImVec2(cbMax.x - 2*z, cbMin.y + 2*z), IM_COL32(100, 200, 255, 255), 1.5f);
-                    }
+                    drawCheckbox(dl, cbMin, cbSz, flagSet, z);
                     if (fontSize >= 6.f)
                     {
                         dl->AddText(pickFont(fontSize * 0.9f), fontSize * 0.9f,
-                                    ImVec2(cbMax.x + 2.f * z, cbY), dimTextCol, mf.name.c_str());
+                                    ImVec2(cbMin.x + cbSz + 2.f * z, cbY), kColPanelDimText, mf.name.c_str());
                     }
 
                     // Click checkbox
                     if (canClick &&
                         ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
                         mousePos.x >= cbMin.x && mousePos.x <= cbMin.x + itemW &&
-                        mousePos.y >= cbMin.y && mousePos.y <= cbMax.y)
+                        mousePos.y >= cbMin.y && mousePos.y <= cbMin.y + cbSz)
                     {
                         int newBits;
                         if (flagSet)
@@ -2130,7 +1951,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             // The inline-flags drawing loop never advances curY past the last
             // checkbox row, so we must do it here before the separator line.
             curY += kEditFlagH * z;
-            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), panelBorder, 0.5f);
+            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
             curY += 4.f * z;
             ArpEditor::draw(nodeID, z, ImVec2(px + 4.f * z, curY),
                             pickFont(fontSize * 0.9f), fontSize * 0.9f, canClick);
@@ -2168,7 +1989,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             if (fontSize >= 6.f)
                 dl->AddText(pickFont(fontSize), fontSize,
                             ImVec2(px + 4.f*z, curY + (ctrlH - fontSize) * 0.5f),
-                            textCol, "Max Patterns:");
+                            kColPanelText, "Max Patterns:");
 
             float btnSz = 16.f * z, btnGap = 2.f * z;
             char mpVal[8]; snprintf(mpVal, sizeof(mpVal), "%d", maxPatterns);
@@ -2287,12 +2108,12 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                     if (smallFsz >= 5.f)
                         dl->AddText(pickFont(smallFsz), smallFsz,
                                     ImVec2(tx - tw*0.5f, curY + (hdrH - smallFsz)*0.5f),
-                                    dimTextCol, tn);
+                                    kColPanelDimText, tn);
                     float rx = gridX + 8.f*cellW + cellGap + t*cellW + cellW*0.5f;
                     if (smallFsz >= 5.f)
                         dl->AddText(pickFont(smallFsz), smallFsz,
                                     ImVec2(rx - tw*0.5f, curY + (hdrH - smallFsz)*0.5f),
-                                    dimTextCol, tn);
+                                    kColPanelDimText, tn);
                 }
                 curY += hdrH;
             }
@@ -2313,7 +2134,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                     dl->AddText(pickFont(fontSize), fontSize,
                                 ImVec2(px + 4.f*z + (labelW - 4.f*z - lw)*0.5f,
                                        curY + (cellH - fontSize)*0.5f),
-                                dimTextCol, rowLbl);
+                                kColPanelDimText, rowLbl);
                 }
 
                 // Active pattern row: faint highlight behind the row label
@@ -2405,14 +2226,16 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             float btnH      = 20.f * z;
             float btnW      = 70.f * z;
 
-            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), panelBorder, 0.5f);
+            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
             curY += 4.f * z;
 
             ImGui::SetCursorScreenPos(ImVec2(px + 4.f*z, curY));
             ImGui::PushFont(pickFont(fontSize));
+            ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
             std::string textId = "##sapitext" + std::to_string(nodeID);
             ImGui::InputTextMultiline(textId.c_str(), buf.data(), buf.size(),
                                       ImVec2(pw - 8.f*z, textAreaH));
+            ImGui::SetWindowFontScale(1.f);
             ImGui::PopFont();
             curY += textAreaH + 4.f * z;
 
@@ -2454,14 +2277,16 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             float btnH      = 20.f * z;
             float btnW      = 70.f * z;
 
-            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), panelBorder, 0.5f);
+            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
             curY += 4.f * z;
 
             ImGui::SetCursorScreenPos(ImVec2(px + 4.f*z, curY));
             ImGui::PushFont(pickFont(fontSize));
+            ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
             std::string textId = "##formulatext" + std::to_string(nodeID);
             ImGui::InputTextMultiline(textId.c_str(), buf.data(), buf.size(),
                                       ImVec2(pw - 8.f*z, textAreaH));
+            ImGui::SetWindowFontScale(1.f);
             ImGui::PopFont();
             curY += textAreaH + 4.f * z;
 
@@ -2875,11 +2700,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                 {
                     auto _it = std::find(openEditPanels.begin(), openEditPanels.end(), nodeID);
                     if (_it != openEditPanels.end())
-                    {
-                        openEditPanels.erase(_it);
-                        for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
-                            it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
-                    }
+                        closeEditPanel(nodeID);
                     else
                         openEditPanels.push_back(nodeID);  // push_back = topmost (last drawn)
                 }
@@ -3353,11 +3174,7 @@ void NodeCanvas::render()
                             int channel = -2;
                             bool isGlobal = false;
                             bool doWireDragInsert = wireDragInsertMode && wireDragFromNodeID >= 0;
-#ifdef _WIN32
-                            bool ctrlHeld = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-#else
-                            bool ctrlHeld = ImGui::GetIO().KeyCtrl;
-#endif
+                            bool ctrlHeld = isCtrlHeld();
                             if (ctrlHeld)
                             {
                                 // Ctrl: explicitly create global node (same for wire-drag and regular menu)

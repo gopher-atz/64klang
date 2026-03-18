@@ -312,197 +312,67 @@ KnobLabel formatKnobValue(double normValue, double range, int mapping, int curre
     }
 }
 
-// ── Knob Widget ──────────────────────────────────────────────────────────
+static constexpr ImU32 kColKnobBody   = IM_COL32( 40,  40,  45, 255);
+static constexpr ImU32 kColKnobRim    = IM_COL32( 80,  80,  85, 255);
+static constexpr ImU32 kColKnobCenter = IM_COL32(100, 100, 105, 255);
+static constexpr ImU32 kColKnobNeedle = IM_COL32(255, 255, 255, 230);
+static constexpr ImU32 kColKnobMod    = IM_COL32(255,  60,  60, 200);
+static constexpr ImU32 kColKnobTick   = IM_COL32( 20,  20,  20, 220);
 
-bool Knob(const char* id, const InputDef& inputDef, float* valueL, float* valueR,
-          float modL, float modR, bool synced, bool singleInput, int nodeTypeID, int currentMode)
+void drawKnob(ImDrawList* dl, ImVec2 center, float bodyR, float knobR,
+              float needleTipR, float normVal, float normMod, bool showMod,
+              unsigned int alpha, float z)
 {
-    bool changed = false;
-    const float knobDiam = 40.f;
-    const float knobRadius = knobDiam * 0.5f;
-    const float sweepDeg = 280.f;
-    const float startAngle = (180.f + (360.f - sweepDeg) * 0.5f); // degrees from up
-    const float PI = 3.14159265359f;
+    static constexpr float PI         = 3.14159265359f;
+    static constexpr float sweepDeg   = 280.f;
+    static constexpr float startAngle = 180.f + (360.f - sweepDeg) * 0.5f;
 
-    float range = (float)inputDef.range;
-    if (range <= 0.f) range = 128.f;
-    float minVal = (float)(inputDef.minVal * range);
-    float maxVal = (float)(inputDef.maxVal * range);
-
-    ImGui::PushID(id);
-
-    // --- Left knob ---
-    {
-        ImVec2 pos = ImGui::GetCursorScreenPos();
-        ImDrawList* dl = ImGui::GetWindowDrawList();
-        ImVec2 center(pos.x + knobRadius, pos.y + knobRadius);
-
-        // Background circle
-        dl->AddCircleFilled(center, knobRadius, IM_COL32(40, 40, 45, 255));
-        dl->AddCircle(center, knobRadius, IM_COL32(80, 80, 85, 255), 0, 1.5f);
-
-        // Value needle
-        float normL = (maxVal > minVal) ? (*valueL - minVal) / (maxVal - minVal) : 0.f;
-        normL = std::max(0.f, std::min(1.f, normL));
-        float angleDeg = startAngle + normL * sweepDeg;
-        float angleRad = angleDeg * PI / 180.f;
-        ImVec2 needleEnd(center.x + sinf(angleRad) * (knobRadius - 4.f),
-                         center.y - cosf(angleRad) * (knobRadius - 4.f));
-        dl->AddLine(center, needleEnd, IM_COL32(255, 255, 255, 255), 2.f);
-
-        // Modulator needle (red)
-        if (modL != 0.f)
-        {
-            float modNorm = std::max(0.f, std::min(1.f, (modL - minVal) / (maxVal - minVal)));
-            float modAngleDeg = startAngle + modNorm * sweepDeg;
-            float modAngleRad = modAngleDeg * PI / 180.f;
-            ImVec2 modEnd(center.x + sinf(modAngleRad) * (knobRadius - 4.f),
-                          center.y - cosf(modAngleRad) * (knobRadius - 4.f));
-            dl->AddLine(center, modEnd, IM_COL32(255, 60, 60, 180), 1.5f);
-        }
-
-        // Invisible button for interaction
-        ImGui::InvisibleButton("##knobL", ImVec2(knobDiam, knobDiam));
-        if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
-        {
-            float delta = -ImGui::GetIO().MouseDelta.y * 0.5f;
-            if (ImGui::GetIO().KeyCtrl)
-                delta /= 128.f;
-            float step = delta / range;
-            *valueL += step * (maxVal - minVal);
-            *valueL = std::max(minVal, std::min(maxVal, *valueL));
-            if (synced)
-                *valueR = *valueL;
-            changed = true;
-        }
-
-        // Text display below knob
-        double normDisplay = *valueL / range;
-        KnobLabel lbl = formatKnobValue(*valueL, range, inputDef.displayMapping, currentMode, nodeTypeID);
-        std::string text = lbl.line2.empty() ? lbl.line1 : (lbl.line1 + "\n" + lbl.line2);
-        ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
-        ImGui::SetCursorScreenPos(ImVec2(pos.x + (knobDiam - textSize.x) * 0.5f, pos.y + knobDiam + 2.f));
-        ImGui::TextUnformatted(text.c_str());
-    }
-
-    if (!singleInput)
-    {
-        ImGui::SameLine(0.f, 8.f);
-
-        // --- Right knob ---
-        {
-            ImVec2 pos = ImGui::GetCursorScreenPos();
-            ImDrawList* dl = ImGui::GetWindowDrawList();
-            ImVec2 center(pos.x + knobRadius, pos.y + knobRadius);
-
-            dl->AddCircleFilled(center, knobRadius, IM_COL32(40, 40, 45, 255));
-            dl->AddCircle(center, knobRadius, IM_COL32(80, 80, 85, 255), 0, 1.5f);
-
-            float normR = (maxVal > minVal) ? (*valueR - minVal) / (maxVal - minVal) : 0.f;
-            normR = std::max(0.f, std::min(1.f, normR));
-            float angleDeg = startAngle + normR * sweepDeg;
-            float angleRad = angleDeg * PI / 180.f;
-            ImVec2 needleEnd(center.x + sinf(angleRad) * (knobRadius - 4.f),
-                             center.y - cosf(angleRad) * (knobRadius - 4.f));
-            dl->AddLine(center, needleEnd, IM_COL32(255, 255, 255, 255), 2.f);
-
-            if (modR != 0.f)
-            {
-                float modNorm = std::max(0.f, std::min(1.f, (modR - minVal) / (maxVal - minVal)));
-                float modAngleDeg = startAngle + modNorm * sweepDeg;
-                float modAngleRad = modAngleDeg * PI / 180.f;
-                ImVec2 modEnd(center.x + sinf(modAngleRad) * (knobRadius - 4.f),
-                              center.y - cosf(modAngleRad) * (knobRadius - 4.f));
-                dl->AddLine(center, modEnd, IM_COL32(255, 60, 60, 180), 1.5f);
-            }
-
-            ImGui::InvisibleButton("##knobR", ImVec2(knobDiam, knobDiam));
-            if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left))
-            {
-                float delta = -ImGui::GetIO().MouseDelta.y * 0.5f;
-                if (ImGui::GetIO().KeyCtrl)
-                    delta /= 128.f;
-                float step = delta / range;
-                *valueR += step * (maxVal - minVal);
-                *valueR = std::max(minVal, std::min(maxVal, *valueR));
-                if (synced)
-                    *valueL = *valueR;
-                changed = true;
-            }
-
-            double normDisplay = *valueR / range;
-            KnobLabel lbl = formatKnobValue(*valueR, range, inputDef.displayMapping, currentMode, nodeTypeID);
-            std::string text = lbl.line2.empty() ? lbl.line1 : (lbl.line1 + "\n" + lbl.line2);
-            ImVec2 textSize = ImGui::CalcTextSize(text.c_str());
-            ImGui::SetCursorScreenPos(ImVec2(pos.x + (knobDiam - textSize.x) * 0.5f, pos.y + knobDiam + 2.f));
-            ImGui::TextUnformatted(text.c_str());
-        }
-    }
-
-    ImGui::PopID();
-    return changed;
-}
-
-// ── VU Meter ─────────────────────────────────────────────────────────────
-
-void VUMeter(float levelL, float levelR, float width, float height)
-{
-    ImVec2 pos = ImGui::GetCursorScreenPos();
-    ImDrawList* dl = ImGui::GetWindowDrawList();
-    float barW = (width - 3.f) * 0.5f;
-
-    // Background
-    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height), IM_COL32(20, 20, 25, 255));
-
-    // Helper to draw a VU bar
-    auto drawBar = [&](float x, float level) {
-        level = std::max(0.f, std::min(1.f, level));
-        float barH = level * height;
-        float barY = pos.y + height - barH;
-
-        // Green→yellow→red gradient based on level
-        ImU32 color;
-        if (level < 0.6f)
-            color = IM_COL32(40, 200, 40, 255);
-        else if (level < 0.85f)
-            color = IM_COL32(220, 200, 40, 255);
-        else
-            color = IM_COL32(220, 40, 40, 255);
-
-        dl->AddRectFilled(ImVec2(x, barY), ImVec2(x + barW, pos.y + height), color);
+    static const struct { float a; int t; } kKnobTicks[] = {
+        {   0.f, 2 },
+        {  17.5f, 0 }, {  35.f, 1 }, {  52.5f, 0 }, {  70.f, 2 },
+        {  87.5f, 0 }, { 105.f, 1 }, { 122.5f, 0 }, { 140.f, 2 },
+        { -17.5f, 0 }, { -35.f, 1 }, { -52.5f, 0 }, { -70.f, 2 },
+        { -87.5f, 0 }, {-105.f, 1 }, {-122.5f, 0 }, {-140.f, 2 },
     };
 
-    drawBar(pos.x, levelL);
-    drawBar(pos.x + barW + 3.f, levelR);
-
-    // Border
-    dl->AddRect(pos, ImVec2(pos.x + width, pos.y + height), IM_COL32(80, 80, 85, 255));
-
-    ImGui::Dummy(ImVec2(width, height));
-}
-
-// ── Bit Pattern ──────────────────────────────────────────────────────────
-
-bool BitPattern(const char* label, unsigned int* pattern)
-{
-    bool changed = false;
-    ImGui::PushID(label);
-
-    for (int i = 0; i < 8; i++)
+    const float tickOffX = -0.2f * z;
+    unsigned int tickA = (unsigned int)((kColKnobTick >> 24) * alpha / 255);
+    ImU32 tickCol = (kColKnobTick & 0x00FFFFFF) | (tickA << 24);
+    for (const auto& tk : kKnobTicks)
     {
-        if (i > 0) ImGui::SameLine(0.f, 2.f);
-        bool bit = (*pattern >> i) & 1;
-        ImGui::PushID(i);
-        if (ImGui::Button(bit ? "#" : ".", ImVec2(20.f, 20.f)))
-        {
-            *pattern ^= (1u << i);
-            changed = true;
-        }
-        ImGui::PopID();
+        float rad = tk.a * PI / 180.f;
+        float rO = (tk.t == 2) ? knobR : (tk.t == 1) ? knobR * (23.f/25.f) : knobR * (22.5f/25.f);
+        float rI = knobR * (19.f / 25.f);
+        float th = (tk.t == 2) ? 2.f * z : (tk.t == 1) ? 1.2f * z : 0.75f * z;
+        dl->AddLine(ImVec2(center.x + tickOffX + sinf(rad) * rO, center.y - cosf(rad) * rO),
+                    ImVec2(center.x + tickOffX + sinf(rad) * rI, center.y - cosf(rad) * rI),
+                    tickCol, th);
     }
 
-    ImGui::PopID();
-    return changed;
+    dl->AddCircleFilled(center, bodyR, (kColKnobBody & 0x00FFFFFF) | (alpha << 24));
+    dl->AddCircle(center, bodyR, (kColKnobRim  & 0x00FFFFFF) | (alpha << 24), 0, 1.5f);
+
+    float angleRad = (startAngle + normVal * sweepDeg) * PI / 180.f;
+    float sa = sinf(angleRad), ca = cosf(angleRad);
+    float hw = 2.5f * z;
+    unsigned int needleA = (unsigned int)(230 * alpha / 255);
+    dl->AddTriangleFilled(
+        ImVec2(center.x - ca * hw, center.y - sa * hw),
+        ImVec2(center.x + ca * hw, center.y + sa * hw),
+        ImVec2(center.x + sa * needleTipR, center.y - ca * needleTipR),
+        (kColKnobNeedle & 0x00FFFFFF) | (needleA << 24));
+    dl->AddCircleFilled(center, hw, (kColKnobCenter & 0x00FFFFFF) | (alpha << 24));
+
+    if (showMod)
+    {
+        float mr = (startAngle + normMod * sweepDeg) * PI / 180.f;
+        float sm = sinf(mr), cm = cosf(mr), mhw = 1.5f * z;
+        dl->AddTriangleFilled(
+            ImVec2(center.x - cm * mhw, center.y - sm * mhw),
+            ImVec2(center.x + cm * mhw, center.y + sm * mhw),
+            ImVec2(center.x + sm * needleTipR, center.y - cm * needleTipR),
+            kColKnobMod);
+    }
 }
 
 } // namespace Widgets

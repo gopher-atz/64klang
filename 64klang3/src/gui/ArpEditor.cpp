@@ -30,7 +30,6 @@ static constexpr ImU32 kColPlayPos    = IM_COL32(  0,   0,   0,  77); // black 3
 static constexpr ImU32 kColLoopTri    = IM_COL32(  0,   0,   0, 255); // black loop-start triangle
 static constexpr ImU32 kColLabelBdr   = IM_COL32(  0,   0,   0, 255); // label border
 
-// ─── invalidate ──────────────────────────────────────────────────────────────
 void ArpEditor::invalidate(int nodeID)
 {
     auto it = s_states.find(nodeID);
@@ -44,7 +43,6 @@ void ArpEditor::invalidateAll()
         kv.second.loaded = false;
 }
 
-// ─── readData ─────────────────────────────────────────────────────────────────
 // Mirrors C# ArpeggiatorEdit.ReadData() exactly.
 void ArpEditor::readData(int nodeID, ArpEditorState& state)
 {
@@ -87,7 +85,6 @@ void ArpEditor::readData(int nodeID, ArpEditorState& state)
     state.loaded    = true;
 }
 
-// ─── writeData ────────────────────────────────────────────────────────────────
 // Mirrors C# ArpeggiatorEdit.WriteData() exactly.
 void ArpEditor::writeData(int nodeID, const ArpEditorState& state)
 {
@@ -208,30 +205,16 @@ int ArpEditor::validateInsertion(ArpEditorState& state, int thisIdx)
     return thisIdx;
 }
 
-// ─── validateInsertionFully ───────────────────────────────────────────────────
-// Repeats validateInsertion until no further changes occur.
-// Necessary when the mouse moves fast: in one frame the drag step may grow to
-// span several existing notes that were previously beyond its right edge.
-// Each single-pass call removes/trims exactly one conflicting step; looping
-// until the list size stabilises ensures ALL of them are cleared.
+// Repeats validateInsertion until no further changes occur. Each single-pass
+// call resolves at most one overlap; looping up to kMaxSteps times ensures all
+// conflicts are resolved even when the mouse moves multiple steps in one frame.
 int ArpEditor::validateInsertionFully(ArpEditorState& state, int thisIdx)
 {
-    // Each single-pass call resolves exactly ONE overlapping step (removes,
-    // trims, or splits it) then breaks out of its inner loop.  A trim does
-    // not change the step-count, so a size-change heuristic cannot be used
-    // as an early-exit: after trimming step B there may still be step A that
-    // also overlaps but hasn't been touched yet.
-    //
-    // Safe upper bound: kMaxSteps passes cover every possible overlap
-    // (≤ 32 existing steps can conflict with the drag step).
-    // Passes where no overlap exists are silent no-ops, so this is always
-    // correct regardless of how far the mouse moved between frames.
     for (int pass = 0; pass < kMaxSteps; pass++)
         thisIdx = validateInsertion(state, thisIdx);
     return thisIdx;
 }
 
-// ─── draw ─────────────────────────────────────────────────────────────────────
 bool ArpEditor::draw(int nodeID, float zoom, ImVec2 origin, ImFont* labelFont, float labelFontSize, bool canInteract)
 {
     SynthController* sc = SynthController::instance();

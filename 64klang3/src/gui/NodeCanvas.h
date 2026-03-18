@@ -232,6 +232,16 @@ private:
     ImVec2 nodeScreenPos(double nx, double ny, const ImVec2& canvasOrigin) const;
     ImVec2 outputPinPos(const ImVec2& nodePos) const;
     ImVec2 inputPinPos(const ImVec2& nodePos, int pinIndex) const;
+
+    // Edit panel helpers
+    struct EditPanelSize { float pw, ph; };
+    EditPanelSize calcEditPanelSize(int nodeID, int nodeType, const struct NodeTypeDef* typeDef) const;
+    void closeEditPanel(int nodeID);
+    void drawCheckbox(ImDrawList* dl, ImVec2 min, float sz, bool checked, float z) const;
+    bool drawComboButton(ImDrawList* dl, int nodeID, int groupIdx,
+                         float btnX, float btnY, float btnW, float btnH,
+                         const char* label, float fontSize, bool canClick,
+                         const ImVec2& mousePos) const;
 };
 
 } // namespace K64GUI

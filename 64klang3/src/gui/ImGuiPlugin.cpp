@@ -241,7 +241,7 @@ static void renderToolbar()
 
     toolbarSeparator(dl, tbPos, tbH);
 
-    // ── Waves ─────────────────────────────────────────────────────────────
+
     if (ImGui::Button("Wavetables"))
     {
         if (s_canvas)
@@ -259,9 +259,8 @@ static void renderToolbar()
             sc->exportPatch(std::string(buf));
     }
     ImGui::SameLine();
-    // ── Export Song ───────────────────────────────────────────────────────
-    // Quantization values are raw sample counts (16..256 in steps of 16),
-    // matching the reference WPF combo box. Default index 3 = 64 samples.
+    // Quantization values are raw sample counts (16..256 in steps of 16).
+    // Default index 3 = 64 samples.
     static const int        kQuantValues[] = { 16,32,48,64,80,96,112,128,144,160,176,192,208,224,240,256 };
     static const char* kQuantLabels[]      = {"16","32","48","64","80","96","112","128","144","160","176","192","208","224","240","256"};
     if (ImGui::Button("Export Song"))
@@ -278,10 +277,7 @@ static void renderToolbar()
 
     toolbarSeparator(dl, tbPos, tbH);
 
-    // ── Jump To Channel ───────────────────────────────────────────────────
     // Indices 0-15 = channels 1-16, index 16 = SynthRoot (channel -1).
-    // Labels are rebuilt each frame from ChannelRoot node names so they
-    // reflect renames and patch/channel loads immediately.
     ImGui::TextUnformatted("Jump To:");
     ImGui::SameLine(0.f, 3.f);
     {
@@ -328,14 +324,13 @@ static void renderToolbar()
 
     toolbarSeparator(dl, tbPos, tbH);
 
-    // ── Search ────────────────────────────────────────────────────────────
+
     ImGui::TextUnformatted("Search:");
     ImGui::SameLine(0.f, 3.f);
     ImGui::SetNextItemWidth(130.f);
     if (ImGui::InputText("##search", s_searchBuf, sizeof(s_searchBuf)) && s_canvas)
         s_canvas->setSearchFilter(s_searchBuf);
 
-    // ── Right-aligned: P.A.N.I.C button + Voice count ────────────────────
     {
         int  voices = sc ? sc->getNumActiveVoices() : 0;
         char voiceBuf[32];
@@ -366,8 +361,6 @@ static void renderToolbar()
     // Advance cursor past the toolbar so the canvas starts directly below.
     ImGui::SetCursorScreenPos(ImVec2(tbPos.x, tbPos.y + tbH));
 }
-
-// ── main render entry point ───────────────────────────────────────────────────
 
 void render()
 {
