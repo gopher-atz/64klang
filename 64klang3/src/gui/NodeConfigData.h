@@ -942,503 +942,503 @@ R"xml(					<ModeItem name="CC 102" value="102"/>
 		<Node typeid="52" name="GM.DLS" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0" allowSignalInsertion="0">
 			<NodeInput name="Mode">
 				<ModeGroup name="Sample" mask="65535" shift="0">
-					<ModeItem name="SynthBass101" value="0"/>
-					<ModeItem name="SynthBass101" value="1"/>
-					<ModeItem name="12-str.Gt   " value="2"/>
-					<ModeItem name="12-str.Gt   " value="3"/>
-					<ModeItem name="12-str.Gt   " value="4"/>
-					<ModeItem name="5th Saw Wave" value="5"/>
-					<ModeItem name="60's Organ 1" value="6"/>
-					<ModeItem name="60's Organ 1" value="7"/>
-					<ModeItem name="60's Organ 1" value="8"/>
-					<ModeItem name="60's E.Piano" value="9"/>
-					<ModeItem name="60's E.Piano" value="10"/>
-					<ModeItem name="60's E.Piano" value="11"/>
-					<ModeItem name="60's E.Piano" value="12"/>
-					<ModeItem name="60's E.Piano" value="13"/>
-					<ModeItem name="60's E.Piano" value="14"/>
-					<ModeItem name="60's E.Piano" value="15"/>
-					<ModeItem name="TR-808      " value="16"/>
-					<ModeItem name="Standard    " value="17"/>
-					<ModeItem name="TR-808      " value="18"/>
-					<ModeItem name="TR-808      " value="19"/>
-					<ModeItem name="Accordion Fr" value="20"/>
-					<ModeItem name="Accordion Fr" value="21"/>
-					<ModeItem name="Acoustic Bs." value="22"/>
-					<ModeItem name="Acoustic Bs." value="23"/>
-					<ModeItem name="Acoustic Bs." value="24"/>
+					<ModeItem name="SynthBass101 1" value="0"/>
+					<ModeItem name="SynthBass101 2" value="1"/>
+					<ModeItem name="12-str.Gt 1" value="2"/>
+					<ModeItem name="12-str.Gt 2" value="3"/>
+					<ModeItem name="12-str.Gt 3" value="4"/>
+					<ModeItem name="5th Saw Wave 1" value="5"/>
+					<ModeItem name="60's Organ 1 1" value="6"/>
+					<ModeItem name="60's Organ 1 2" value="7"/>
+					<ModeItem name="60's Organ 1 3" value="8"/>
+					<ModeItem name="60's E.Piano 1" value="9"/>
+					<ModeItem name="60's E.Piano 2" value="10"/>
+					<ModeItem name="60's E.Piano 3" value="11"/>
+					<ModeItem name="60's E.Piano 4" value="12"/>
+					<ModeItem name="60's E.Piano 5" value="13"/>
+					<ModeItem name="60's E.Piano 6" value="14"/>
+					<ModeItem name="60's E.Piano 7" value="15"/>
+					<ModeItem name="TR-808 1" value="16"/>
+					<ModeItem name="Standard 1" value="17"/>
+					<ModeItem name="TR-808 2" value="18"/>
+					<ModeItem name="TR-808 3" value="19"/>
+					<ModeItem name="Accordion Fr 1" value="20"/>
+					<ModeItem name="Accordion Fr 2" value="21"/>
+					<ModeItem name="Acoustic Bs. 1" value="22"/>
+					<ModeItem name="Acoustic Bs. 2" value="23"/>
+					<ModeItem name="Acoustic Bs. 3" value="24"/>
 					<ModeItem name="Agogo       " value="25"/>
 					<ModeItem name="Applause    " value="26"/>
-					<ModeItem name="Atmosphere  " value="27"/>
-					<ModeItem name="Atmosphere  " value="28"/>
+					<ModeItem name="Atmosphere 1" value="27"/>
+					<ModeItem name="Atmosphere 2" value="28"/>
 )xml"
-R"xml(					<ModeItem name="Alto Sax    " value="29"/>
-					<ModeItem name="Alto Sax    " value="30"/>
-					<ModeItem name="Alto Sax    " value="31"/>
-					<ModeItem name="Alto Sax    " value="32"/>
-					<ModeItem name="Alto Sax    " value="33"/>
-					<ModeItem name="Alto Sax    " value="34"/>
-					<ModeItem name="Alto Sax    " value="35"/>
-					<ModeItem name="Alto Sax    " value="36"/>
-					<ModeItem name="Bagpipe     " value="37"/>
-					<ModeItem name="Bagpipe     " value="38"/>
-					<ModeItem name="Bagpipe     " value="39"/>
-					<ModeItem name="Bagpipe     " value="40"/>
-					<ModeItem name="Bagpipe     " value="41"/>
-					<ModeItem name="Bandoneon   " value="42"/>
-					<ModeItem name="Bandoneon   " value="43"/>
-					<ModeItem name="Banjo       " value="44"/>
-					<ModeItem name="Banjo       " value="45"/>
-					<ModeItem name="Banjo       " value="46"/>
-					<ModeItem name="Bassoon     " value="47"/>
-					<ModeItem name="Bassoon     " value="48"/>
-					<ModeItem name="Standard    " value="49"/>
+R"xml(					<ModeItem name="Alto Sax 1" value="29"/>
+					<ModeItem name="Alto Sax 2" value="30"/>
+					<ModeItem name="Alto Sax 3" value="31"/>
+					<ModeItem name="Alto Sax 4" value="32"/>
+					<ModeItem name="Alto Sax 5" value="33"/>
+					<ModeItem name="Alto Sax 6" value="34"/>
+					<ModeItem name="Alto Sax 7" value="35"/>
+					<ModeItem name="Alto Sax 8" value="36"/>
+					<ModeItem name="Bagpipe 1" value="37"/>
+					<ModeItem name="Bagpipe 2" value="38"/>
+					<ModeItem name="Bagpipe 3" value="39"/>
+					<ModeItem name="Bagpipe 4" value="40"/>
+					<ModeItem name="Bagpipe 5" value="41"/>
+					<ModeItem name="Bandoneon 1" value="42"/>
+					<ModeItem name="Bandoneon 2" value="43"/>
+					<ModeItem name="Banjo 1" value="44"/>
+					<ModeItem name="Banjo 2" value="45"/>
+					<ModeItem name="Banjo 3" value="46"/>
+					<ModeItem name="Bassoon 1" value="47"/>
+					<ModeItem name="Bassoon 2" value="48"/>
+					<ModeItem name="Standard 2" value="49"/>
 					<ModeItem name="Bird        " value="50"/>
-					<ModeItem name="Bottle Blow " value="51"/>
-					<ModeItem name="Bottle Blow " value="52"/>
-					<ModeItem name="Brass 1     " value="53"/>
-					<ModeItem name="Brass 1     " value="54"/>
-					<ModeItem name="Brass 1     " value="55"/>
-					<ModeItem name="Brass 1     " value="56"/>
+					<ModeItem name="Bottle Blow 1" value="51"/>
+					<ModeItem name="Bottle Blow 2" value="52"/>
+					<ModeItem name="Brass 1 1" value="53"/>
+					<ModeItem name="Brass 1 2" value="54"/>
+					<ModeItem name="Brass 1 3" value="55"/>
+					<ModeItem name="Brass 1 4" value="56"/>
 					<ModeItem name="String Slap " value="57"/>
-					<ModeItem name="Brush       " value="58"/>
-					<ModeItem name="Bass &amp; Lead " value="59"/>
-					<ModeItem name="Bass &amp; Lead " value="60"/>
-					<ModeItem name="Bass &amp; Lead " value="61"/>
+					<ModeItem name="Brush 1" value="58"/>
+					<ModeItem name="Bass &amp; Lead 1" value="59"/>
+					<ModeItem name="Bass &amp; Lead 2" value="60"/>
+					<ModeItem name="Bass &amp; Lead 3" value="61"/>
 					<ModeItem name="Bubble      " value="62"/>
 					<ModeItem name="Burst Noise " value="63"/>
-					<ModeItem name="Baritone Sax" value="64"/>
-					<ModeItem name="Baritone Sax" value="65"/>
-					<ModeItem name="Baritone Sax" value="66"/>
-					<ModeItem name="Baritone Sax" value="67"/>
-					<ModeItem name="Baritone Sax" value="68"/>
-					<ModeItem name="Brush       " value="69"/>
-					<ModeItem name="Standard    " value="70"/>
-					<ModeItem name="Syn.Calliope" value="71"/>
-					<ModeItem name="Syn.Calliope" value="72"/>
+					<ModeItem name="Baritone Sax 1" value="64"/>
+					<ModeItem name="Baritone Sax 2" value="65"/>
+					<ModeItem name="Baritone Sax 3" value="66"/>
+					<ModeItem name="Baritone Sax 4" value="67"/>
+					<ModeItem name="Baritone Sax 5" value="68"/>
+					<ModeItem name="Brush 2" value="69"/>
+					<ModeItem name="Standard 3" value="70"/>
+					<ModeItem name="Syn.Calliope 1" value="71"/>
+					<ModeItem name="Syn.Calliope 2" value="72"/>
 					<ModeItem name="Castanets   " value="73"/>
-					<ModeItem name="Cello       " value="74"/>
-					<ModeItem name="Cello       " value="75"/>
-					<ModeItem name="Cello       " value="76"/>
+					<ModeItem name="Cello 1" value="74"/>
+					<ModeItem name="Cello 2" value="75"/>
+					<ModeItem name="Cello 3" value="76"/>
 					<ModeItem name="Slow Violin " value="77"/>
-					<ModeItem name="Cello       " value="78"/>
-					<ModeItem name="Celesta     " value="79"/>
-					<ModeItem name="Celesta     " value="80"/>
-					<ModeItem name="Chiffer Lead" value="81"/>
-					<ModeItem name="Chiffer Lead" value="82"/>
-					<ModeItem name="Standard    " value="83"/>
-					<ModeItem name="Standard    " value="84"/>
+					<ModeItem name="Cello 4" value="78"/>
+					<ModeItem name="Celesta 1" value="79"/>
+					<ModeItem name="Celesta 2" value="80"/>
+					<ModeItem name="Chiffer Lead 1" value="81"/>
+					<ModeItem name="Chiffer Lead 2" value="82"/>
+					<ModeItem name="Standard 4" value="83"/>
+					<ModeItem name="Standard 5" value="84"/>
 					<ModeItem name="Choir Aahs  " value="85"/>
-					<ModeItem name="Charang     " value="86"/>
-					<ModeItem name="Charang     " value="87"/>
-					<ModeItem name="Standard    " value="88"/>
-					<ModeItem name="Clav.       " value="89"/>
-					<ModeItem name="Clav.       " value="90"/>
-					<ModeItem name="Clav.       " value="91"/>
-					<ModeItem name="Clav.       " value="92"/>
-					<ModeItem name="Standard    " value="93"/>
-					<ModeItem name="Clean Gt.   " value="94"/>
-					<ModeItem name="Clean Gt.   " value="95"/>
-					<ModeItem name="Clean Gt.   " value="96"/>
-					<ModeItem name="Clean Gt.   " value="97"/>
-					<ModeItem name="Clean Gt.   " value="98"/>
-					<ModeItem name="Contrabass  " value="99"/>
-					<ModeItem name="Contrabass  " value="100"/>
-					<ModeItem name="Contrabass  " value="101"/>
+					<ModeItem name="Charang 1" value="86"/>
+					<ModeItem name="Charang 2" value="87"/>
+					<ModeItem name="Standard 6" value="88"/>
+					<ModeItem name="Clav. 1" value="89"/>
+					<ModeItem name="Clav. 2" value="90"/>
+					<ModeItem name="Clav. 3" value="91"/>
+					<ModeItem name="Clav. 4" value="92"/>
+					<ModeItem name="Standard 7" value="93"/>
+					<ModeItem name="Clean Gt. 1" value="94"/>
+					<ModeItem name="Clean Gt. 2" value="95"/>
+					<ModeItem name="Clean Gt. 3" value="96"/>
+					<ModeItem name="Clean Gt. 4" value="97"/>
+					<ModeItem name="Clean Gt. 5" value="98"/>
+					<ModeItem name="Contrabass 1" value="99"/>
+					<ModeItem name="Contrabass 2" value="100"/>
+					<ModeItem name="Contrabass 3" value="101"/>
 					<ModeItem name="808 Tom     " value="102"/>
-					<ModeItem name="TR-808      " value="103"/>
+					<ModeItem name="TR-808 4" value="103"/>
 					<ModeItem name="Drums Cowbel" value="104"/>
 					<ModeItem name="Car-Pass    " value="105"/>
 					<ModeItem name="Drums Cymbal" value="106"/>
 					<ModeItem name="Car-Crash   " value="107"/>
 					<ModeItem name="DoorCreaking" value="108"/>
 					<ModeItem name="Car-Stop    " value="109"/>
-					<ModeItem name="Church Org.1" value="110"/>
-					<ModeItem name="Church Org.1" value="111"/>
-					<ModeItem name="Church Org.1" value="112"/>
-					<ModeItem name="Church Org.1" value="113"/>
-					<ModeItem name="Church Org.1" value="114"/>
-					<ModeItem name="Detuned EP 1" value="115"/>
-					<ModeItem name="Detuned EP 1" value="116"/>
+					<ModeItem name="Church Org.1 1" value="110"/>
+					<ModeItem name="Church Org.1 2" value="111"/>
+					<ModeItem name="Church Org.1 3" value="112"/>
+					<ModeItem name="Church Org.1 4" value="113"/>
+					<ModeItem name="Church Org.1 5" value="114"/>
+					<ModeItem name="Detuned EP 1 1" value="115"/>
+					<ModeItem name="Detuned EP 1 2" value="116"/>
 					<ModeItem name="Detuned EP 2" value="117"/>
-					<ModeItem name="Doctor Solo " value="118"/>
-					<ModeItem name="Doctor Solo " value="119"/>
+					<ModeItem name="Doctor Solo 1" value="118"/>
+					<ModeItem name="Doctor Solo 2" value="119"/>
 					<ModeItem name="Dog         " value="120"/>
 					<ModeItem name="Detuned Or.1" value="121"/>
-					<ModeItem name="DistortionGt" value="122"/>
-					<ModeItem name="DistortionGt" value="123"/>
-					<ModeItem name="DistortionGt" value="124"/>
-					<ModeItem name="DistortionGt" value="125"/>
-					<ModeItem name="DistortionGt" value="126"/>
-					<ModeItem name="DistortionGt" value="127"/>
-					<ModeItem name="DistortionGt" value="128"/>
-					<ModeItem name="DistortionGt" value="129"/>
-					<ModeItem name="DistortionGt" value="130"/>
-					<ModeItem name="Gt.Cut Noise" value="131"/>
-					<ModeItem name="English Horn" value="132"/>
-					<ModeItem name="English Horn" value="133"/>
-					<ModeItem name="English Horn" value="134"/>
-					<ModeItem name="English Horn" value="135"/>
+					<ModeItem name="DistortionGt 1" value="122"/>
+					<ModeItem name="DistortionGt 2" value="123"/>
+					<ModeItem name="DistortionGt 3" value="124"/>
+					<ModeItem name="DistortionGt 4" value="125"/>
+					<ModeItem name="DistortionGt 5" value="126"/>
+					<ModeItem name="DistortionGt 6" value="127"/>
+					<ModeItem name="DistortionGt 7" value="128"/>
+					<ModeItem name="DistortionGt 8" value="129"/>
+					<ModeItem name="DistortionGt 9" value="130"/>
+					<ModeItem name="Gt.Cut Noise 1" value="131"/>
+					<ModeItem name="English Horn 1" value="132"/>
+					<ModeItem name="English Horn 2" value="133"/>
+					<ModeItem name="English Horn 3" value="134"/>
+					<ModeItem name="English Horn 4" value="135"/>
 					<ModeItem name="Drums E-Toms" value="136"/>
-					<ModeItem name="E.Piano 1   " value="137"/>
-					<ModeItem name="E.Piano 1   " value="138"/>
-					<ModeItem name="E.Piano 1   " value="139"/>
-					<ModeItem name="E.Piano 1   " value="140"/>
-					<ModeItem name="E.Piano 1   " value="141"/>
-					<ModeItem name="E.Piano 2   " value="142"/>
-					<ModeItem name="E.Piano 2   " value="143"/>
-					<ModeItem name="E.Piano 2   " value="144"/>
-					<ModeItem name="E.Piano 2   " value="145"/>
-					<ModeItem name="E.Piano 2   " value="146"/>
-					<ModeItem name="E.Piano 2   " value="147"/>
-					<ModeItem name="E.Piano 2   " value="148"/>
+					<ModeItem name="E.Piano 1 1" value="137"/>
+					<ModeItem name="E.Piano 1 2" value="138"/>
+					<ModeItem name="E.Piano 1 3" value="139"/>
+					<ModeItem name="E.Piano 1 4" value="140"/>
+					<ModeItem name="E.Piano 1 5" value="141"/>
+					<ModeItem name="E.Piano 2 1" value="142"/>
+					<ModeItem name="E.Piano 2 2" value="143"/>
+					<ModeItem name="E.Piano 2 3" value="144"/>
+					<ModeItem name="E.Piano 2 4" value="145"/>
+					<ModeItem name="E.Piano 2 5" value="146"/>
+					<ModeItem name="E.Piano 2 6" value="147"/>
+					<ModeItem name="E.Piano 2 7" value="148"/>
 					<ModeItem name="Car-Engine  " value="149"/>
-					<ModeItem name="Organ 1     " value="150"/>
-					<ModeItem name="Organ 1     " value="151"/>
-					<ModeItem name="Organ 1     " value="152"/>
-					<ModeItem name="Organ 2     " value="153"/>
-					<ModeItem name="Organ 2     " value="154"/>
-					<ModeItem name="Organ 2     " value="155"/>
-					<ModeItem name="Organ 3     " value="156"/>
-					<ModeItem name="Organ 3     " value="157"/>
-					<ModeItem name="Organ 3     " value="158"/>
-					<ModeItem name="Fantasia    " value="159"/>
-					<ModeItem name="Fantasia    " value="160"/>
+					<ModeItem name="Organ 1 1" value="150"/>
+					<ModeItem name="Organ 1 2" value="151"/>
+					<ModeItem name="Organ 1 3" value="152"/>
+					<ModeItem name="Organ 2 1" value="153"/>
+					<ModeItem name="Organ 2 2" value="154"/>
+					<ModeItem name="Organ 2 3" value="155"/>
+					<ModeItem name="Organ 3 1" value="156"/>
+					<ModeItem name="Organ 3 2" value="157"/>
+					<ModeItem name="Organ 3 3" value="158"/>
+					<ModeItem name="Fantasia 1" value="159"/>
+					<ModeItem name="Fantasia 2" value="160"/>
 					<ModeItem name="Drums Snare1" value="161"/>
-					<ModeItem name="French Horns" value="162"/>
-					<ModeItem name="French Horns" value="163"/>
-					<ModeItem name="Flute       " value="164"/>
-					<ModeItem name="Flute       " value="165"/>
-					<ModeItem name="Flute       " value="166"/>
-					<ModeItem name="Flute       " value="167"/>
-					<ModeItem name="Flute       " value="168"/>
-					<ModeItem name="Flute       " value="169"/>
-					<ModeItem name="Solo Vox    " value="170"/>
-					<ModeItem name="Warm Pad    " value="171"/>
+					<ModeItem name="French Horns 1" value="162"/>
+					<ModeItem name="French Horns 2" value="163"/>
+					<ModeItem name="Flute 1" value="164"/>
+					<ModeItem name="Flute 2" value="165"/>
+					<ModeItem name="Flute 3" value="166"/>
+					<ModeItem name="Flute 4" value="167"/>
+					<ModeItem name="Flute 5" value="168"/>
+					<ModeItem name="Flute 6" value="169"/>
+					<ModeItem name="Solo Vox 1" value="170"/>
+					<ModeItem name="Warm Pad 1" value="171"/>
 					<ModeItem name="Crystal     " value="172"/>
-					<ModeItem name="Fretless Bs." value="173"/>
-					<ModeItem name="Fretless Bs." value="174"/>
-					<ModeItem name="Fretless Bs." value="175"/>
+					<ModeItem name="Fretless Bs. 1" value="173"/>
+					<ModeItem name="Fretless Bs. 2" value="174"/>
+					<ModeItem name="Fretless Bs. 3" value="175"/>
 					<ModeItem name="Drums Snare2" value="176"/>
 					<ModeItem name="Gt.FretNoise" value="177"/>
-					<ModeItem name="Glockenspiel" value="178"/>
-					<ModeItem name="Glockenspiel" value="179"/>
-					<ModeItem name="Glockenspiel" value="180"/>
+					<ModeItem name="Glockenspiel 1" value="178"/>
+					<ModeItem name="Glockenspiel 2" value="179"/>
+					<ModeItem name="Glockenspiel 3" value="180"/>
 					<ModeItem name="Goblin      " value="181"/>
-					<ModeItem name="Harmonica   " value="182"/>
-					<ModeItem name="Harmonica   " value="183"/>
-					<ModeItem name="Harmonica   " value="184"/>
-					<ModeItem name="Harmonica   " value="185"/>
-					<ModeItem name="Harmonica   " value="186"/>
-					<ModeItem name="Harmonica   " value="187"/>
-					<ModeItem name="Harp        " value="188"/>
-					<ModeItem name="Harp        " value="189"/>
-					<ModeItem name="Acoustic Bs." value="190"/>
-					<ModeItem name="Acoustic Bs." value="191"/>
-					<ModeItem name="Standard    " value="192"/>
+					<ModeItem name="Harmonica 1" value="182"/>
+					<ModeItem name="Harmonica 2" value="183"/>
+					<ModeItem name="Harmonica 3" value="184"/>
+					<ModeItem name="Harmonica 4" value="185"/>
+					<ModeItem name="Harmonica 5" value="186"/>
+					<ModeItem name="Harmonica 6" value="187"/>
+					<ModeItem name="Harp 1" value="188"/>
+					<ModeItem name="Harp 2" value="189"/>
+					<ModeItem name="Acoustic Bs. 4" value="190"/>
+					<ModeItem name="Acoustic Bs. 5" value="191"/>
+					<ModeItem name="Standard 8" value="192"/>
 					<ModeItem name="Drums Clap  " value="193"/>
 					<ModeItem name="Heart Beat  " value="194"/>
 					<ModeItem name="Helicopter  " value="195"/>
 					<ModeItem name="Drums Laser " value="196"/>
-					<ModeItem name="Honky-tonk  " value="197"/>
-					<ModeItem name="Honky-tonk  " value="198"/>
-					<ModeItem name="Honky-tonk  " value="199"/>
-					<ModeItem name="Honky-tonk  " value="200"/>
-					<ModeItem name="Honky-tonk  " value="201"/>
+					<ModeItem name="Honky-tonk 1" value="197"/>
+					<ModeItem name="Honky-tonk 2" value="198"/>
+					<ModeItem name="Honky-tonk 3" value="199"/>
+					<ModeItem name="Honky-tonk 4" value="200"/>
+					<ModeItem name="Honky-tonk 5" value="201"/>
 					<ModeItem name="Horse-Gallop" value="202"/>
-					<ModeItem name="Gt.Harmonics" value="203"/>
-					<ModeItem name="Gt.Harmonics" value="204"/>
-					<ModeItem name="Harpsichord " value="205"/>
-					<ModeItem name="Harpsichord " value="206"/>
-					<ModeItem name="Harpsichord " value="207"/>
-					<ModeItem name="Harpsichord " value="208"/>
+					<ModeItem name="Gt.Harmonics 1" value="203"/>
+					<ModeItem name="Gt.Harmonics 2" value="204"/>
+					<ModeItem name="Harpsichord 1" value="205"/>
+					<ModeItem name="Harpsichord 2" value="206"/>
+					<ModeItem name="Harpsichord 3" value="207"/>
+					<ModeItem name="Harpsichord 4" value="208"/>
 					<ModeItem name="Ice Rain    " value="209"/>
-					<ModeItem name="5th Saw Wave" value="210"/>
-					<ModeItem name="Jazz Gt.    " value="211"/>
-					<ModeItem name="Jazz Gt.    " value="212"/>
-					<ModeItem name="Jazz Gt.    " value="213"/>
-					<ModeItem name="Jazz Gt.    " value="214"/>
-					<ModeItem name="Jazz Gt.    " value="215"/>
-					<ModeItem name="Jazz Gt.    " value="216"/>
-					<ModeItem name="Nylon-str.Gt" value="217"/>
-					<ModeItem name="Standard    " value="218"/>
+					<ModeItem name="5th Saw Wave 2" value="210"/>
+					<ModeItem name="Jazz Gt. 1" value="211"/>
+					<ModeItem name="Jazz Gt. 2" value="212"/>
+					<ModeItem name="Jazz Gt. 3" value="213"/>
+					<ModeItem name="Jazz Gt. 4" value="214"/>
+					<ModeItem name="Jazz Gt. 5" value="215"/>
+					<ModeItem name="Jazz Gt. 6" value="216"/>
+					<ModeItem name="Nylon-str.Gt 1" value="217"/>
+					<ModeItem name="Standard 9" value="218"/>
 					<ModeItem name="Fl.Key Click" value="219"/>
 					<ModeItem name="Drums Base1 " value="220"/>
 					<ModeItem name="Kalimba     " value="221"/>
-					<ModeItem name="Koto        " value="222"/>
-					<ModeItem name="Koto        " value="223"/>
-					<ModeItem name="Clav.       " value="224"/>
+					<ModeItem name="Koto 1" value="222"/>
+					<ModeItem name="Koto 2" value="223"/>
+					<ModeItem name="Clav. 5" value="224"/>
 					<ModeItem name="Lasergun    " value="225"/>
 					<ModeItem name="Laughing    " value="226"/>
-					<ModeItem name="Standard    " value="227"/>
-					<ModeItem name="Standard    " value="228"/>
-					<ModeItem name="Standard    " value="229"/>
-					<ModeItem name="Standard    " value="230"/>
-					<ModeItem name="Standard    " value="231"/>
-					<ModeItem name="Standard    " value="232"/>
-					<ModeItem name="Standard    " value="233"/>
-					<ModeItem name="Square      " value="234"/>
-					<ModeItem name="Square      " value="235"/>
-					<ModeItem name="Square      " value="236"/>
-					<ModeItem name="Square      " value="237"/>
-					<ModeItem name="Square      " value="238"/>
-					<ModeItem name="Fingered Bs." value="239"/>
-					<ModeItem name="Fingered Bs." value="240"/>
-					<ModeItem name="Fingered Bs." value="241"/>
+					<ModeItem name="Standard 10" value="227"/>
+					<ModeItem name="Standard 11" value="228"/>
+					<ModeItem name="Standard 12" value="229"/>
+					<ModeItem name="Standard 13" value="230"/>
+					<ModeItem name="Standard 14" value="231"/>
+					<ModeItem name="Standard 15" value="232"/>
+					<ModeItem name="Standard 16" value="233"/>
+					<ModeItem name="Square 1" value="234"/>
+					<ModeItem name="Square 2" value="235"/>
+					<ModeItem name="Square 3" value="236"/>
+					<ModeItem name="Square 4" value="237"/>
+					<ModeItem name="Square 5" value="238"/>
+					<ModeItem name="Fingered Bs. 1" value="239"/>
+					<ModeItem name="Fingered Bs. 2" value="240"/>
+					<ModeItem name="Fingered Bs. 3" value="241"/>
 					<ModeItem name="Drums Base2 " value="242"/>
-					<ModeItem name="Marimba     " value="243"/>
-					<ModeItem name="Marimba     " value="244"/>
-					<ModeItem name="Celesta     " value="245"/>
-					<ModeItem name="Muted Gt.   " value="246"/>
-					<ModeItem name="Muted Gt.   " value="247"/>
-					<ModeItem name="Muted Gt.   " value="248"/>
-					<ModeItem name="MutedTrumpet" value="249"/>
-					<ModeItem name="MutedTrumpet" value="250"/>
-					<ModeItem name="MutedTrumpet" value="251"/>
-					<ModeItem name="MutedTrumpet" value="252"/>
+					<ModeItem name="Marimba 1" value="243"/>
+					<ModeItem name="Marimba 2" value="244"/>
+					<ModeItem name="Celesta 3" value="245"/>
+					<ModeItem name="Muted Gt. 1" value="246"/>
+					<ModeItem name="Muted Gt. 2" value="247"/>
+					<ModeItem name="Muted Gt. 3" value="248"/>
+					<ModeItem name="MutedTrumpet 1" value="249"/>
+					<ModeItem name="MutedTrumpet 2" value="250"/>
+					<ModeItem name="MutedTrumpet 3" value="251"/>
+					<ModeItem name="MutedTrumpet 4" value="252"/>
 					<ModeItem name="Music Box   " value="253"/>
 					<ModeItem name="Machine Gun " value="254"/>
-					<ModeItem name="Nylon-str.Gt" value="255"/>
-					<ModeItem name="Nylon-str.Gt" value="256"/>
-					<ModeItem name="Nylon-str.Gt" value="257"/>
-					<ModeItem name="Nylon-str.Gt" value="258"/>
-					<ModeItem name="Nylon-str.Gt" value="259"/>
-					<ModeItem name="Nylon-str.Gt" value="260"/>
+					<ModeItem name="Nylon-str.Gt 2" value="255"/>
+					<ModeItem name="Nylon-str.Gt 3" value="256"/>
+					<ModeItem name="Nylon-str.Gt 4" value="257"/>
+					<ModeItem name="Nylon-str.Gt 5" value="258"/>
+					<ModeItem name="Nylon-str.Gt 6" value="259"/>
+					<ModeItem name="Nylon-str.Gt 7" value="260"/>
 					<ModeItem name="Ukulele     " value="261"/>
-					<ModeItem name="Oboe        " value="262"/>
-					<ModeItem name="Oboe        " value="263"/>
-					<ModeItem name="Oboe        " value="264"/>
-					<ModeItem name="Oboe        " value="265"/>
-					<ModeItem name="Oboe        " value="266"/>
-					<ModeItem name="Ocarina     " value="267"/>
-					<ModeItem name="Ocarina     " value="268"/>
-					<ModeItem name="Piccolo     " value="269"/>
-					<ModeItem name="Standard    " value="270"/>
-					<ModeItem name="Standard    " value="271"/>
+					<ModeItem name="Oboe 1" value="262"/>
+					<ModeItem name="Oboe 2" value="263"/>
+					<ModeItem name="Oboe 3" value="264"/>
+					<ModeItem name="Oboe 4" value="265"/>
+					<ModeItem name="Oboe 5" value="266"/>
+					<ModeItem name="Ocarina 1" value="267"/>
+					<ModeItem name="Ocarina 2" value="268"/>
+					<ModeItem name="Piccolo 1" value="269"/>
+					<ModeItem name="Standard 17" value="270"/>
+					<ModeItem name="Standard 18" value="271"/>
 					<ModeItem name="Drums HihatO" value="272"/>
-					<ModeItem name="Overdrive Gt" value="273"/>
-					<ModeItem name="Overdrive Gt" value="274"/>
-					<ModeItem name="Overdrive Gt" value="275"/>
-					<ModeItem name="Overdrive Gt" value="276"/>
-					<ModeItem name="Overdrive Gt" value="277"/>
-					<ModeItem name="Overdrive Gt" value="278"/>
-					<ModeItem name="Overdrive Gt" value="279"/>
-					<ModeItem name="Overdrive Gt" value="280"/>
-					<ModeItem name="Overdrive Gt" value="281"/>
-					<ModeItem name="Overdrive Gt" value="282"/>
+					<ModeItem name="Overdrive Gt 1" value="273"/>
+					<ModeItem name="Overdrive Gt 2" value="274"/>
+					<ModeItem name="Overdrive Gt 3" value="275"/>
+					<ModeItem name="Overdrive Gt 4" value="276"/>
+					<ModeItem name="Overdrive Gt 5" value="277"/>
+					<ModeItem name="Overdrive Gt 6" value="278"/>
+					<ModeItem name="Overdrive Gt 7" value="279"/>
+					<ModeItem name="Overdrive Gt 8" value="280"/>
+					<ModeItem name="Overdrive Gt 9" value="281"/>
+					<ModeItem name="Overdrive Gt 10" value="282"/>
 					<ModeItem name="OrchestraHit" value="283"/>
-					<ModeItem name="Breath Noise" value="284"/>
-					<ModeItem name="Breath Noise" value="285"/>
-					<ModeItem name="Picked Bs.  " value="286"/>
-					<ModeItem name="Picked Bs.  " value="287"/>
-					<ModeItem name="Picked Bs.  " value="288"/>
-					<ModeItem name="Piano 1     " value="289"/>
-					<ModeItem name="Piano 1     " value="290"/>
-					<ModeItem name="Piano 1     " value="291"/>
-					<ModeItem name="Piano 1     " value="292"/>
-					<ModeItem name="Piano 1     " value="293"/>
-					<ModeItem name="Piano 1     " value="294"/>
-					<ModeItem name="Piano 1     " value="295"/>
-					<ModeItem name="Piano 1     " value="296"/>
-					<ModeItem name="Piano 1     " value="297"/>
-					<ModeItem name="Piano 1     " value="298"/>
-					<ModeItem name="Piccolo     " value="299"/>
-					<ModeItem name="Piccolo     " value="300"/>
-					<ModeItem name="Breath Noise" value="301"/>
+					<ModeItem name="Breath Noise 1" value="284"/>
+					<ModeItem name="Breath Noise 2" value="285"/>
+					<ModeItem name="Picked Bs. 1" value="286"/>
+					<ModeItem name="Picked Bs. 2" value="287"/>
+					<ModeItem name="Picked Bs. 3" value="288"/>
+					<ModeItem name="Piano 1 1" value="289"/>
+					<ModeItem name="Piano 1 2" value="290"/>
+					<ModeItem name="Piano 1 3" value="291"/>
+					<ModeItem name="Piano 1 4" value="292"/>
+					<ModeItem name="Piano 1 5" value="293"/>
+					<ModeItem name="Piano 1 6" value="294"/>
+					<ModeItem name="Piano 1 7" value="295"/>
+					<ModeItem name="Piano 1 8" value="296"/>
+					<ModeItem name="Piano 1 9" value="297"/>
+					<ModeItem name="Piano 1 10" value="298"/>
+					<ModeItem name="Piccolo 2" value="299"/>
+					<ModeItem name="Piccolo 3" value="300"/>
+					<ModeItem name="Breath Noise 3" value="301"/>
 					<ModeItem name="Gun Shot    " value="302"/>
-					<ModeItem name="PizzicatoStr" value="303"/>
-					<ModeItem name="PizzicatoStr" value="304"/>
+					<ModeItem name="PizzicatoStr 1" value="303"/>
+					<ModeItem name="PizzicatoStr 2" value="304"/>
 					<ModeItem name="Pan Flute   " value="305"/>
-					<ModeItem name="Polysynth   " value="306"/>
-					<ModeItem name="Polysynth   " value="307"/>
-					<ModeItem name="Polysynth   " value="308"/>
-					<ModeItem name="Polysynth   " value="309"/>
-					<ModeItem name="Polysynth   " value="310"/>
-					<ModeItem name="Voice Oohs  " value="311"/>
-					<ModeItem name="Voice Oohs  " value="312"/>
-					<ModeItem name="Voice Oohs  " value="313"/>
+					<ModeItem name="Polysynth 1" value="306"/>
+					<ModeItem name="Polysynth 2" value="307"/>
+					<ModeItem name="Polysynth 3" value="308"/>
+					<ModeItem name="Polysynth 4" value="309"/>
+					<ModeItem name="Polysynth 5" value="310"/>
+					<ModeItem name="Voice Oohs 1" value="311"/>
+					<ModeItem name="Voice Oohs 2" value="312"/>
+					<ModeItem name="Voice Oohs 3" value="313"/>
 					<ModeItem name="Punch       " value="314"/>
 					<ModeItem name="Drums Ride1 " value="315"/>
 )xml"
 R"xml(					<ModeItem name="Drums Ride2 " value="316"/>
-					<ModeItem name="Recorder    " value="317"/>
-					<ModeItem name="Recorder    " value="318"/>
-					<ModeItem name="Recorder    " value="319"/>
-					<ModeItem name="Recorder    " value="320"/>
-					<ModeItem name="Recorder    " value="321"/>
-					<ModeItem name="Reed Organ  " value="322"/>
-					<ModeItem name="Reed Organ  " value="323"/>
-					<ModeItem name="Reed Organ  " value="324"/>
+					<ModeItem name="Recorder 1" value="317"/>
+					<ModeItem name="Recorder 2" value="318"/>
+					<ModeItem name="Recorder 3" value="319"/>
+					<ModeItem name="Recorder 4" value="320"/>
+					<ModeItem name="Recorder 5" value="321"/>
+					<ModeItem name="Reed Organ 1" value="322"/>
+					<ModeItem name="Reed Organ 2" value="323"/>
+					<ModeItem name="Reed Organ 3" value="324"/>
 					<ModeItem name="Santur      " value="325"/>
-					<ModeItem name="Saw Wave    " value="326"/>
-					<ModeItem name="Saw Wave    " value="327"/>
-					<ModeItem name="Saw Wave    " value="328"/>
-					<ModeItem name="Saw         " value="329"/>
-					<ModeItem name="Saw         " value="330"/>
-					<ModeItem name="Saw         " value="331"/>
-					<ModeItem name="Saw         " value="332"/>
-					<ModeItem name="Saw         " value="333"/>
-					<ModeItem name="Saw         " value="334"/>
-					<ModeItem name="Violin      " value="335"/>
-					<ModeItem name="Square      " value="336"/>
-					<ModeItem name="Square      " value="337"/>
-					<ModeItem name="Synth Brass1" value="338"/>
-					<ModeItem name="Synth Brass1" value="339"/>
-					<ModeItem name="Synth Brass1" value="340"/>
-					<ModeItem name="Synth Brass1" value="341"/>
-					<ModeItem name="Synth Brass1" value="342"/>
-					<ModeItem name="Synth Brass2" value="343"/>
-					<ModeItem name="Synth Brass2" value="344"/>
-					<ModeItem name="Synth Brass2" value="345"/>
-					<ModeItem name="Voice Oohs  " value="346"/>
+					<ModeItem name="Saw Wave 1" value="326"/>
+					<ModeItem name="Saw Wave 2" value="327"/>
+					<ModeItem name="Saw Wave 3" value="328"/>
+					<ModeItem name="Saw 1" value="329"/>
+					<ModeItem name="Saw 2" value="330"/>
+					<ModeItem name="Saw 3" value="331"/>
+					<ModeItem name="Saw 4" value="332"/>
+					<ModeItem name="Saw 5" value="333"/>
+					<ModeItem name="Saw 6" value="334"/>
+					<ModeItem name="Violin 1" value="335"/>
+					<ModeItem name="Square 6" value="336"/>
+					<ModeItem name="Square 7" value="337"/>
+					<ModeItem name="Synth Brass1 1" value="338"/>
+					<ModeItem name="Synth Brass1 2" value="339"/>
+					<ModeItem name="Synth Brass1 3" value="340"/>
+					<ModeItem name="Synth Brass1 4" value="341"/>
+					<ModeItem name="Synth Brass1 5" value="342"/>
+					<ModeItem name="Synth Brass2 1" value="343"/>
+					<ModeItem name="Synth Brass2 2" value="344"/>
+					<ModeItem name="Synth Brass2 3" value="345"/>
+					<ModeItem name="Voice Oohs 4" value="346"/>
 					<ModeItem name="Scratch     " value="347"/>
 					<ModeItem name="Screaming   " value="348"/>
 					<ModeItem name="Door        " value="349"/>
 					<ModeItem name="Seashore    " value="350"/>
-					<ModeItem name="Standard    " value="351"/>
-					<ModeItem name="Shakuhachi  " value="352"/>
-					<ModeItem name="Shakuhachi  " value="353"/>
-					<ModeItem name="Shakuhachi  " value="354"/>
-					<ModeItem name="Shamisen    " value="355"/>
-					<ModeItem name="Shamisen    " value="356"/>
-					<ModeItem name="Shamisen    " value="357"/>
-					<ModeItem name="Shamisen    " value="358"/>
-					<ModeItem name="Standard    " value="359"/>
-					<ModeItem name="Gt. Feedback" value="360"/>
-					<ModeItem name="Gt. Feedback" value="361"/>
-					<ModeItem name="Gt. Feedback" value="362"/>
-					<ModeItem name="Gt. Feedback" value="363"/>
-					<ModeItem name="Gt. Feedback" value="364"/>
-					<ModeItem name="Gt. Feedback" value="365"/>
-					<ModeItem name="Gt. Feedback" value="366"/>
+					<ModeItem name="Standard 19" value="351"/>
+					<ModeItem name="Shakuhachi 1" value="352"/>
+					<ModeItem name="Shakuhachi 2" value="353"/>
+					<ModeItem name="Shakuhachi 3" value="354"/>
+					<ModeItem name="Shamisen 1" value="355"/>
+					<ModeItem name="Shamisen 2" value="356"/>
+					<ModeItem name="Shamisen 3" value="357"/>
+					<ModeItem name="Shamisen 4" value="358"/>
+					<ModeItem name="Standard 20" value="359"/>
+					<ModeItem name="Gt. Feedback 1" value="360"/>
+					<ModeItem name="Gt. Feedback 2" value="361"/>
+					<ModeItem name="Gt. Feedback 3" value="362"/>
+					<ModeItem name="Gt. Feedback 4" value="363"/>
+					<ModeItem name="Gt. Feedback 5" value="364"/>
+					<ModeItem name="Gt. Feedback 6" value="365"/>
+					<ModeItem name="Gt. Feedback 7" value="366"/>
 					<ModeItem name="Siren       " value="367"/>
-					<ModeItem name="Sitar       " value="368"/>
-					<ModeItem name="Sitar       " value="369"/>
-					<ModeItem name="Sitar       " value="370"/>
-					<ModeItem name="Standard    " value="371"/>
-					<ModeItem name="Slap Bass 1 " value="372"/>
-					<ModeItem name="Slap Bass 1 " value="373"/>
-					<ModeItem name="Slap Bass 1 " value="374"/>
+					<ModeItem name="Sitar 1" value="368"/>
+					<ModeItem name="Sitar 2" value="369"/>
+					<ModeItem name="Sitar 3" value="370"/>
+					<ModeItem name="Standard 21" value="371"/>
+					<ModeItem name="Slap Bass 1 1" value="372"/>
+					<ModeItem name="Slap Bass 1 2" value="373"/>
+					<ModeItem name="Slap Bass 1 3" value="374"/>
 					<ModeItem name="Slap Bass 2 " value="375"/>
-					<ModeItem name="Standard    " value="376"/>
-					<ModeItem name="Soundtrack  " value="377"/>
-					<ModeItem name="Soundtrack  " value="378"/>
-					<ModeItem name="Solo Vox    " value="379"/>
-					<ModeItem name="Standard    " value="380"/>
-					<ModeItem name="Standard    " value="381"/>
-					<ModeItem name="Square Wave " value="382"/>
-					<ModeItem name="Square Wave " value="383"/>
-					<ModeItem name="Square Wave " value="384"/>
-					<ModeItem name="Square Wave " value="385"/>
-					<ModeItem name="Square Wave " value="386"/>
-					<ModeItem name="Square Wave " value="387"/>
-					<ModeItem name="Syn.Strings1" value="388"/>
-					<ModeItem name="Syn.Strings1" value="389"/>
-					<ModeItem name="Syn.Strings1" value="390"/>
-					<ModeItem name="Syn.Strings3" value="391"/>
-					<ModeItem name="Syn.Strings3" value="392"/>
-					<ModeItem name="Star Theme  " value="393"/>
-					<ModeItem name="Star Theme  " value="394"/>
+					<ModeItem name="Standard 22" value="376"/>
+					<ModeItem name="Soundtrack 1" value="377"/>
+					<ModeItem name="Soundtrack 2" value="378"/>
+					<ModeItem name="Solo Vox 2" value="379"/>
+					<ModeItem name="Standard 23" value="380"/>
+					<ModeItem name="Standard 24" value="381"/>
+					<ModeItem name="Square Wave 1" value="382"/>
+					<ModeItem name="Square Wave 2" value="383"/>
+					<ModeItem name="Square Wave 3" value="384"/>
+					<ModeItem name="Square Wave 4" value="385"/>
+					<ModeItem name="Square Wave 5" value="386"/>
+					<ModeItem name="Square Wave 6" value="387"/>
+					<ModeItem name="Syn.Strings1 1" value="388"/>
+					<ModeItem name="Syn.Strings1 2" value="389"/>
+					<ModeItem name="Syn.Strings1 3" value="390"/>
+					<ModeItem name="Syn.Strings3 1" value="391"/>
+					<ModeItem name="Syn.Strings3 2" value="392"/>
+					<ModeItem name="Star Theme 1" value="393"/>
+					<ModeItem name="Star Theme 2" value="394"/>
 					<ModeItem name="Footsteps   " value="395"/>
-					<ModeItem name="Standard    " value="396"/>
+					<ModeItem name="Standard 25" value="396"/>
 					<ModeItem name="Steel Drums " value="397"/>
-					<ModeItem name="Steel-str.Gt" value="398"/>
-					<ModeItem name="Steel-str.Gt" value="399"/>
-					<ModeItem name="Steel-str.Gt" value="400"/>
-					<ModeItem name="Steel-str.Gt" value="401"/>
-					<ModeItem name="Steel-str.Gt" value="402"/>
-					<ModeItem name="Steel-str.Gt" value="403"/>
+					<ModeItem name="Steel-str.Gt 1" value="398"/>
+					<ModeItem name="Steel-str.Gt 2" value="399"/>
+					<ModeItem name="Steel-str.Gt 3" value="400"/>
+					<ModeItem name="Steel-str.Gt 4" value="401"/>
+					<ModeItem name="Steel-str.Gt 5" value="402"/>
+					<ModeItem name="Steel-str.Gt 6" value="403"/>
 					<ModeItem name="Stream      " value="404"/>
-					<ModeItem name="Tremolo Str " value="405"/>
-					<ModeItem name="Tremolo Str " value="406"/>
-					<ModeItem name="Tremolo Str " value="407"/>
+					<ModeItem name="Tremolo Str 1" value="405"/>
+					<ModeItem name="Tremolo Str 2" value="406"/>
+					<ModeItem name="Tremolo Str 3" value="407"/>
 					<ModeItem name="Starship    " value="408"/>
 					<ModeItem name="Taiko       " value="409"/>
-					<ModeItem name="Standard    " value="410"/>
-					<ModeItem name="Synth Bass 1" value="411"/>
-					<ModeItem name="Synth Bass 1" value="412"/>
-					<ModeItem name="Synth Bass 1" value="413"/>
-					<ModeItem name="Synth Bass 1" value="414"/>
-					<ModeItem name="Synth Bass 2" value="415"/>
-					<ModeItem name="Synth Bass 2" value="416"/>
-					<ModeItem name="Synth Bass 2" value="417"/>
+					<ModeItem name="Standard 26" value="410"/>
+					<ModeItem name="Synth Bass 1 1" value="411"/>
+					<ModeItem name="Synth Bass 1 2" value="412"/>
+					<ModeItem name="Synth Bass 1 3" value="413"/>
+					<ModeItem name="Synth Bass 1 4" value="414"/>
+					<ModeItem name="Synth Bass 2 1" value="415"/>
+					<ModeItem name="Synth Bass 2 2" value="416"/>
+					<ModeItem name="Synth Bass 2 3" value="417"/>
 					<ModeItem name="Synth Bass 3" value="418"/>
 					<ModeItem name="Synth Bass 4" value="419"/>
-					<ModeItem name="Clarinet    " value="420"/>
-					<ModeItem name="Clarinet    " value="421"/>
-					<ModeItem name="Clarinet    " value="422"/>
-					<ModeItem name="Clarinet    " value="423"/>
-					<ModeItem name="Clarinet    " value="424"/>
+					<ModeItem name="Clarinet 1" value="420"/>
+					<ModeItem name="Clarinet 2" value="421"/>
+					<ModeItem name="Clarinet 3" value="422"/>
+					<ModeItem name="Clarinet 4" value="423"/>
+					<ModeItem name="Clarinet 5" value="424"/>
 					<ModeItem name="Synth Drum  " value="425"/>
-					<ModeItem name="SynVox      " value="426"/>
-					<ModeItem name="SynVox      " value="427"/>
-					<ModeItem name="Soprano Sax " value="428"/>
-					<ModeItem name="Soprano Sax " value="429"/>
-					<ModeItem name="Soprano Sax " value="430"/>
-					<ModeItem name="Soprano Sax " value="431"/>
-					<ModeItem name="Soprano Sax " value="432"/>
-					<ModeItem name="Soprano Sax " value="433"/>
-					<ModeItem name="Violin      " value="434"/>
-					<ModeItem name="Standard    " value="435"/>
+					<ModeItem name="SynVox 1" value="426"/>
+					<ModeItem name="SynVox 2" value="427"/>
+					<ModeItem name="Soprano Sax 1" value="428"/>
+					<ModeItem name="Soprano Sax 2" value="429"/>
+					<ModeItem name="Soprano Sax 3" value="430"/>
+					<ModeItem name="Soprano Sax 4" value="431"/>
+					<ModeItem name="Soprano Sax 5" value="432"/>
+					<ModeItem name="Soprano Sax 6" value="433"/>
+					<ModeItem name="Violin 2" value="434"/>
+					<ModeItem name="Standard 27" value="435"/>
 					<ModeItem name="Telephone 2 " value="436"/>
 					<ModeItem name="Telephone 1 " value="437"/>
 					<ModeItem name="Thunder     " value="438"/>
-					<ModeItem name="Standard    " value="439"/>
-					<ModeItem name="Taisho Koto " value="440"/>
-					<ModeItem name="Taisho Koto " value="441"/>
+					<ModeItem name="Standard 28" value="439"/>
+					<ModeItem name="Taisho Koto 1" value="440"/>
+					<ModeItem name="Taisho Koto 2" value="441"/>
 					<ModeItem name="Timpani     " value="442"/>
 					<ModeItem name="Tinkle Bell " value="443"/>
 					<ModeItem name="Melo. Tom 1 " value="444"/>
 					<ModeItem name="Train       " value="445"/>
-					<ModeItem name="Standard    " value="446"/>
-					<ModeItem name="Trumpet     " value="447"/>
-					<ModeItem name="Trumpet     " value="448"/>
-					<ModeItem name="Trumpet     " value="449"/>
-					<ModeItem name="Trombone    " value="450"/>
-					<ModeItem name="Trombone    " value="451"/>
-					<ModeItem name="Trombone    " value="452"/>
-					<ModeItem name="Trombone    " value="453"/>
-					<ModeItem name="Trombone    " value="454"/>
-					<ModeItem name="Trumpet     " value="455"/>
-					<ModeItem name="Trumpet     " value="456"/>
-					<ModeItem name="Trumpet     " value="457"/>
-					<ModeItem name="Trumpet     " value="458"/>
-					<ModeItem name="Trumpet     " value="459"/>
-					<ModeItem name="Trumpet     " value="460"/>
+					<ModeItem name="Standard 29" value="446"/>
+					<ModeItem name="Trumpet 1" value="447"/>
+					<ModeItem name="Trumpet 2" value="448"/>
+					<ModeItem name="Trumpet 3" value="449"/>
+					<ModeItem name="Trombone 1" value="450"/>
+					<ModeItem name="Trombone 2" value="451"/>
+					<ModeItem name="Trombone 3" value="452"/>
+					<ModeItem name="Trombone 4" value="453"/>
+					<ModeItem name="Trombone 5" value="454"/>
+					<ModeItem name="Trumpet 4" value="455"/>
+					<ModeItem name="Trumpet 5" value="456"/>
+					<ModeItem name="Trumpet 6" value="457"/>
+					<ModeItem name="Trumpet 7" value="458"/>
+					<ModeItem name="Trumpet 8" value="459"/>
+					<ModeItem name="Trumpet 9" value="460"/>
 					<ModeItem name="Trombone 2  " value="461"/>
-					<ModeItem name="Tuba        " value="462"/>
-					<ModeItem name="Tuba        " value="463"/>
+					<ModeItem name="Tuba 1" value="462"/>
+					<ModeItem name="Tuba 2" value="463"/>
 					<ModeItem name="Tubular-bell" value="464"/>
-					<ModeItem name="Tenor Sax   " value="465"/>
-					<ModeItem name="Tenor Sax   " value="466"/>
-					<ModeItem name="Tenor Sax   " value="467"/>
-					<ModeItem name="Tenor Sax   " value="468"/>
-					<ModeItem name="Tenor Sax   " value="469"/>
-					<ModeItem name="Tenor Sax   " value="470"/>
-					<ModeItem name="Tenor Sax   " value="471"/>
-					<ModeItem name="Tenor Sax   " value="472"/>
-					<ModeItem name="Accordion Fr" value="473"/>
-					<ModeItem name="Standard    " value="474"/>
-					<ModeItem name="Gt.Cut Noise" value="475"/>
-					<ModeItem name="Standard    " value="476"/>
-					<ModeItem name="Vibraphone  " value="477"/>
-					<ModeItem name="Vibraphone  " value="478"/>
-					<ModeItem name="Vibraphone  " value="479"/>
-					<ModeItem name="Vibraphone  " value="480"/>
-					<ModeItem name="Vibraphone  " value="481"/>
-					<ModeItem name="Violin      " value="482"/>
-					<ModeItem name="Violin      " value="483"/>
-					<ModeItem name="Violin      " value="484"/>
-					<ModeItem name="Violin      " value="485"/>
-					<ModeItem name="Violin      " value="486"/>
-					<ModeItem name="Violin      " value="487"/>
-					<ModeItem name="Violin      " value="488"/>
+					<ModeItem name="Tenor Sax 1" value="465"/>
+					<ModeItem name="Tenor Sax 2" value="466"/>
+					<ModeItem name="Tenor Sax 3" value="467"/>
+					<ModeItem name="Tenor Sax 4" value="468"/>
+					<ModeItem name="Tenor Sax 5" value="469"/>
+					<ModeItem name="Tenor Sax 6" value="470"/>
+					<ModeItem name="Tenor Sax 7" value="471"/>
+					<ModeItem name="Tenor Sax 8" value="472"/>
+					<ModeItem name="Accordion Fr 3" value="473"/>
+					<ModeItem name="Standard 30" value="474"/>
+					<ModeItem name="Gt.Cut Noise 2" value="475"/>
+					<ModeItem name="Standard 31" value="476"/>
+					<ModeItem name="Vibraphone 1" value="477"/>
+					<ModeItem name="Vibraphone 2" value="478"/>
+					<ModeItem name="Vibraphone 3" value="479"/>
+					<ModeItem name="Vibraphone 4" value="480"/>
+					<ModeItem name="Vibraphone 5" value="481"/>
+					<ModeItem name="Violin 3" value="482"/>
+					<ModeItem name="Violin 4" value="483"/>
+					<ModeItem name="Violin 5" value="484"/>
+					<ModeItem name="Violin 6" value="485"/>
+					<ModeItem name="Violin 7" value="486"/>
+					<ModeItem name="Violin 8" value="487"/>
+					<ModeItem name="Violin 9" value="488"/>
 					<ModeItem name="Wind Chimes " value="489"/>
 					<ModeItem name="Wind        " value="490"/>
 					<ModeItem name="Woodblock   " value="491"/>
-					<ModeItem name="Warm Pad    " value="492"/>
-					<ModeItem name="Xylophone   " value="493"/>
-					<ModeItem name="Xylophone   " value="494"/>
+					<ModeItem name="Warm Pad 2" value="492"/>
+					<ModeItem name="Xylophone 1" value="493"/>
+					<ModeItem name="Xylophone 2" value="494"/>
 				</ModeGroup>
 			</NodeInput>
 		</Node>

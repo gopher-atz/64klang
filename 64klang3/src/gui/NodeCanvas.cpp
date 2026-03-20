@@ -37,7 +37,7 @@ static constexpr ImU32 kColGhostWire    = IM_COL32(255,  50,  50, 200);
 static inline bool isCtrlHeld()
 {
 #ifdef _WIN32
-    return (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
 #else
     return ImGui::GetIO().KeyCtrl;
 #endif
@@ -47,7 +47,7 @@ static inline bool isCtrlHeld()
 static inline bool isShiftHeld()
 {
 #ifdef _WIN32
-    return (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    return (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
 #else
     return ImGui::GetIO().KeyShift;
 #endif
