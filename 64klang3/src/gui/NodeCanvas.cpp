@@ -3076,31 +3076,27 @@ void NodeCanvas::render()
 
     if (sc && sc->isInitialized())
     {
-        // Live signal readback (zero-timeout lock to avoid audio glitches)
-        if (SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(0)))
+        // Live signal readback
+        int nNodes = sc->numGUINodes();
+        for (int i = 0; i < nNodes; i++)
         {
-            int nNodes = sc->numGUINodes();
-            for (int i = 0; i < nNodes; i++)
-            {
-                if (!sc->gnIsVisible(i))
-                    continue;
-                int nodeType = sc->gnType(i);
-                int nid = sc->gnID(i);
+            if (!sc->gnIsVisible(i))
+                continue;
+            int nodeType = sc->gnType(i);
+            int nid = sc->gnID(i);
 
-                if (nodeType == SYNTHROOT_ID || nodeType == CHANNELROOT_ID)
-                {
-                    auto& ld = liveDataCache[nid];
-                    float newL = (float)std::abs(sc->getNodeSignal((DWORD)nid, 0, -2));
-                    float newR = (float)std::abs(sc->getNodeSignal((DWORD)nid, 1, -2));
-                    ld.vuL = std::max(ld.vuL * 0.95f, newL);
-                    ld.vuR = std::max(ld.vuR * 0.95f, newR);
-                }
-                else if (nodeType == VOICEMANAGER_ID)
-                {
-                    liveDataCache[nid].voiceCount = sc->getNumActiveVoices((DWORD)nid);
-                }
+            if (nodeType == SYNTHROOT_ID || nodeType == CHANNELROOT_ID)
+            {
+                auto& ld = liveDataCache[nid];
+                float newL = (float)std::abs(sc->getNodeSignal((DWORD)nid, 0, -2));
+                float newR = (float)std::abs(sc->getNodeSignal((DWORD)nid, 1, -2));
+                ld.vuL = std::max(ld.vuL * 0.95f, newL);
+                ld.vuR = std::max(ld.vuR * 0.95f, newR);
             }
-            SynthController::DataAccessMutex.unlock();
+            else if (nodeType == VOICEMANAGER_ID)
+            {
+                liveDataCache[nid].voiceCount = sc->getNumActiveVoices((DWORD)nid);
+            }
         }
 
         // Build set of nodes whose output is connected (for output pin coloring)

@@ -75,7 +75,7 @@ static void audioCallback(float* buffer, int samples)
     if (!sc || !sc->isInitialized())
         goto silence;
 
-    if (!SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(1)))
+    if (!SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(0)))
         goto silence;
 
     while (samples > 0)

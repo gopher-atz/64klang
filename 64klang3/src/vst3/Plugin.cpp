@@ -73,10 +73,10 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
 
     SynthController* sc = SynthController::instance();
 
-    // Try to acquire mutex with 1ms timeout — only the audio render is gated.
+    // Try to acquire mutex with (zero-timeout lock to avoid audio glitches)
     // MIDI events (especially note-offs) are processed unconditionally below so
     // that a timeout never causes stuck notes by swallowing a note-off event.
-    bool mutexAcquired = SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(1));
+    bool mutexAcquired = SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(0));
 
     // Process MIDI events
     if (data.inputEvents)
