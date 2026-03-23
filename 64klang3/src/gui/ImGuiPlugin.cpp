@@ -187,7 +187,15 @@ static void toolbarSeparator(ImDrawList* dl, const ImVec2& tbPos, float tbH)
 static void renderToolbar()
 {
     SynthController* sc  = SynthController::instance();
-    const float      tbH = 28.f;
+
+    // Compact button style + fixed small font (pushed before tbH so we can
+    // measure the real button height to size the background strip correctly).
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(5.f, 3.f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,  ImVec2(3.f, 0.f));
+    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
+
+    // Derive toolbar height from font + frame padding so it scales with DPI.
+    const float tbH = ImGui::GetFrameHeight() + 8.f;  // button height + 4px top + 4px bottom
 
     ImVec2 tbPos = ImGui::GetCursorScreenPos();
     float  tbW   = ImGui::GetContentRegionAvail().x;
@@ -200,13 +208,10 @@ static void renderToolbar()
                 ImVec2(tbPos.x + tbW,  tbPos.y + tbH - 1.f),
                 IM_COL32(80, 80, 85, 255));
 
-    // Compact button style + fixed small font
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(5.f, 3.f));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,  ImVec2(3.f, 0.f));
-    ImGui::PushFont(ImGui::GetIO().Fonts->Fonts[0]);
-
-    // Start 4 px from left, 4 px from top
-    ImGui::SetCursorScreenPos(ImVec2(tbPos.x + 4.f, tbPos.y + 4.f));
+    // Start 4 px from left, vertically centred padding from top
+    const float outerPad = ImGui::GetStyle().FramePadding.y + 1.f;
+    ImGui::SetCursorScreenPos(ImVec2(tbPos.x + 4.f * ImGui::GetIO().FontGlobalScale,
+                                     tbPos.y + outerPad));
 
     // ── Patch file operations ─────────────────────────────────────────────
     if (ImGui::Button("Load Patch"))
@@ -348,7 +353,7 @@ static void renderToolbar()
         // P.A.N.I.C button (rightmost)
         ImGui::SetCursorScreenPos(ImVec2(
             rightEdge - panicW,
-            tbPos.y + 4.f));
+            tbPos.y + outerPad));
         if (ImGui::Button("P.A.N.I.C") && sc)
             sc->panic();
 

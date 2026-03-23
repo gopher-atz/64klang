@@ -12,6 +12,10 @@
 // Forward-declare the Win32 ImGui message handler
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+// DPI scale used when fonts were built; WM_DPICHANGED adjusts FontGlobalScale
+// relative to this baseline so text tracks the monitor's DPI at all times.
+static float g_initialDpiScale = 1.f;
+
 // Subclass proc for the host's editor HWND — feeds input events to ImGui.
 // Runs on the host's message-pump thread; ImGui queues events thread-safely.
 static WNDPROC g_originalWndProc = nullptr;
@@ -19,6 +23,23 @@ static LRESULT CALLBACK editorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 {
     if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return 1;
+
+    if (msg == WM_DPICHANGED)
+    {
+        float newDpi   = (float)LOWORD(wParam);
+        float newScale = newDpi / 96.f;
+        ImGui::GetIO().FontGlobalScale = newScale / g_initialDpiScale;
+        // Let the host reposition/resize the window via the suggested rect.
+        const RECT* suggested = reinterpret_cast<const RECT*>(lParam);
+        if (suggested)
+            SetWindowPos(hWnd, nullptr,
+                         suggested->left, suggested->top,
+                         suggested->right  - suggested->left,
+                         suggested->bottom - suggested->top,
+                         SWP_NOZORDER | SWP_NOACTIVATE);
+        return 0;
+    }
+
     return CallWindowProc(g_originalWndProc, hWnd, msg, wParam, lParam);
 }
 
@@ -216,13 +237,23 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     ImGui_ImplWin32_Init((HWND)parent);
     ImGui_ImplOpenGL3_Init("#version 130");
 
+    // Query the DPI scale for the parent window so all UI elements are sharp on
+    // high-DPI monitors.  We do NOT call ImGui_ImplWin32_EnableDpiAwareness()
+    // because that is process-wide and would interfere with the host DAW.
+    float dpiScale = ImGui_ImplWin32_GetDpiScaleForHwnd((HWND)parent);
+    if (dpiScale <= 0.f) dpiScale = 1.f;
+    g_initialDpiScale = dpiScale;
+
     // Two font sizes: small for zoom ≤ 1.5x, large for zoom > 1.5x.
     // ImGui renders text sharpest when the requested pixel size is close to
     // the loaded size.  A single 32 px font looks blurry at the 12-15 px
     // sizes used at normal (1×) zoom.
-    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 14.0f);  // Fonts[0] – default
-    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 32.0f);  // Fonts[1] – high zoom
+    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 14.0f * dpiScale);  // Fonts[0] – default
+    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 32.0f * dpiScale);  // Fonts[1] – high zoom
     io.Fonts->Build();
+
+    // Scale all style sizes (padding, rounding, etc.) to match DPI.
+    ImGui::GetStyle().ScaleAllSizes(dpiScale);
 
     // Subclass the host window to receive input events
     g_originalWndProc = (WNDPROC)SetWindowLongPtr((HWND)parent, GWLP_WNDPROC, (LONG_PTR)editorWndProc);
