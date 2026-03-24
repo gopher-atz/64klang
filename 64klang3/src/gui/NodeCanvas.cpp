@@ -1355,7 +1355,7 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
     int numParams = 0;
     for (int i = typeDef->numReqGUIInputs; i < typeDef->numMaxGUIInputs && i < (int)typeDef->inputs.size(); i++)
         numParams++;
-    if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || nodeType > CONSTANT_ID)
+    if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID))
         numParams = 1;
 
     float flagsH = 0.f;
@@ -2422,18 +2422,22 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             dl->AddRect(vizMin, vizMax, kColPanelBorder, 0.f, 0, 1.f);
 
             int vizMode = sc->getInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE);
-            SynthNode* vizNode = sc->getNode((DWORD)nodeID);
+            // getLiveNode() returns the active audio instance from GlobalNodes[]: for global
+            // nodes this is the same as getNode(); for voice nodes it is the most recently
+            // created voice instance (last note played), matching how getNodeSignal() works.
+            SynthNode* vizNode = sc->getLiveNode((DWORD)nodeID);
 
             if (vizMode == (int)SIGNAL_VISUALIZER_VU) // VU meter
             {
                 float peakL = 0.f, peakR = 0.f;
+                float rawL  = 0.f, rawR  = 0.f;
                 if (vizNode && vizNode->customMem)
                 {
                     peakL = *((float*)(vizNode->customMem + 1));
                     peakR = *((float*)(vizNode->customMem + 2));
+                    rawL  = *((float*)(vizNode->customMem + 5));
+                    rawR  = *((float*)(vizNode->customMem + 6));
                 }
-                float rawL = (float)std::abs(sc->getNodeSignal((DWORD)nodeID, 0, -1));
-                float rawR = (float)std::abs(sc->getNodeSignal((DWORD)nodeID, 1, -1));
                 auto dbNorm = [](float amp) -> float {
                     if (amp <= 0.f) return 0.f;
                     float db = 20.f * std::log10f(amp);
@@ -2498,23 +2502,16 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 {
                     DWORD* dw   = vizNode->customMem;
                     float* ring = (float*)(dw + SIGVIZ_HEADER_DW);
-                    const int DISP   = 512;
-                    const int SEARCH = 128;
-                    DWORD wp       = dw[0] & (SIGVIZ_BUF_SIZE - 1);
-                    int startSearch = (int)((int)wp - DISP - SEARCH + SIGVIZ_BUF_SIZE * 2) & (SIGVIZ_BUF_SIZE - 1);
-                    int syncPos    = startSearch;
-                    for (int si = 0; si < SEARCH; si++)
-                    {
-                        int a = (startSearch + si)     & (SIGVIZ_BUF_SIZE - 1);
-                        int b = (startSearch + si + 1) & (SIGVIZ_BUF_SIZE - 1);
-                        if (ring[a * 2] <= 0.f && ring[b * 2] > 0.f) { syncPos = b; break; }
-                    }
+                    const int DISP = 512;
+                    // dw[7] is always the most recent zero-crossing at least DISP samples
+                    // behind the write head — safe to use directly with no lag check.
+                    int syncPos = (int)(dw[7] & (SIGVIZ_BUF_SIZE - 1));
                     float midY = vizMin.y + vizH * 0.5f;
                     dl->AddLine(ImVec2(vizMin.x, midY), ImVec2(vizMax.x, midY),
-                                IM_COL32(50, 50, 50, 255), 0.5f);
+                                IM_COL32(128, 128, 128, 255), 0.5f);
                     for (int ch = 0; ch < 2; ch++)
                     {
-                        ImU32 col = (ch == 0) ? IM_COL32(100,180,255,220) : IM_COL32(80,220,100,200);
+                        ImU32 col = (ch == 0) ? IM_COL32(0,255,255,220) : IM_COL32(255,255,0,220);
                         float px0 = 0.f, py0 = 0.f;
                         for (int si = 0; si < DISP; si++)
                         {

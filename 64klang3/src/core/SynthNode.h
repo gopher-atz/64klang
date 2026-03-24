@@ -1371,7 +1371,9 @@ void SYNTHCALL VOICEPARAM_tick(SynthNode* n);
 //   [2] = pkR (float, peak right)
 //   [3] = hold_ctr_L (uint32, samples remaining in peak hold)
 //   [4] = hold_ctr_R (uint32)
-//   [5..7] = reserved
+//   [5] = barL (float, per-sample running peak with decay for VU bar fill)
+//   [6] = barR (float)
+//   [7] = trig_pos (DWORD, ring index of last rising zero-crossing at the point DISP samples behind wp)
 //   [8 .. 8 + SIGVIZ_BUF_SIZE*2 - 1] = ring buffer (L,R interleaved floats)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define SIGVIZ_BUF_SIZE  4096

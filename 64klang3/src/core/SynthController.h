@@ -88,6 +88,7 @@ public:
 
 	// direct node accessors
 	SynthNode* getNode(DWORD node);
+	SynthNode* getLiveNode(DWORD node); // returns the live audio instance (GlobalNodes[node]); works for both global and voice nodes
 	void connectInput(DWORD input, DWORD target, DWORD index);
 	void disconnectInput(DWORD target, DWORD index, bool removeOutput=true);
 	void setInputValue(DWORD node, DWORD index, double value1, double value2);

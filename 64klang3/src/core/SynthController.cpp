@@ -915,6 +915,11 @@ SynthNode* SynthController::getNode(DWORD node)
 	return NULL;
 }
 
+SynthNode* SynthController::getLiveNode(DWORD node)
+{
+	return SynthGlobalState.GlobalNodes[node];
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SynthController::connectInput(DWORD inputid, DWORD targetid, DWORD index)

@@ -4949,8 +4949,6 @@ void SYNTHCALL SIGNAL_VISUALIZER_init(SynthNode* n)
 {
 	DWORD total = SIGVIZ_HEADER_DW + SIGVIZ_BUF_SIZE * 2;
 	n->customMem = (DWORD*)SynthMalloc(total * sizeof(float));
-	n->customMem[0] = n->customMem[1] = n->customMem[2] =
-	n->customMem[3] = n->customMem[4] = 0;
 }
 
 void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
@@ -4969,7 +4967,7 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 	ring[wp * 2 + 1] = R;
 	dw[0] = wp + 1;
 
-	// VU peak hold + decay
+	// VU peak hold + decay (for the peak-hold line)
 	float absL = L < 0.f ? -L : L;
 	float absR = R < 0.f ? -R : R;
 	float* pkL = (float*)(dw + 1);
@@ -4981,6 +4979,24 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 	if (absR >= *pkR) { *pkR = absR; dw[4] = kHold; }
 	else if (dw[4] > 0) dw[4]--;
 	else *pkR *= 0.99995f;
+
+	// Bar fill level: instant attack, ~52ms half-life decay per sample.
+	// GUI reads customMem[5/6] directly — no per-frame scan needed.
+	float* barL = (float*)(dw + 5);
+	float* barR = (float*)(dw + 6);
+	*barL = absL > *barL ? absL : *barL * 0.9997f;
+	*barR = absR > *barR ? absR : *barR * 0.9997f;
+
+	// Oscilloscope trigger: check for a rising zero-crossing at the point exactly 512
+	// samples behind the current write head. That position always has a full display
+	// window of data ahead of it, so the GUI can read dw[7] directly with no scan
+	// and no lag guard. One compare pair per sample.
+	{
+		DWORD ta = (wp - 512 - 1) & (SIGVIZ_BUF_SIZE - 1);
+		DWORD tb = (wp - 512    ) & (SIGVIZ_BUF_SIZE - 1);
+		if (ring[ta * 2] <= 0.f && ring[tb * 2] > 0.f)
+			dw[7] = tb;
+	}
 }
 #endif // COMPILE_VSTI
 
