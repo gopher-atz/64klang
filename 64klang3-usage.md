@@ -47,10 +47,28 @@ Summary of mouse and keyboard interactions in the 64klang3 rewrite (feat/64klang
 
 | Action | Result |
 |--------|--------|
-| **Right-release on empty canvas** | Open node-creation context menu at that position. |
+| **Right-release on empty canvas** | Snapshot current selection as clipboard, then open node-creation context menu at that position. |
 | **Right-release on wire** | Open menu to insert a node in the middle of that wire. |
 | **Ctrl when selecting from menu** | Create a global node (for both regular and wire-insert modes). |
 | **Stop wiring** | Menu entry shown during continuous wire mode; ends wire drag without inserting. |
+| **Paste selection** | Paste clipboard nodes at the right-click position (preserves original voice/global type). Only visible when clipboard is non-empty. |
+| **Paste as Voice** | Paste clipboard nodes as voice nodes; VoiceManager nodes are excluded. Only visible when clipboard is non-empty. |
+| **Paste as Global** | Paste clipboard nodes as global nodes; VoiceRoot and voice-parameter nodes are excluded. Only visible when clipboard is non-empty. |
+
+---
+
+## Copy / Paste
+
+Copy/paste uses a Linux-style model: the selection **is** the clipboard. Selecting nodes and then right-clicking on empty canvas automatically snapshots the selection, making the three paste options available in the context menu.
+
+| Action | Result |
+|--------|--------|
+| **Right-click on empty canvas** (with nodes selected) | Snapshots selected nodes as clipboard (structural nodes SynthRoot / ChannelRoot / NoteController are never included). |
+| **Paste selection** (context menu) | Paste nodes at the right-click position preserving their original voice/global type. |
+| **Paste as Voice** (context menu) | Paste nodes forcing voice type; VoiceManager nodes are skipped. |
+| **Paste as Global** (context menu) | Paste nodes forcing global type; VoiceRoot and voice-parameter nodes are skipped. |
+
+After any paste the previous selection is cleared and all newly pasted nodes are selected. Internal wires between pasted nodes are restored; wires to nodes that were excluded (due to type incompatibility) are left disconnected for manual reconnection.
 
 ---
 
@@ -87,8 +105,6 @@ Summary of mouse and keyboard interactions in the 64klang3 rewrite (feat/64klang
 | Shortcut | Result |
 |----------|--------|
 | **Delete** | Delete selected nodes (structural nodes protected). |
-| **Ctrl+C** | Copy selected nodes (positions, connections, values). |
-| **Ctrl+V** | Paste at cursor; select pasted nodes. |
 | **Ctrl+Shift+D** | Toggle debug overlay (mouse, zoom, offset, hit info). |
 | **Ctrl+W** | Toggle wave file dialog. |
 
@@ -119,7 +135,6 @@ Summary of mouse and keyboard interactions in the 64klang3 rewrite (feat/64klang
 | **Export Song** | Export song as C header (`.h`). |
 | **Quantization combo** | Choose sample count (16–256) for song export. |
 | **Jump To** | Select channel to center canvas. |
-| **Search** | Filter nodes by name or type; matching nodes show cyan border. |
 | **P.A.N.I.C** | Kill all voices (panic). |
 
 ---

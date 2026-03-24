@@ -36,7 +36,6 @@ public:
     void toggleWaveFileDialog() { showWaveFileDialog = !showWaveFileDialog; }
     void toggleDebugOverlay()   { showDebugOverlay   = !showDebugOverlay;   }
     void jumpToChannel(int channel);           // scroll canvas to center on ChannelRoot N
-    void setSearchFilter(const char* text) { searchFilter = text; }
 
 private:
     float offsetX = 0.f;
@@ -145,9 +144,6 @@ private:
     int    lastNodeCount = 0;
     bool   needsInitialView = true;
 
-    // Search filter (set from toolbar; empty = no highlight)
-    std::string searchFilter;
-
     // Canvas size cached from last render() call (used by jumpToChannel)
     ImVec2 canvasSizeCache = {0, 0};
 
@@ -252,6 +248,10 @@ private:
                          float btnX, float btnY, float btnW, float btnH,
                          const char* label, float fontSize, bool canClick,
                          const ImVec2& mousePos) const;
+
+    // Copy/paste helpers (Linux-style: selection is clipboard)
+    void buildClipboardFromSelection();
+    void pasteNodes(bool forceGlobal, bool forceVoice);
 };
 
 } // namespace K64GUI

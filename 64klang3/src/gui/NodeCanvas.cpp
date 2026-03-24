@@ -1108,7 +1108,9 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             int hitID = hitTestNode(mousePos, canvasPos);
             if (hitID == -1)
             {
-                // Right-release on empty canvas → open node creation menu
+                // Right-release on empty canvas → open node creation menu.
+                // Capture current selection into clipboard for Linux-style paste.
+                buildClipboardFromSelection();
                 contextWireFromID = -1;
                 contextWireToID = -1;
                 contextWirePinIndex = -1;
@@ -1140,141 +1142,197 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         syncSelectionToCore();
         sc->numGUINodes(); // refresh accessor
     }
+}
 
-    // copy/paste based on keys is not working reliably as we dont get key events from the DAW in some cases
-    // TODO: rewrite this to reflect the original logic from SynthCanvas.xaml.cs including CTRL and shift keys for switching nodes from global to local or vice versa
-    // // ── Copy (Ctrl+C) ──
-    // if (canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C))
-    // {
-    //     clipboard.clear();
-    //     if (!selectedNodeIDs.empty())
-    //     {
-    //         // Compute centroid
-    //         double cx = 0, cy = 0;
-    //         int count = 0;
-    //         std::vector<int> selIDs(selectedNodeIDs.begin(), selectedNodeIDs.end());
-    //         for (int id : selIDs)
-    //         {
-    //             int gi = findGuiIndex(id);
-    //             if (gi >= 0)
-    //             {
-    //                 cx += sc->gnX(gi);
-    //                 cy += sc->gnY(gi);
-    //                 count++;
-    //             }
-    //         }
-    //         if (count > 0) { cx /= count; cy /= count; }
+// ── Copy / Paste (Linux-style: selection is clipboard) ───────────────────────
 
-    //         // Build ID→clipboard index map
-    //         std::unordered_map<int, int> idToClipIdx;
-    //         for (int idx = 0; idx < (int)selIDs.size(); idx++)
-    //             idToClipIdx[selIDs[idx]] = idx;
+// Never include these structural node types in the clipboard.
+static bool isStructuralNodeType(int type)
+{
+    return type == (int)SYNTHROOT_ID ||
+           type == (int)CHANNELROOT_ID ||
+           type == (int)NOTECONTROLLER_ID;
+}
 
-    //         for (int id : selIDs)
-    //         {
-    //             int gi = findGuiIndex(id);
-    //             if (gi < 0) continue;
+// Returns true for node types that can never be global
+// (VoiceRoot and all voice-parameter nodes with typeID > CONSTANT_ID).
+static bool isVoiceOnlyNodeType(int type)
+{
+    return type == (int)VOICEROOT_ID || type > (int)CONSTANT_ID;
+}
 
-    //             ClipboardNode cn;
-    //             cn.typeID = sc->gnType(gi);
-    //             cn.channel = sc->gnChannel(gi);
-    //             cn.isGlobal = sc->gnIsGlobal(gi);
-    //             cn.relX = sc->gnX(gi) - cx;
-    //             cn.relY = sc->gnY(gi) - cy;
+void NodeCanvas::buildClipboardFromSelection()
+{
+    clipboard.clear();
+    if (selectedNodeIDs.empty())
+        return;
 
-    //             int numSignals = effectiveInputCount(gi);
-    //             cn.inputs.resize(numSignals);
-    //             cn.internalWires.resize(numSignals, -1);
+    SynthController* sc = SynthController::instance();
+    if (!sc)
+        return;
 
-    //             for (int p = 0; p < numSignals; p++)
-    //             {
-    //                 cn.inputs[p].valL = sc->gnInputValue(gi, p, 0);
-    //                 cn.inputs[p].valR = sc->gnInputValue(gi, p, 1);
-    //                 cn.inputs[p].mode = sc->gnInputMode(gi, p);
+    // Filter: skip structural nodes
+    std::vector<int> selIDs;
+    for (int id : selectedNodeIDs)
+    {
+        int gi = findGuiIndex(id);
+        if (gi < 0)
+            continue;
+        if (isStructuralNodeType(sc->gnType(gi)))
+            continue;
+        selIDs.push_back(id);
+    }
+    if (selIDs.empty())
+        return;
 
-    //                 int srcID = sc->gnInput(gi, p);
-    //                 if (isRealConnection(srcID, sc))
-    //                 {
-    //                     auto it = idToClipIdx.find(srcID);
-    //                     if (it != idToClipIdx.end())
-    //                         cn.internalWires[p] = it->second;
-    //                 }
-    //             }
+    // Compute centroid of filtered set
+    double cx = 0, cy = 0;
+    for (int id : selIDs)
+    {
+        int gi = findGuiIndex(id);
+        if (gi >= 0) { cx += sc->gnX(gi); cy += sc->gnY(gi); }
+    }
+    cx /= (double)selIDs.size();
+    cy /= (double)selIDs.size();
 
-    //             clipboard.push_back(std::move(cn));
-    //         }
-    //     }
-    // }
+    // Build ID → clipboard-index map
+    std::unordered_map<int, int> idToClipIdx;
+    for (int idx = 0; idx < (int)selIDs.size(); idx++)
+        idToClipIdx[selIDs[idx]] = idx;
 
-    // // ── Paste (Ctrl+V) ──
-    // if (canvasHovered && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V))
-    // {
-    //     if (!clipboard.empty())
-    //     {
-    //         // Convert mouse pos to canvas coords
-    //         double mouseCanvasX = (mousePos.x - canvasPos.x) / zoom - offsetX;
-    //         double mouseCanvasY = (mousePos.y - canvasPos.y) / zoom - offsetY;
+    for (int id : selIDs)
+    {
+        int gi = findGuiIndex(id);
+        if (gi < 0)
+            continue;
 
-    //         sc->killVoices();
+        ClipboardNode cn;
+        cn.typeID   = sc->gnType(gi);
+        cn.channel  = sc->gnChannel(gi);
+        cn.isGlobal = sc->gnIsGlobal(gi);
+        cn.relX     = sc->gnX(gi) - cx;
+        cn.relY     = sc->gnY(gi) - cy;
 
-    //         std::vector<int> newNodeIDs;
-    //         for (int i = 0; i < (int)clipboard.size(); i++)
-    //         {
-    //             const auto& cn = clipboard[i];
-    //             double px = mouseCanvasX + cn.relX;
-    //             double py = mouseCanvasY + cn.relY;
-    //             // Voice type inputs (id > CONSTANT_ID) can never be global
-    //             DWORD pasteGlobal = (cn.typeID > (int)CONSTANT_ID) ? 0u : (cn.isGlobal ? 1u : 0u);
-    //             SynthNode* newNode = sc->createGUINode((DWORD)cn.typeID, (DWORD)cn.channel,
-    //                                                     pasteGlobal, px, py);
-    //             int newID = newNode ? (int)newNode->valueOffset : -1;
-    //             newNodeIDs.push_back(newID);
-    //         }
+        int numSignals = effectiveInputCount(gi);
+        cn.inputs.resize(numSignals);
+        cn.internalWires.resize(numSignals, -1);
 
-    //         // Set values and modes
-    //         for (int i = 0; i < (int)clipboard.size(); i++)
-    //         {
-    //             if (newNodeIDs[i] < 0) continue;
-    //             const auto& cn = clipboard[i];
-    //             int numParams = std::min((int)cn.inputs.size(), 16);
-    //             for (int p = 0; p < numParams; p++)
-    //             {
-    //                 sc->setInputValue((DWORD)newNodeIDs[i], (DWORD)p,
-    //                                   cn.inputs[p].valL, cn.inputs[p].valR);
-    //                 if (cn.inputs[p].mode != 0)
-    //                     sc->setInputMode((DWORD)newNodeIDs[i], (DWORD)p,
-    //                                      (DWORD)cn.inputs[p].mode);
-    //             }
-    //         }
+        for (int p = 0; p < numSignals; p++)
+        {
+            cn.inputs[p].valL = sc->gnInputValue(gi, p, 0);
+            cn.inputs[p].valR = sc->gnInputValue(gi, p, 1);
+            cn.inputs[p].mode = sc->gnInputMode(gi, p);
 
-    //         // Reconnect internal wires
-    //         for (int i = 0; i < (int)clipboard.size(); i++)
-    //         {
-    //             if (newNodeIDs[i] < 0) continue;
-    //             const auto& cn = clipboard[i];
-    //             for (int p = 0; p < (int)cn.internalWires.size(); p++)
-    //             {
-    //                 int srcClipIdx = cn.internalWires[p];
-    //                 if (srcClipIdx >= 0 && srcClipIdx < (int)newNodeIDs.size() && newNodeIDs[srcClipIdx] >= 0)
-    //                 {
-    //                     sc->connectInput((DWORD)newNodeIDs[srcClipIdx], (DWORD)newNodeIDs[i], (DWORD)p);
-    //                 }
-    //             }
-    //         }
+            int srcID = sc->gnInput(gi, p);
+            if (isRealConnection(srcID, sc))
+            {
+                auto it = idToClipIdx.find(srcID);
+                if (it != idToClipIdx.end())
+                    cn.internalWires[p] = it->second;
+            }
+        }
 
-    //         // Select all pasted nodes
-    //         selectedNodeIDs.clear();
-    //         for (int id : newNodeIDs)
-    //             if (id >= 0) bringToFront(id);
-    //         for (int id : newNodeIDs)
-    //         {
-    //             if (id >= 0)
-    //                 selectedNodeIDs.insert(id);
-    //         }
-    //         syncSelectionToCore();
-    //         sc->numGUINodes(); // refresh
-    //     }
-    // }
+        clipboard.push_back(std::move(cn));
+    }
+}
+
+void NodeCanvas::pasteNodes(bool forceGlobal, bool forceVoice)
+{
+    if (clipboard.empty())
+        return;
+
+    SynthController* sc = SynthController::instance();
+    if (!sc)
+        return;
+
+    // Build a filtered list of clipboard indices eligible to paste:
+    //   "Paste as Global": skip VoiceRoot and voice-only parameter nodes (cannot be global)
+    //   "Paste as Voice":  skip VoiceManager (cannot be a voice node)
+    std::vector<int> validIndices;
+    for (int i = 0; i < (int)clipboard.size(); i++)
+    {
+        const auto& cn = clipboard[i];
+        if (forceGlobal && isVoiceOnlyNodeType(cn.typeID))
+            continue;
+        if (forceVoice && cn.typeID == (int)VOICEMANAGER_ID)
+            continue;
+        validIndices.push_back(i);
+    }
+    if (validIndices.empty())
+        return;
+
+    std::unordered_set<int> validSet(validIndices.begin(), validIndices.end());
+
+    sc->killVoices();
+
+    // Create new nodes; map clipboard index → new node ID
+    std::unordered_map<int, int> clipToNewID;
+    for (int i : validIndices)
+    {
+        const auto& cn = clipboard[i];
+        double px = contextMenuCanvasPos.x + cn.relX;
+        double py = contextMenuCanvasPos.y + cn.relY;
+
+        bool isGlobal = cn.isGlobal;
+        if (forceGlobal) isGlobal = true;
+        if (forceVoice)  isGlobal = false;
+        // Voice-parameter types can never be global regardless of override
+        if (isVoiceOnlyNodeType(cn.typeID)) isGlobal = false;
+
+        SynthNode* newNode = sc->createGUINode((DWORD)cn.typeID, (DWORD)cn.channel,
+                                               (DWORD)(isGlobal ? 1 : 0), px, py);
+        clipToNewID[i] = newNode ? (int)newNode->valueOffset : -1;
+    }
+
+    // Restore parameter values and modes
+    for (int i : validIndices)
+    {
+        auto it = clipToNewID.find(i);
+        if (it == clipToNewID.end() || it->second < 0)
+            continue;
+        const auto& cn = clipboard[i];
+        int newID = it->second;
+        int numParams = std::min((int)cn.inputs.size(), 16);
+        for (int p = 0; p < numParams; p++)
+        {
+            sc->setInputValue((DWORD)newID, (DWORD)p, cn.inputs[p].valL, cn.inputs[p].valR);
+            if (cn.inputs[p].mode != 0)
+                sc->setInputMode((DWORD)newID, (DWORD)p, (DWORD)cn.inputs[p].mode);
+        }
+    }
+
+    // Reconnect internal wires (only between nodes that survived the filter)
+    for (int i : validIndices)
+    {
+        auto it = clipToNewID.find(i);
+        if (it == clipToNewID.end() || it->second < 0)
+            continue;
+        const auto& cn = clipboard[i];
+        int newToID = it->second;
+        for (int p = 0; p < (int)cn.internalWires.size(); p++)
+        {
+            int srcClipIdx = cn.internalWires[p];
+            if (srcClipIdx < 0 || !validSet.count(srcClipIdx))
+                continue;
+            auto srcIt = clipToNewID.find(srcClipIdx);
+            if (srcIt == clipToNewID.end() || srcIt->second < 0)
+                continue;
+            sc->connectInput((DWORD)srcIt->second, (DWORD)newToID, (DWORD)p);
+        }
+    }
+
+    // Clear old selection; select and bring all pasted nodes to front
+    selectedNodeIDs.clear();
+    for (auto& [clipIdx, newID] : clipToNewID)
+    {
+        if (newID >= 0)
+        {
+            selectedNodeIDs.insert(newID);
+            bringToFront(newID);
+        }
+    }
+    syncSelectionToCore();
+    sc->numGUINodes(); // refresh accessor
 }
 
 // ── Edit Panel helpers ────────────────────────────────────────────────────────
@@ -2503,31 +2561,6 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         }
     }
 
-    // Search highlight: cyan outer border when the node matches the filter
-    if (!searchFilter.empty())
-    {
-        const NodeTypeDef* sDef   = NodeConfig::instance().getNodeType(nodeType);
-        const char*        sType  = sDef ? sDef->name.c_str() : "";
-        std::string        sName  = sc->gnName(guiIndex);
-        const char*        sCheck = sName.empty() ? sType : sName.c_str();
-
-        // Case-insensitive substring match against custom name and type name
-        auto toLower = [](std::string s) {
-            for (auto& c : s) c = (char)tolower((unsigned char)c);
-            return s;
-        };
-        std::string needleLow = toLower(searchFilter);
-        bool match = toLower(std::string(sCheck)).find(needleLow) != std::string::npos
-                  || toLower(std::string(sType )).find(needleLow) != std::string::npos;
-        if (match)
-        {
-            float ex = 2.f;
-            dl->AddRect(ImVec2(pos.x - ex, pos.y - ex),
-                        ImVec2(pos.x + w + ex, pos.y + h + ex),
-                        colorSelectedNode(), (2.f + ex) * zoom, 0, 2.f);
-        }
-    }
-
     // Red X delete button (top-left corner)
     // Only SynthRoot/ChannelRoot/NoteController are protected; Voice Manager is deletable.
     bool isStructural = (nodeType >= 0 && nodeType <= (int)NOTECONTROLLER_ID);
@@ -3219,6 +3252,31 @@ void NodeCanvas::render()
                     wireDragInsertMode = false;
                     isWireDragging = false;
                     wireDragFromNodeID = -1;
+                    ImGui::CloseCurrentPopup();
+                    showContextMenu = false;
+                }
+                ImGui::Separator();
+            }
+
+            // Paste entries — only on background context menu (not wire insert, not wire right-click)
+            if (!wireDragInsertMode && contextWireFromID == -1 && contextWireToID == -1 &&
+                !clipboard.empty())
+            {
+                if (ImGui::MenuItem("Paste selection"))
+                {
+                    pasteNodes(false, false);
+                    ImGui::CloseCurrentPopup();
+                    showContextMenu = false;
+                }
+                if (ImGui::MenuItem("Paste as Voice"))
+                {
+                    pasteNodes(false, true);
+                    ImGui::CloseCurrentPopup();
+                    showContextMenu = false;
+                }
+                if (ImGui::MenuItem("Paste as Global"))
+                {
+                    pasteNodes(true, false);
                     ImGui::CloseCurrentPopup();
                     showContextMenu = false;
                 }

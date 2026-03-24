@@ -29,7 +29,7 @@ static bool        s_initialized    = false;
 static NodeCanvas* s_canvas         = nullptr;
 static void*       g_windowHandle   = nullptr;
 static int         s_exportQuantIdx = 3;  // default = 64 samples (index 3), matches reference
-static char        s_searchBuf[128] = {};
+
 
 // ── public API ───────────────────────────────────────────────────────────────
 
@@ -330,15 +330,6 @@ static void renderToolbar()
             ImGui::EndCombo();
         }
     }
-
-    toolbarSeparator(dl, tbPos, tbH);
-
-
-    ImGui::TextUnformatted("Search:");
-    ImGui::SameLine(0.f, 3.f);
-    ImGui::SetNextItemWidth(130.f);
-    if (ImGui::InputText("##search", s_searchBuf, sizeof(s_searchBuf)) && s_canvas)
-        s_canvas->setSearchFilter(s_searchBuf);
 
     {
         int  voices = sc ? sc->getNumActiveVoices() : 0;
