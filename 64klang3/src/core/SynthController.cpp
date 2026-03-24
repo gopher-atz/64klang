@@ -3713,12 +3713,474 @@ public:
 		Streams[channel].CCStream[cc].Add(CurrentSample, value);
 	}
 
-	// SaveRaw and SaveOptimized omitted for brevity — implement as needed from original source
-	void SaveRaw(std::string filename) {}
-	void SaveOptimized(std::string filename, int timeQuant) {}
+	void LoadRaw(BYTE SongStream[])
+	{
+		Reset();
+
+		// read song bpm (1 DWORD)
+		_64klang_SetBPM(*((float*)SongStream));
+
+		// read song length (1 DWORD)
+		CurrentSample = *((DWORD*)(SongStream + 4));
+
+		BYTE* RawStream = SongStream + 8;
+		// for all channels load data
+		for (int c = 0; c < 16; c++)
+		{
+			DWORD numValues;
+			BYTE* streamValue;
+			BYTE* streamValue2;
+			DWORD timestamp;
+			BYTE value, value2;
+
+			// NOTEOFF
+			numValues = *((DWORD*)RawStream);
+			RawStream += 4;
+			streamValue = RawStream + numValues * 4;
+			for (int i = 0; i < (int)numValues; i++)
+			{
+				timestamp = *((DWORD*)(&(RawStream[i * 4])));
+				value = streamValue[i];
+				Streams[c].NoteOffStream.Add(timestamp, value);
+			}
+			RawStream += numValues * 4 + numValues * sizeof(BYTE);
+
+			// NOTEON
+			numValues = *((DWORD*)RawStream);
+			RawStream += 4;
+			streamValue = RawStream + numValues * 4;
+			streamValue2 = streamValue + numValues * sizeof(BYTE);
+			for (int i = 0; i < (int)numValues; i++)
+			{
+				timestamp = *((DWORD*)(&(RawStream[i * 4])));
+				value = streamValue[i];
+				value2 = streamValue2[i];
+				Streams[c].NoteOnStream.Add(timestamp, value, value2);
+			}
+			RawStream += numValues * 4 + numValues * sizeof(BYTE) * 2;
+
+			// ATs
+			numValues = *((DWORD*)RawStream);
+			RawStream += 4;
+			streamValue = RawStream + numValues * 4;
+			streamValue2 = streamValue + numValues * sizeof(BYTE);
+			for (int i = 0; i < (int)numValues; i++)
+			{
+				timestamp = *((DWORD*)(&(RawStream[i * 4])));
+				value = streamValue[i];
+				value2 = streamValue2[i];
+				Streams[c].AftertouchStream.Add(timestamp, value, value2);
+			}
+			RawStream += numValues * 4 + numValues * sizeof(BYTE) * 2;
+
+			// CCs
+			BYTE numCCs = *RawStream++;
+			for (int cc = 0; cc < numCCs; cc++)
+			{
+				BYTE ccNumber = *RawStream++;
+				numValues = *((DWORD*)RawStream);
+				RawStream += 4;
+				streamValue = RawStream + numValues * 4;
+				for (int i = 0; i < (int)numValues; i++)
+				{
+					timestamp = *((DWORD*)(&(RawStream[i * 4])));
+					value = streamValue[i];
+					Streams[c].CCStream[ccNumber].Add(timestamp, value);
+				}
+				RawStream += numValues * 4 + numValues * sizeof(BYTE);
+			}
+		}
+	}
+
+	void SaveRaw(std::string filename)
+	{
+		FILE* expFile = fopen(filename.c_str(), "w");
+		if (expFile)
+		{
+			float bpm = (float)SynthGlobalState.CurrentBPM.d[0];
+			fprintf(expFile, "#define SAMPLE_RATE 44100\n");
+			fprintf(expFile, "#define BPM %f\n", bpm);
+			fprintf(expFile, "#define SAMPLES_PER_TICK %d\n", (int)(44100.0f*4.0f*60.0f/(bpm*16)));
+			fprintf(expFile, "#define MAX_SAMPLES %d\n\n", CurrentSample);
+			int songSize = 0;
+
+			fprintf(expFile, "static BYTE SynthRawStream[] = \n");
+			fprintf(expFile, "{");
+
+			// write song bpm (1 DWORD)
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n// BPM %f", bpm);
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			DWORD* ibpm = (DWORD*)(&bpm);
+			fprintf(expFile, "\n0x%02x,0x%02x,0x%02x,0x%02x, ", (*ibpm >> 0) & 0xff, (*ibpm >> 8) & 0xff, (*ibpm >> 16) & 0xff, (*ibpm >> 24) & 0xff);
+			songSize += 4;
+
+			// write song length (1 DWORD)
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n// SongLength (Samples) %d", CurrentSample);
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n0x%02x,0x%02x,0x%02x,0x%02x, ", (CurrentSample >> 0) & 0xff, (CurrentSample >> 8) & 0xff, (CurrentSample >> 16) & 0xff, (CurrentSample >> 24) & 0xff);
+			songSize += 4;
+
+			for (int c = 0; c < 16; c++)
+			{
+				fprintf(expFile, "\n///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n// Channel %d", c + 1);
+				fprintf(expFile, "\n///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////");
+
+				// NoteOffs
+				int numOffValues = (int)Streams[c].NoteOffStream.values.size();
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t// NoteOffs %d", numOffValues);
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t0x%02x,0x%02x,0x%02x,0x%02x, ", (numOffValues >> 0) & 0xff, (numOffValues >> 8) & 0xff, (numOffValues >> 16) & 0xff, (numOffValues >> 24) & 0xff);
+				songSize += 4;
+				fprintf(expFile, "\n\t\t// Timestamps\n\t\t");
+				for (std::list<SingleValue>::iterator it = Streams[c].NoteOffStream.values.begin(); it != Streams[c].NoteOffStream.values.end(); it++)
+				{
+					int dtime = it->time;
+					fprintf(expFile, "0x%02x,0x%02x,0x%02x,0x%02x, ", (dtime >> 0) & 0xff, (dtime >> 8) & 0xff, (dtime >> 16) & 0xff, (dtime >> 24) & 0xff);
+					songSize += 4;
+				}
+				fprintf(expFile, "\n\t\t// Notes\n\t\t");
+				for (std::list<SingleValue>::iterator it = Streams[c].NoteOffStream.values.begin(); it != Streams[c].NoteOffStream.values.end(); it++)
+				{
+					fprintf(expFile, "0x%02x,", it->value);
+					songSize += 1;
+				}
+
+				// NoteOns
+				int numOnValues = (int)Streams[c].NoteOnStream.values.size();
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t// NoteOns %d", numOnValues);
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t0x%02x,0x%02x,0x%02x,0x%02x, ", (numOnValues >> 0) & 0xff, (numOnValues >> 8) & 0xff, (numOnValues >> 16) & 0xff, (numOnValues >> 24) & 0xff);
+				songSize += 4;
+				fprintf(expFile, "\n\t\t// Timestamps\n\t\t");
+				for (std::list<DoubleValue>::iterator it = Streams[c].NoteOnStream.values.begin(); it != Streams[c].NoteOnStream.values.end(); it++)
+				{
+					int dtime = it->time;
+					fprintf(expFile, "0x%02x,0x%02x,0x%02x,0x%02x, ", (dtime >> 0) & 0xff, (dtime >> 8) & 0xff, (dtime >> 16) & 0xff, (dtime >> 24) & 0xff);
+					songSize += 4;
+				}
+				fprintf(expFile, "\n\t\t// Notes\n\t\t");
+				for (std::list<DoubleValue>::iterator it = Streams[c].NoteOnStream.values.begin(); it != Streams[c].NoteOnStream.values.end(); it++)
+				{
+					fprintf(expFile, "0x%02x,", it->value1);
+					songSize += 1;
+				}
+				fprintf(expFile, "\n\t\t// Velocities\n\t\t");
+				for (std::list<DoubleValue>::iterator it = Streams[c].NoteOnStream.values.begin(); it != Streams[c].NoteOnStream.values.end(); it++)
+				{
+					fprintf(expFile, "0x%02x,", it->value2);
+					songSize += 1;
+				}
+
+				// ATs
+				int numATValues = (int)Streams[c].AftertouchStream.values.size();
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t// Aftertouches %d", numATValues);
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t0x%02x,0x%02x,0x%02x,0x%02x, ", (numATValues >> 0) & 0xff, (numATValues >> 8) & 0xff, (numATValues >> 16) & 0xff, (numATValues >> 24) & 0xff);
+				songSize += 4;
+				if (numATValues > 0)
+				{
+					fprintf(expFile, "\n\t\t// Timestamps\n\t\t");
+					for (std::list<DoubleValue>::iterator it = Streams[c].AftertouchStream.values.begin(); it != Streams[c].AftertouchStream.values.end(); it++)
+					{
+						int dtime = it->time;
+						fprintf(expFile, "0x%02x,0x%02x,0x%02x,0x%02x, ", (dtime >> 0) & 0xff, (dtime >> 8) & 0xff, (dtime >> 16) & 0xff, (dtime >> 24) & 0xff);
+						songSize += 4;
+					}
+					fprintf(expFile, "\n\t\t// Notes\n\t\t");
+					for (std::list<DoubleValue>::iterator it = Streams[c].AftertouchStream.values.begin(); it != Streams[c].AftertouchStream.values.end(); it++)
+					{
+						fprintf(expFile, "0x%02x,", it->value1);
+						songSize += 1;
+					}
+					fprintf(expFile, "\n\t\t// Pressures\n\t\t");
+					for (std::list<DoubleValue>::iterator it = Streams[c].AftertouchStream.values.begin(); it != Streams[c].AftertouchStream.values.end(); it++)
+					{
+						fprintf(expFile, "0x%02x,", it->value2);
+						songSize += 1;
+					}
+				}
+
+				// CCs
+				BYTE numCCs = 0;
+				for (int cc = 0; cc < 128; cc++)
+					if (Streams[c].CCStream[cc].values.size() != 0)
+						numCCs++;
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t// Number of CC streams %d", numCCs);
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t0x%02x,", numCCs);
+				songSize += 1;
+
+				for (int cc = 0; cc < 128; cc++)
+				{
+					int numCCValues = (int)Streams[c].CCStream[cc].values.size();
+					if (numCCValues != 0)
+					{
+						fprintf(expFile, "\n\t\t////////////////////////////////////////");
+						fprintf(expFile, "\n\t\t// CC %d, Number of Values %d", cc, numCCValues);
+						fprintf(expFile, "\n\t\t////////////////////////////////////////");
+						fprintf(expFile, "\n\t\t0x%02x, 0x%02x,0x%02x,0x%02x,0x%02x,", cc, (numCCValues >> 0) & 0xff, (numCCValues >> 8) & 0xff, (numCCValues >> 16) & 0xff, (numCCValues >> 24) & 0xff);
+						songSize += 5;
+
+						fprintf(expFile, "\n\t\t\t// Timestamps\n\t\t\t");
+						for (std::list<SingleValue>::iterator it = Streams[c].CCStream[cc].values.begin(); it != Streams[c].CCStream[cc].values.end(); it++)
+						{
+							int dtime = it->time;
+							fprintf(expFile, "0x%02x,0x%02x,0x%02x,0x%02x, ", (dtime >> 0) & 0xff, (dtime >> 8) & 0xff, (dtime >> 16) & 0xff, (dtime >> 24) & 0xff);
+							songSize += 4;
+						}
+						fprintf(expFile, "\n\t\t\t// Values\n\t\t\t");
+						for (std::list<SingleValue>::iterator it = Streams[c].CCStream[cc].values.begin(); it != Streams[c].CCStream[cc].values.end(); it++)
+						{
+							fprintf(expFile, "0x%02x,", it->value);
+							songSize += 1;
+						}
+					}
+				}
+			}
+
+			fprintf(expFile, "\n};\n");
+			fprintf(expFile, "// total song data size: %d Bytes\n", songSize);
+			fclose(expFile);
+		}
+	}
+
+	void SaveOptimized(std::string filename, int framesize)
+	{
+		FILE* expFile = fopen(filename.c_str(), "w");
+		std::string blobFile = filename + ".blob";
+		FILE* expBlob = fopen(blobFile.c_str(), "wb");
+		if (expFile && expBlob)
+		{
+			float bpm = (float)SynthGlobalState.CurrentBPM.d[0];
+
+			fprintf(expFile, "#define SAMPLE_RATE 44100\n");
+			fprintf(expFile, "#define BPM %f\n", bpm);
+			fprintf(expFile, "#define SAMPLES_PER_TICK %d\n", (int)(44100.0f*4.0f*60.0f/(bpm*16)));
+			fprintf(expFile, "#define MAX_SAMPLES %d // 0x%02x,0x%02x,0x%02x,0x%02x\n\n", CurrentSample, (CurrentSample >> 0) & 0xff, (CurrentSample >> 8) & 0xff, (CurrentSample >> 16) & 0xff, (CurrentSample >> 24) & 0xff);
+			int songSize = 0;
+
+			fprintf(expFile, "static BYTE SynthStream[] = \n");
+			fprintf(expFile, "{");
+
+			// write song bpm (1 DWORD)
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n// BPM %f", bpm);
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			DWORD* ibpm = (DWORD*)(&bpm);
+			fprintf(expFile, "\n0x%02x,0x%02x,0x%02x,0x%02x, ", (*ibpm >> 0) & 0xff, (*ibpm >> 8) & 0xff, (*ibpm >> 16) & 0xff, (*ibpm >> 24) & 0xff);
+			fwrite(ibpm, 4, 1, expBlob);
+			songSize += 4;
+
+			// write song length (1 DWORD)
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n// SongLength (Samples) %d", CurrentSample);
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n0x%02x,0x%02x,0x%02x,0x%02x, ", (CurrentSample >> 0) & 0xff, (CurrentSample >> 8) & 0xff, (CurrentSample >> 16) & 0xff, (CurrentSample >> 24) & 0xff);
+			fwrite(&CurrentSample, 4, 1, expBlob);
+			songSize += 4;
+
+			// write quantization frame size (1 DWORD)
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n// Quantization Frame Size (Samples) %d", framesize);
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n0x%02x,0x%02x,0x%02x,0x%02x, ", (framesize >> 0) & 0xff, (framesize >> 8) & 0xff, (framesize >> 16) & 0xff, (framesize >> 24) & 0xff);
+			fwrite(&framesize, 4, 1, expBlob);
+			songSize += 4;
+
+			// quantize, sort and calculate total bytes to come for delta decoding
+			int totalDeltaBytes = 0;
+			for (int c = 0; c < 16; c++)
+			{
+				Streams[c].NoteOffStream.QuantizeAndSort(framesize, false);
+				totalDeltaBytes += 4 + (int)Streams[c].NoteOffStream.qvalues.size() * 4;
+
+				Streams[c].NoteOnStream.QuantizeAndSort(framesize);
+				totalDeltaBytes += 4 + (int)Streams[c].NoteOnStream.qvalues.size() * 5;
+
+				Streams[c].AftertouchStream.QuantizeAndSort(framesize);
+				if (Streams[c].AftertouchStream.qvalues.size() > 0)
+					totalDeltaBytes += 4 + (int)Streams[c].AftertouchStream.qvalues.size() * 5;
+
+				for (int cc = 0; cc < 128; cc++)
+				{
+					Streams[c].CCStream[cc].QuantizeAndSort(framesize, true);
+					if (Streams[c].CCStream[cc].qvalues.size())
+						totalDeltaBytes += 4 + (int)Streams[c].CCStream[cc].qvalues.size() * 4;
+				}
+			}
+
+			// write total bytes to come for delta decoding (1 DWORD)
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n// Deltaencoded Song Bytes %d", totalDeltaBytes);
+			fprintf(expFile, "\n/////////////////////////////////////////////");
+			fprintf(expFile, "\n0x%02x,0x%02x,0x%02x,0x%02x, ", (totalDeltaBytes >> 0) & 0xff, (totalDeltaBytes >> 8) & 0xff, (totalDeltaBytes >> 16) & 0xff, (totalDeltaBytes >> 24) & 0xff);
+			fwrite(&totalDeltaBytes, 4, 1, expBlob);
+			songSize += 4;
+
+			BYTE lastDelta = 0;
+			BYTE codedByte = 0;
+#define DELTA_ENCODE_VALUE codedByte -= lastDelta; lastDelta += codedByte;
+			std::vector<BYTE> deltaStream;
+
+			for (int c = 0; c < 16; c++)
+			{
+				fprintf(expFile, "\n///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n// Channel %d", c + 1);
+				fprintf(expFile, "\n///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////");
+
+				// NoteOffs
+				int numOffValues = (int)Streams[c].NoteOffStream.qvalues.size();
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t// NoteOffs %d", numOffValues);
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////\n\t");
+				codedByte = (numOffValues >> 0) & 0xff; DELTA_ENCODE_VALUE;
+				fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+				codedByte = (numOffValues >> 8) & 0xff; DELTA_ENCODE_VALUE;
+				fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+				codedByte = (numOffValues >> 16) & 0xff; DELTA_ENCODE_VALUE;
+				fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+				codedByte = (BYTE)((c << 4) + 0); DELTA_ENCODE_VALUE; // stream type + channel
+				fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+				songSize += 4;
+				fprintf(expFile, "\n\t\t// Timestamps\n\t\t");
+				deltaStream = Streams[c].NoteOffStream.GetTime0DeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				fprintf(expFile, "\n\t\t");
+				deltaStream = Streams[c].NoteOffStream.GetTime1DeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				fprintf(expFile, "\n\t\t");
+				deltaStream = Streams[c].NoteOffStream.GetTime2DeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				fprintf(expFile, "\n\t\t// Notes\n\t\t");
+				deltaStream = Streams[c].NoteOffStream.GetValueDeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				songSize += numOffValues * 4;
+
+				// NoteOns
+				int numOnValues = (int)Streams[c].NoteOnStream.qvalues.size();
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+				fprintf(expFile, "\n\t// NoteOns %d", numOnValues);
+				fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////\n\t");
+				codedByte = (numOnValues >> 0) & 0xff; DELTA_ENCODE_VALUE;
+				fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+				codedByte = (numOnValues >> 8) & 0xff; DELTA_ENCODE_VALUE;
+				fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+				codedByte = (numOnValues >> 16) & 0xff; DELTA_ENCODE_VALUE;
+				fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+				codedByte = (BYTE)((c << 4) + 1); DELTA_ENCODE_VALUE; // stream type + channel
+				fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+				songSize += 4;
+				fprintf(expFile, "\n\t\t// Timestamps\n\t\t");
+				deltaStream = Streams[c].NoteOnStream.GetTime0DeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				fprintf(expFile, "\n\t\t");
+				deltaStream = Streams[c].NoteOnStream.GetTime1DeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				fprintf(expFile, "\n\t\t");
+				deltaStream = Streams[c].NoteOnStream.GetTime2DeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				fprintf(expFile, "\n\t\t// Notes\n\t\t");
+				deltaStream = Streams[c].NoteOnStream.GetValue1DeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				fprintf(expFile, "\n\t\t// Velocities\n\t\t");
+				deltaStream = Streams[c].NoteOnStream.GetValue2DeltaStream(lastDelta);
+				for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+				songSize += numOnValues * 5;
+
+				// ATs
+				int numATValues = (int)Streams[c].AftertouchStream.qvalues.size();
+				if (numATValues > 0)
+				{
+					fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////");
+					fprintf(expFile, "\n\t// Aftertouches %d", numATValues);
+					fprintf(expFile, "\n\t///////////////////////////////////////////////////////////////////////////////////\n\t");
+					codedByte = (numATValues >> 0) & 0xff; DELTA_ENCODE_VALUE;
+					fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+					codedByte = (numATValues >> 8) & 0xff; DELTA_ENCODE_VALUE;
+					fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+					codedByte = (numATValues >> 16) & 0xff; DELTA_ENCODE_VALUE;
+					fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+					codedByte = (BYTE)((c << 4) + 2); DELTA_ENCODE_VALUE; // stream type + channel
+					fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+					songSize += 4;
+					fprintf(expFile, "\n\t\t// Timestamps\n\t\t");
+					deltaStream = Streams[c].AftertouchStream.GetTime0DeltaStream(lastDelta);
+					for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+					fprintf(expFile, "\n\t\t");
+					deltaStream = Streams[c].AftertouchStream.GetTime1DeltaStream(lastDelta);
+					for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+					fprintf(expFile, "\n\t\t");
+					deltaStream = Streams[c].AftertouchStream.GetTime2DeltaStream(lastDelta);
+					for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+					fprintf(expFile, "\n\t\t// Notes\n\t\t");
+					deltaStream = Streams[c].AftertouchStream.GetValue1DeltaStream(lastDelta);
+					for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+					fprintf(expFile, "\n\t\t// Pressures\n\t\t");
+					deltaStream = Streams[c].AftertouchStream.GetValue2DeltaStream(lastDelta);
+					for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+					songSize += numATValues * 5;
+				}
+
+				// CCs
+				for (int cc = 0; cc < 128; cc++)
+				{
+					int numCCValues = (int)Streams[c].CCStream[cc].qvalues.size();
+					if (numCCValues > 0)
+					{
+						fprintf(expFile, "\n\t////////////////////////////////////////");
+						fprintf(expFile, "\n\t// CC %d, Number of Values %d", cc, numCCValues);
+						fprintf(expFile, "\n\t////////////////////////////////////////\n\t");
+						codedByte = (numCCValues >> 0) & 0xff; DELTA_ENCODE_VALUE;
+						fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+						codedByte = (numCCValues >> 8) & 0xff; DELTA_ENCODE_VALUE;
+						fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+						codedByte = (BYTE)cc; DELTA_ENCODE_VALUE;
+						fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+						codedByte = (BYTE)((c << 4) + 3); DELTA_ENCODE_VALUE; // cc id, stream type + channel
+						fprintf(expFile, "0x%02x,", codedByte); fwrite(&codedByte, 1, 1, expBlob);
+						songSize += 4;
+						fprintf(expFile, "\n\t\t// Timestamps\n\t\t");
+						deltaStream = Streams[c].CCStream[cc].GetTime0DeltaStream(lastDelta);
+						for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+						fprintf(expFile, "\n\t\t");
+						deltaStream = Streams[c].CCStream[cc].GetTime1DeltaStream(lastDelta);
+						for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+						fprintf(expFile, "\n\t\t");
+						deltaStream = Streams[c].CCStream[cc].GetTime2DeltaStream(lastDelta);
+						for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+						fprintf(expFile, "\n\t\t// Values\n\t\t");
+						deltaStream = Streams[c].CCStream[cc].GetValueDeltaStream(lastDelta);
+						for (int i = 0; i < (int)deltaStream.size(); i++) { fprintf(expFile, "0x%02x,", deltaStream[i]); fwrite(&deltaStream[i], 1, 1, expBlob); }
+						songSize += numCCValues * 4;
+					}
+				}
+			}
+
+			if (totalDeltaBytes != songSize - 16)
+				fprintf(expFile, "\n// !!! Song size does not match!!!\n");
+
+			fprintf(expFile, "\n// End of Streams\n");
+			fprintf(expFile, "0x%02x,0x%02x,0x%02x,0x%02x, ", 0xff, 0xff, 0xff, 0xff);
+			DWORD eos = 0xffffffff;
+			fwrite(&eos, 4, 1, expBlob);
+			songSize += 4;
+
+			fprintf(expFile, "\n};\n");
+			fprintf(expFile, "// total song data size: %d Bytes\n", songSize);
+			fclose(expFile);
+			fclose(expBlob);
+		}
+	}
 
 	bool IsActive;
-	int CurrentSample;
+	DWORD CurrentSample;
 	bool FirstEventSample;
 	std::vector<ChannelStream> Streams;
 };
@@ -3786,13 +4248,1403 @@ void SynthController::recursiveCollectUsedNodes(SynthNode* node, std::map<SynthN
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// patch export helpers
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+static void GetConstantValueString(SynthNode* n, std::string& ret, int& type, SynthNode* pn, std::vector<WORD>& blobVec)
+{
+	char tmp[256];
+	blobVec.clear();
+	// mode constant?
+	if (n->numInputs == 0)
+	{
+		DWORD iv = n->out.i[0];
+		// voicemanager and samplerecorder are using 4 bytes for mode
+		if (pn->id == VOICEMANAGER_ID || pn->id == SAMPLEREC_ID)
+		{
+			sprintf(tmp, "0x%04x,0x%04x", (iv >> 0) & 0xffff, (iv >> 16) & 0xffff);
+			blobVec.push_back((iv >> 0) & 0xffff); blobVec.push_back((iv >> 16) & 0xffff);
+		}
+		// all other modes are using only 2 bytes
+		else
+		{
+			sprintf(tmp, "0x%04x", (iv >> 0) & 0xffff);
+			blobVec.push_back((iv >> 0) & 0xffff);
+		}
+		type = 0;
+	}
+	else
+	{
+		// mono constant?
+		if (n->out.d[0] == n->out.d[1])
+		{
+			float fv = (float)n->out.d[0];
+			DWORD iv = *((DWORD*)(&fv)) & 0xffffff00; // always zero out the least significant byte
+			sprintf(tmp, "0x%04x,0x%04x", (iv >> 16) & 0xffff, iv & 0xffff);
+			blobVec.push_back(iv & 0xffff); blobVec.push_back((iv >> 16) & 0xffff);
+			type = 1;
+		}
+		// stereo constant
+		else
+		{
+			float fv1 = (float)n->out.d[0];
+			float fv2 = (float)n->out.d[1];
+			DWORD iv1 = *((DWORD*)(&fv1)) & 0xffffff00;
+			DWORD iv2 = *((DWORD*)(&fv2)) & 0xffffff00;
+			// a real stereo constant?
+			if (iv1 != iv2)
+			{
+				sprintf(tmp, "0x%04x,0x%04x,0x%04x,0x%04x", (iv1 >> 16) & 0xffff, iv1 & 0xffff, (iv2 >> 16) & 0xffff, iv2 & 0xffff);
+				blobVec.push_back(iv1 & 0xffff); blobVec.push_back((iv1 >> 16) & 0xffff);
+				blobVec.push_back(iv2 & 0xffff); blobVec.push_back((iv2 >> 16) & 0xffff);
+				type = 2;
+			}
+			// actually a mono constant
+			else
+			{
+				sprintf(tmp, "0x%04x,0x%04x", (iv1 >> 16) & 0xffff, iv1 & 0xffff);
+				blobVec.push_back(iv1 & 0xffff); blobVec.push_back((iv1 >> 16) & 0xffff);
+				type = 1;
+			}
+		}
+	}
+	ret = tmp;
+}
+
+static void GetArpSequenceValueString(SynthNode* n, std::string& ret, std::vector<WORD>& blobVec)
+{
+	char tmp[256];
+	blobVec.clear();
+	ret = "";
+	sprintf(tmp, "0x%04x,", ((VMWork*)(n->customMem))->ArpSequenceLoopIndex);
+	blobVec.push_back((WORD)((VMWork*)(n->customMem))->ArpSequenceLoopIndex);
+	ret += tmp;
+	for (int i = 0; i < 32; i++)
+	{
+		sprintf(tmp, "0x%04x,", ((VMWork*)(n->customMem))->ArpSequencePtr[i]);
+		blobVec.push_back(((VMWork*)(n->customMem))->ArpSequencePtr[i]);
+		ret += tmp;
+	}
+}
+
+static void GetTriggerSeqValueString(SynthNode* n, std::string& ret, std::vector<WORD>& blobVec)
+{
+	char tmp[256];
+	blobVec.clear();
+	ret = "";
+	for (int i = TRIGGERSEQ_PATTERN0_3L; i <= TRIGGERSEQ_PATTERN12_15R; i++)
+	{
+		int pattern = (*(n->input[i])).i[0];
+		sprintf(tmp, "0x%04x,0x%04x,", (pattern >> 0) & 0xffff, (pattern >> 16) & 0xffff);
+		blobVec.push_back((pattern >> 0) & 0xffff); blobVec.push_back((pattern >> 16) & 0xffff);
+		ret += tmp;
+	}
+}
+
+static int GetFormulaLength(SynthNode* n)
+{
+	BYTE* cmdbuf = (BYTE*)(SynthGlobalState.SpecialDataPointer[n->valueOffset]);
+	BYTE* command = cmdbuf;
+	while (*command != FORMULA_DONE)
+	{
+		if (*command == FORMULA_CMD_CONSTANT)
+			command += 4;
+		else
+			command++;
+	}
+	int datalength = 1 + (int)(command - cmdbuf);
+	return datalength;
+}
+
+static void GetFormulaValueString(SynthNode* n, std::string& ret, std::vector<WORD>& blobVec)
+{
+	char tmp[256];
+	blobVec.clear();
+	ret = "";
+
+	int datalength = GetFormulaLength(n);
+	WORD* buf = (WORD*)(SynthGlobalState.SpecialDataPointer[n->valueOffset]);
+	for (int j = 0; j < datalength / 2; j++)
+	{
+		sprintf(tmp, "0x%04x,", *buf);
+		blobVec.push_back(*buf);
+		ret += tmp;
+		buf++;
+	}
+	// write an additional word if datalength is odd, so lowbyte contains the last data byte
+	if (datalength & 1)
+	{
+		WORD padding = 0;
+		padding += *((BYTE*)(buf));
+		sprintf(tmp, "0x%04x,", padding);
+		blobVec.push_back(padding);
+		ret += tmp;
+	}
+}
+
+static std::string GetVoiceParamValueString(SynthNode* n, std::string& ret)
+{
+	char tmp[256];
+	SynthNode* vps = (SynthNode*)(n->input[0]);
+	float fv1 = (float)vps->out.d[0];
+	float fv2 = (float)vps->out.d[1];
+	DWORD iv1 = *((DWORD*)(&fv1)) & 0xffffff00;
+	DWORD iv2 = *((DWORD*)(&fv2)) & 0xffffff00;
+	sprintf(tmp, "%0x02x,0x%04x,0x%04x,0x%04x,0x%04x", n->id, (iv1 >> 16) & 0xffff, iv1 & 0xffff, (iv2 >> 16) & 0xffff, iv2 & 0xffff);
+	ret = tmp;
+	return ret;
+}
+
+struct SynthFeatures
+{
+	// global
+	bool useSpecialData;
+	bool useStoredSamples;
+	bool useAftertouch;
+	// voicemanager
+	bool useARP;
+	bool useGlide;
+	// adsr
+	bool useADSRTriggerGate;
+	bool useADSRDBGain;
+	bool useADSRExp;
+	// oscillator/lfo
+	bool useWaveSINE;
+	bool useWaveSAW;
+	bool useWavePULSE;
+	bool useWaveAATRISAW;
+	bool useWaveAAPULSE;
+	bool useWaveAABITRISAW;
+	bool useWaveAABIPULSE;
+	bool useWaveRPSINE;
+	bool useWavePNOISE;
+	bool useWaveAATRISAWSEQ;
+	bool useWaveSINESEQ;
+	bool useLFOPolarity;
+	bool useOSCFrequency;
+	// noisegen
+	bool useNGBrown;
+	// bqfilter/svfilter
+	bool useFrequencyMap;
+	bool useBQFLP;
+	bool useBQFHP;
+	bool useBQFBP;
+	bool useBQFBPBW;
+	bool useBQFNOTCH;
+	bool useBQFAP;
+	bool useBQFPEAK;
+	bool useBQFLSHELF;
+	bool useBQFHSHELF;
+	bool useBQFRES;
+	bool useBQFRESN;
+	// distortion
+	bool useDSTOD;
+	bool useDSTDAMP;
+	bool useDSTQUANT;
+	bool useDSTLIMIT;
+	bool useDSTASYM;
+	bool useDSTSIN;
+	// delays
+	bool useDLAP;
+	bool useDLBPM;
+	bool useDLS;
+	bool useDLM;
+	bool useDLL;
+	bool useDLNM;
+	bool useDLNM2;
+	// sampler
+	bool useSMPLoop;
+	// wtf
+	bool useWTFReduceClick;
+	// glitch
+	bool useGLTS;
+	bool useGLRT;
+	bool useGLSH;
+	bool useGLREV;
+	// snh
+	bool useSNHSM;
+
+	std::map<int, std::map<void*, SynthNode*> > specialDataMap;
+	std::vector<std::string> uniqueArpSequenceList;
+	std::vector<WORD> uniqueArpSequenceBlobList;
+
+	SynthFeatures()
+	{
+		useSpecialData = false;
+		useStoredSamples = false;
+		useAftertouch = false;
+		useARP = false;
+		useGlide = false;
+		useADSRTriggerGate = false;
+		useADSRDBGain = false;
+		useADSRExp = false;
+		useWaveSINE = false;
+		useWaveSAW = false;
+		useWavePULSE = false;
+		useWaveAATRISAW = false;
+		useWaveAAPULSE = false;
+		useWaveAABITRISAW = false;
+		useWaveAABIPULSE = false;
+		useWaveRPSINE = false;
+		useWavePNOISE = false;
+		useWaveAATRISAWSEQ = false;
+		useWaveSINESEQ = false;
+		useLFOPolarity = false;
+		useOSCFrequency = false;
+		useNGBrown = false;
+		useFrequencyMap = false;
+		useBQFLP = false;
+		useBQFHP = false;
+		useBQFBP = false;
+		useBQFBPBW = false;
+		useBQFNOTCH = false;
+		useBQFAP = false;
+		useBQFPEAK = false;
+		useBQFLSHELF = false;
+		useBQFHSHELF = false;
+		useBQFRES = false;
+		useBQFRESN = false;
+		useDSTOD = false;
+		useDSTDAMP = false;
+		useDSTQUANT = false;
+		useDSTLIMIT = false;
+		useDSTASYM = false;
+		useDSTSIN = false;
+		useDLAP = false;
+		useDLBPM = false;
+		useDLS = false;
+		useDLM = false;
+		useDLL = false;
+		useDLNM = false;
+		useDLNM2 = false;
+		useSMPLoop = false;
+		useWTFReduceClick = false;
+		useGLTS = false;
+		useGLRT = false;
+		useGLSH = false;
+		useGLREV = false;
+		useSNHSM = false;
+
+		specialDataMap.clear();
+		uniqueArpSequenceList.clear();
+		uniqueArpSequenceBlobList.clear();
+	}
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SynthController::exportPatch(const std::string& filename)
 {
-	// exportPatch is a large code-generation function that writes C header data.
-	// Full implementation mirrors the original SynthController.cpp exportPatch exactly;
-	// see VSTiPluginSourceCode/64klang2Core/SynthController.cpp lines 4690-5882.
-	// Stub provided here; copy the full function body from the original when needed.
+	SynthFeatures features;
+	std::vector<WORD> blobVec;
+
+	// 1. recursively collect relevant/used nodes from synth root
+	std::map<SynthNode*, bool> usedNodes;
+	for (DWORD i = 0; i < MAX_NODES; i++)
+	{
+		if (_nodes[i])
+			usedNodes[_nodes[i]] = false;
+	}
+	// collect used nodes
+	recursiveCollectUsedNodes(SynthGlobalState.GlobalNodes[0], usedNodes);
+
+	// scan for special uses of features
+	for (DWORD i = 0; i < MAX_NODES; i++)
+	{
+		if (_nodes[i])
+		{
+			// if we have a non used node (e.g. due to disconnection) check if it is a required one for the export and use it anyway
+			if (!usedNodes[_nodes[i]])
+			{
+				switch (_nodes[i]->id)
+				{
+					// always export all channelroots and notecontrollers so the offsets are right for the replayer when indexing channels
+					case CHANNELROOT_ID:
+					case NOTECONTROLLER_ID:
+					{
+						usedNodes[_nodes[i]] = true;
+						break;
+					}
+				}
+			}
+			else
+			{
+				switch (_nodes[i]->id)
+				{
+					case VOICEMANAGER_ID:
+					{
+						// check for ARP usage and store sequence
+						if (_nodes[i]->input[VOICEMANAGER_MODE]->i[0] & VOICEMANAGER_ARP_RUNMASK)
+						{
+							std::string arpstr;
+							GetArpSequenceValueString(_nodes[i], arpstr, blobVec);
+							// get sequence index
+							int arpSeqIndex = (int)features.uniqueArpSequenceList.size();
+							for (int as = 0; as < (int)features.uniqueArpSequenceList.size(); as++)
+							{
+								if (features.uniqueArpSequenceList[as] == arpstr)
+								{
+									arpSeqIndex = as;
+									break;
+								}
+							}
+							// not found, so add new sequence
+							if (arpSeqIndex == (int)features.uniqueArpSequenceList.size())
+							{
+								features.uniqueArpSequenceList.push_back(arpstr);
+								features.uniqueArpSequenceBlobList.insert(features.uniqueArpSequenceBlobList.end(), blobVec.begin(), blobVec.end());
+							}
+
+							// set the sequence index in the mode (doesn't hurt in plugin as those bits are unused, but we need this before unifying constants)
+							_nodes[i]->input[VOICEMANAGER_MODE]->i[0] &= ~VOICEMANAGER_ARP_INDEXMASK;
+							_nodes[i]->input[VOICEMANAGER_MODE]->i[0] |= arpSeqIndex << VOICEMANAGER_ARP_INDEXSHIFT;
+
+							features.useARP = true;
+						}
+						// check for glide usage (used when input is a non constant or the constants value is not zero)
+						SynthNode* glide = (SynthNode*)(_nodes[i]->input[VOICEMANAGER_GLIDE]);
+						if (glide->id != CONSTANT_ID || !s_testz_si128(glide->out, SC[S_ALLBITS]))
+						{
+							features.useGlide = true;
+						}
+						break;
+					}
+					case ADSR_ID:
+					{
+						// check if trigger and gate are used at all?
+						SynthNode* trigger = (SynthNode*)(_nodes[i]->input[ADSR_TRIGGER]);
+						SynthNode* gate = (SynthNode*)(_nodes[i]->input[ADSR_GATE]);
+						if (trigger->id != CONSTANT_ID || !s_testz_si128(trigger->out, SC[S_ALLBITS]) ||
+							gate->id != CONSTANT_ID || !s_testz_si128(gate->out, SC[S_ALLBITS]))
+						{
+							features.useADSRTriggerGate = true;
+						}
+
+						// check if dbgain and exp options are used
+						if (_nodes[i]->input[ADSR_MODE]->i[0] & ADSR_EXP)
+							features.useADSRExp = true;
+						if (_nodes[i]->input[ADSR_MODE]->i[0] & ADSR_DBGAIN)
+							features.useADSRDBGain = true;
+						break;
+					}
+					case LFO_ID:
+					case OSCILLATOR_ID:
+					{
+						int waveMask = 0;
+						if (_nodes[i]->id == LFO_ID)
+						{
+							// check polarity
+							int mode = _nodes[i]->input[LFO_MODE]->i[0];
+							if (mode & LFO_BIPOLAR)
+								features.useLFOPolarity = true;
+
+							waveMask = mode & LFO_WAVEMASK;
+						}
+						if (_nodes[i]->id == OSCILLATOR_ID)
+						{
+							// check if frequency input exists
+							SynthNode* freq = (SynthNode*)(_nodes[i]->input[OSCILLATOR_FREQ]);
+							if (freq->id != CONSTANT_ID || !s_testz_si128(freq->out, SC[S_ALLBITS]))
+								features.useOSCFrequency = true;
+
+							waveMask = _nodes[i]->input[OSCILLATOR_MODE]->i[0] & OSCILLATOR_WAVEMASK;
+						}
+						// waves
+						if (waveMask == OSCILLATOR_SINE)
+							features.useWaveSINE = true;
+						if (waveMask == OSCILLATOR_SAW)
+							features.useWaveSAW = true;
+						if (waveMask == OSCILLATOR_PULSE)
+							features.useWavePULSE = true;
+						if (waveMask == OSCILLATOR_AATRISAW)
+							features.useWaveAATRISAW = true;
+						if (waveMask == OSCILLATOR_AAPULSE)
+							features.useWaveAAPULSE = true;
+						if (waveMask == OSCILLATOR_AABITRISAW)
+							features.useWaveAABITRISAW = true;
+						if (waveMask == OSCILLATOR_AABIPULSE)
+							features.useWaveAABIPULSE = true;
+						if (waveMask == OSCILLATOR_RPSINE)
+							features.useWaveRPSINE = true;
+						if (waveMask == OSCILLATOR_PNOISE)
+							features.useWavePNOISE = true;
+						if (waveMask == OSCILLATOR_AATRISAWSEQ)
+							features.useWaveAATRISAWSEQ = true;
+						if (waveMask == OSCILLATOR_SINESEQ)
+							features.useWaveSINESEQ = true;
+
+						break;
+					}
+					case NOISEGEN_ID:
+					{
+						// check for constant mix if brown noise calc can be skipped
+						SynthNode* mix = (SynthNode*)(_nodes[i]->input[NOISEGEN_MIX]);
+						if (mix->id == CONSTANT_ID && mix->out.d[0] > 0.5 && mix->out.d[1] > 0.5)
+							features.useNGBrown = true;
+						break;
+					}
+					case BQFILTER_ID:
+					case SVFILTER_ID:
+					{
+						int mode;
+						if (_nodes[i]->id == BQFILTER_ID)
+						{
+							mode = _nodes[i]->input[BQFILTER_MODE]->i[0];
+
+							int type = mode & BQFILTER_MODEMASK;
+							if (type == BQFILTER_LOWPASS)
+								features.useBQFLP = true;
+							if (type == BQFILTER_HIGHPASS)
+								features.useBQFHP = true;
+							if (type == BQFILTER_BANDPASSQ)
+								features.useBQFBP = true;
+							if (type == BQFILTER_BANDPASSBW)
+								features.useBQFBPBW = true;
+							if (type == BQFILTER_NOTCH)
+								features.useBQFNOTCH = true;
+							if (type == BQFILTER_ALLPASS)
+								features.useBQFAP = true;
+							if (type == BQFILTER_PEAK)
+								features.useBQFPEAK = true;
+							if (type == BQFILTER_LOWSHELF)
+								features.useBQFLSHELF = true;
+							if (type == BQFILTER_HIGHSHELF)
+								features.useBQFHSHELF = true;
+							if (type == BQFILTER_RESONANCE)
+								features.useBQFRES = true;
+							if (type == BQFILTER_RESONANCENORM)
+								features.useBQFRESN = true;
+						}
+						if (_nodes[i]->id == SVFILTER_ID)
+						{
+							mode = _nodes[i]->input[SVFILTER_MODE]->i[0];
+						}
+
+						if (!(mode & BQFILTER_QUADRATIC))
+							features.useFrequencyMap = true;
+
+						break;
+					}
+					case DISTORTION_ID:
+					{
+						int type = _nodes[i]->input[DISTORTION_MODE]->i[0];
+						if (type == DISTORTION_OVERDRIVE)
+							features.useDSTOD = true;
+						if (type == DISTORTION_DAMP)
+							features.useDSTDAMP = true;
+						if (type == DISTORTION_QUANT)
+							features.useDSTQUANT = true;
+						if (type == DISTORTION_LIMIT)
+							features.useDSTLIMIT = true;
+						if (type == DISTORTION_ASYM)
+							features.useDSTASYM = true;
+						if (type == DISTORTION_SIN)
+							features.useDSTSIN = true;
+						break;
+					}
+					case COMBDELAY_ID:
+					case DELAY_ID:
+					case FBDELAY_ID:
+					{
+						// allpass interpolation
+						if (_nodes[i]->id == DELAY_ID || _nodes[i]->id == FBDELAY_ID)
+							features.useDLAP = true;
+
+						// timing modes
+						int mode;
+						if (_nodes[i]->id == COMBDELAY_ID)
+							mode = _nodes[i]->input[COMBDELAY_MODE]->i[0];
+						if (_nodes[i]->id == DELAY_ID)
+							mode = _nodes[i]->input[DELAY_MODE]->i[0];
+						if (_nodes[i]->id == FBDELAY_ID)
+							mode = _nodes[i]->input[FBDELAY_MODE]->i[0];
+						mode &= DELAY_TIMEMASK;
+
+						if (mode == DELAY_BPMSYNC)
+							features.useDLBPM = true;
+						if (mode == DELAY_SHORT)
+							features.useDLS = true;
+						if (mode == DELAY_MIDDLE)
+							features.useDLM = true;
+						if (mode == DELAY_LONG)
+							features.useDLL = true;
+						if (mode == DELAY_NOTEMAP)
+							features.useDLNM = true;
+						if (mode == DELAY_NOTEMAP2)
+							features.useDLNM2 = true;
+
+						break;
+					}
+					case SAMPLER_ID:
+					{
+						int mode = _nodes[i]->input[SAMPLER_MODE]->i[0];
+						// check for sample playback
+						if ((mode & SAMPLER_MODEMASK) == SAMPLER_STORED)
+							features.useStoredSamples = true;
+						// check for loop
+						if (mode & SAMPLER_LOOP)
+							features.useSMPLoop = true;
+						break;
+					}
+					case WTFOSC_ID:
+					{
+						int mode = _nodes[i]->input[WTFOSC_MODE]->i[0];
+						// check for sample playback
+						if ((mode & WTFOSC_MODEMASK) == WTFOSC_STORED)
+							features.useStoredSamples = true;
+						// check for click reduction
+						if (mode & WTFOSC_REDUCECLICK)
+							features.useWTFReduceClick = true;
+						break;
+					}
+					case GLITCH_ID:
+					{
+						int type = _nodes[i]->input[GLITCH_MODE]->i[0];
+						if (type == GLITCH_TAPESTOP)
+							features.useGLTS = true;
+						if (type == GLITCH_RETRIGGER)
+							features.useGLRT = true;
+						if (type == GLITCH_SHUFFLE)
+							features.useGLSH = true;
+						if (type == GLITCH_REVERSE)
+							features.useGLREV = true;
+						break;
+					}
+					case SAPI_ID:
+					{
+						// add data blob to specialdatamap
+						features.useSpecialData = true;
+
+						if (features.specialDataMap.find(_nodes[i]->id) == features.specialDataMap.end())
+						{
+							std::map<void*, SynthNode*> dataMap;
+							features.specialDataMap[_nodes[i]->id] = dataMap;
+						}
+						features.specialDataMap[_nodes[i]->id][_nodes[i]->specialData] = _nodes[i];
+						break;
+					}
+					case SNH_ID:
+					{
+						// check for snh smooth usage (used when input is a non constant or the constants value is not zero)
+						SynthNode* snh = (SynthNode*)(_nodes[i]->input[SNH_SNHSMOOTH]);
+						if (snh->id != CONSTANT_ID || !s_testz_si128(snh->out, SC[S_ALLBITS]))
+						{
+							features.useSNHSM = true;
+						}
+						break;
+					}
+					case VOICE_AFTERTOUCH_ID:
+					{
+						features.useAftertouch = true;
+						break;
+					}
+					default:
+						break;
+				}
+			}
+		}
+	}
+
+	// 2. group nodes by node type
+	std::vector<std::map<std::string, SynthNode*> > uniqueConstantMap;
+	uniqueConstantMap.push_back(std::map<std::string, SynthNode*>()); // mode   constants
+	uniqueConstantMap.push_back(std::map<std::string, SynthNode*>()); // mono   constants
+	uniqueConstantMap.push_back(std::map<std::string, SynthNode*>()); // stereo constants
+	std::map<int, std::pair<std::vector<SynthNode*>, std::vector<SynthNode*> > > groupedNodes; // global, local for each id
+	std::map<SynthNode*, SynthNode*> nodeRemap;
+	std::map<std::string, SynthNode*> uniqueVoiceParamMap;
+	for (DWORD i = 0; i < MAX_NODES; i++)
+	{
+		SynthNode* n = _nodes[i];
+		if (n && usedNodes[n])
+		{
+			// special case for constants: not adding to grouped list but unifying values in maps for the 3 constant types
+			if (n->id == CONSTANT_ID)
+			{
+				int consttype;
+				std::string conststr;
+				GetConstantValueString(n, conststr, consttype, n, blobVec);
+				if (consttype > 0)
+				{
+					std::map<std::string, SynthNode*>::iterator it = uniqueConstantMap[consttype].find(conststr);
+					if (it == uniqueConstantMap[consttype].end())
+					{
+						uniqueConstantMap[consttype][conststr] = n;
+					}
+				}
+			}
+			else
+			{
+				// Visualizer nodes are plugin-only: exclude from export and remap any downstream
+				// references directly to the Visualizer's signal input (passthrough bypass)
+				if (n->id == SIGNAL_VISUALIZER_ID)
+				{
+					nodeRemap[n] = (SynthNode*)(n->input[SIGNAL_VISUALIZER_IN]);
+					continue;
+				}
+
+				int groupid = n->id;
+				// a scale is a mul
+				if (groupid == SCALE_ID)
+					groupid = MUL_ID;
+				// first encounter of a node type
+				if (groupedNodes.find(groupid) == groupedNodes.end())
+				{
+					std::vector<SynthNode*> nodeListGlobal;
+					std::vector<SynthNode*> nodeListLocal;
+					groupedNodes[groupid] = std::make_pair(nodeListGlobal, nodeListLocal);
+				}
+				// add nodes can be skipped if they add the 0 constant (happens a lot for modulations)
+				if (n->id == ADD_ID)
+				{
+					if (((SynthNode*)(n->input[0]))->id == CONSTANT_ID)
+					{
+						int consttype;
+						std::string conststr;
+						GetConstantValueString(((SynthNode*)(n->input[0])), conststr, consttype, n, blobVec);
+						if (consttype > 0)
+						{
+							if (conststr == "0x0000,0x0000")
+							{
+								nodeRemap[n] = (SynthNode*)(n->input[1]);
+								continue;
+							}
+						}
+					}
+				}
+				// voice constants can be optimized so that voice constants of same type with same scale values are reused
+				if (n->id > CONSTANT_ID)
+				{
+					std::string vpstr;
+					GetVoiceParamValueString(n, vpstr);
+					std::map<std::string, SynthNode*>::iterator it = uniqueVoiceParamMap.find(vpstr);
+					if (it == uniqueVoiceParamMap.end())
+					{
+						uniqueVoiceParamMap[vpstr] = n;
+					}
+					else
+					{
+						nodeRemap[n] = it->second;
+						continue;
+					}
+				}
+				if (n->isGlobal)
+					groupedNodes[groupid].first.push_back(n);
+				else
+					groupedNodes[groupid].second.push_back(n);
+			}
+			// all other nodes just refer to themselves
+			nodeRemap[n] = n;
+		}
+	}
+
+	// 3. calculate packed node group offsets for output
+	std::map<SynthNode*, int> nodeOffsets;
+	std::map<SynthNode*, int> nodeOffsetsBlob;
+	int MaxOffset = 0;
+	int MaxOffsetBlob = 0;
+	for (int i = 0; i < MAXIMUM_ID; i++)
+	{
+		if (groupedNodes.find(i) != groupedNodes.end())
+		{
+			for (int gl = 0; gl < 2; gl++)
+			{
+				std::vector<SynthNode*>* nlist;
+				if (gl == 0)
+					nlist = &(groupedNodes[i].first);
+				else
+					nlist = &(groupedNodes[i].second);
+
+				for (int j = 0; j < (int)(*nlist).size(); j++)
+				{
+					SynthNode* curNode = (*nlist)[j];
+					nodeOffsets[curNode] = MaxOffset;
+					nodeOffsetsBlob[curNode] = MaxOffsetBlob;
+
+					// delta is 1 for the nodeinfo plus the number of inputs
+					int deltaOffset = 1 + curNode->numInputs;
+
+					// mode constants if they exist, they are the last input
+					// for 2 byte modes we simply inline the value at that index directly instead of referring to some mode constant offset
+					// for voicemanager and samplerec we need a 4 byte mode, so one additional index needs to exist for inlining
+					if (curNode->id == VOICEMANAGER_ID || curNode->id == SAMPLEREC_ID)
+						deltaOffset = 1 + curNode->numInputs + 1;
+
+					// special case for triggerseq where the patterns are given as input after the mode
+					if (curNode->id == TRIGGERSEQ_ID)
+						deltaOffset = 1 + NodeMaxGUISignals[curNode->id] + 1 + 16;
+
+					// reduce adsr inputs when useADSRTriggerGate not used
+					if (curNode->id == ADSR_ID && features.useADSRTriggerGate == false)
+					{
+						deltaOffset -= 2;
+						// don't do it for blob export
+						MaxOffsetBlob += 2;
+					}
+
+					// calc offset for formula nodes (formula is stored in place as "mode")
+					if (curNode->id == FORMULA_ID)
+					{
+						int comsize = GetFormulaLength(curNode);
+						if (comsize & 1)
+							comsize++;
+						deltaOffset += comsize /= 2;
+					}
+
+					MaxOffset += deltaOffset;
+					MaxOffsetBlob += deltaOffset;
+				}
+			}
+		}
+	}
+
+#define ALIGN_CONSTANTS
+#define GROUP_BASE_CONSTANTS
+
+#ifdef ALIGN_CONSTANTS
+	// align constants to a 256-byte boundary
+	int ConstAlignPadding = 0;
+	int ConstAlignPaddingBlob = 0;
+	while ((MaxOffset & 0x0f) != 0)
+	{
+		MaxOffset++;
+		ConstAlignPadding++;
+	}
+	while ((MaxOffsetBlob & 0x0f) != 0)
+	{
+		MaxOffsetBlob++;
+		ConstAlignPaddingBlob++;
+	}
+#endif
+	int MonoConstantOffset = MaxOffset;
+	int MonoConstantOffsetBlob = MaxOffsetBlob;
+#ifdef GROUP_BASE_CONSTANTS
+	// always put 0.0, 0.25, 0.5, 0.75, 1.0 right in front
+	MaxOffset += 10;
+	MaxOffsetBlob += 10;
+#endif
+	for (std::map<std::string, SynthNode*>::iterator it = uniqueConstantMap[1].begin(); it != uniqueConstantMap[1].end(); it++)
+	{
+#ifdef GROUP_BASE_CONSTANTS
+		if (it->first == "0x0000,0x0000") { nodeOffsets[it->second] = MonoConstantOffset;     nodeOffsetsBlob[it->second] = MonoConstantOffsetBlob; }
+		else if (it->first == "0x3e80,0x0000") { nodeOffsets[it->second] = MonoConstantOffset + 2; nodeOffsetsBlob[it->second] = MonoConstantOffsetBlob + 2; }
+		else if (it->first == "0x3f00,0x0000") { nodeOffsets[it->second] = MonoConstantOffset + 4; nodeOffsetsBlob[it->second] = MonoConstantOffsetBlob + 4; }
+		else if (it->first == "0x3f40,0x0000") { nodeOffsets[it->second] = MonoConstantOffset + 6; nodeOffsetsBlob[it->second] = MonoConstantOffsetBlob + 6; }
+		else if (it->first == "0x3f80,0x0000") { nodeOffsets[it->second] = MonoConstantOffset + 8; nodeOffsetsBlob[it->second] = MonoConstantOffsetBlob + 8; }
+		else
+#endif
+		{
+			nodeOffsets[it->second] = MaxOffset;
+			MaxOffset += 2;
+			nodeOffsetsBlob[it->second] = MaxOffsetBlob;
+			MaxOffsetBlob += 2;
+		}
+	}
+	int StereoConstantOffset = MaxOffset;
+	int StereoConstantOffsetBlob = MaxOffsetBlob;
+	for (std::map<std::string, SynthNode*>::iterator it = uniqueConstantMap[2].begin(); it != uniqueConstantMap[2].end(); it++)
+	{
+		nodeOffsets[it->second] = MaxOffset;
+		MaxOffset += 4;
+		nodeOffsetsBlob[it->second] = MaxOffsetBlob;
+		MaxOffsetBlob += 4;
+	}
+
+	// write export patch header file
+	FILE* expFile = fopen(filename.c_str(), "w");
+	std::string blobFile = filename + ".blob";
+	FILE* expBlob = fopen(blobFile.c_str(), "wb");
+
+	fprintf(expFile, "#ifndef _64K2PATCH_H_\n");
+	fprintf(expFile, "#define _64K2PATCH_H_\n");
+
+	fprintf(expFile, "#ifdef INCLUDE_NODES\n\n");
+	#define NID(__u, __n, __g) ((((WORD)__g) << 15) | (((WORD)__n) << 8) | ((WORD)__u))
+	fprintf(expFile, "#define NID(__u, __n, __g) ((((WORD)__g) << 15) | (((WORD)__n) << 8) | ((WORD)__u))\n");
+	fprintf(expFile, "#define CONST1(__h1, __l1) __l1, __h1\n");
+	fprintf(expFile, "#define CONST2(__h1, __l1, __h2, __l2) __l1, __h1, __l2, __h2\n\n");
+
+	fprintf(expFile, "enum NODE_NAMES\n");
+	fprintf(expFile, "{\n");
+	for (int i = 0; i < MAXIMUM_ID; i++)
+	{
+		int ncount = 0;
+		if (groupedNodes.find(i) != groupedNodes.end())
+		{
+			ncount = (int)(groupedNodes[i].first.size() + groupedNodes[i].second.size());
+		}
+		fprintf(expFile, "\t%s, // %d\n", NodeNames[i], ncount);
+	}
+	fprintf(expFile, "};\n\n");
+
+	fprintf(expFile, "static DWORD SynthMonoConstantOffset = %d;\n", MonoConstantOffset);
+	fprintf(expFile, "static DWORD SynthStereoConstantOffset = %d;\n", StereoConstantOffset);
+	fprintf(expFile, "static DWORD SynthMaxOffset = %d;\n\n", MaxOffset);
+
+	fwrite(&MonoConstantOffsetBlob, 4, 1, expBlob);
+	fwrite(&StereoConstantOffsetBlob, 4, 1, expBlob);
+	fwrite(&MaxOffsetBlob, 4, 1, expBlob);
+
+	fprintf(expFile, "static WORD SynthNodes[] = \n");
+	fprintf(expFile, "{\n");
+
+	// write nodes
+	for (int i = 0; i < MAXIMUM_ID; i++)
+	{
+		if (groupedNodes.find(i) != groupedNodes.end())
+		{
+			for (int gl = 0; gl < 2; gl++)
+			{
+				std::vector<SynthNode*>* nlist;
+				if (gl == 0)
+					nlist = &(groupedNodes[i].first);
+				else
+					nlist = &(groupedNodes[i].second);
+
+				for (int j = 0; j < (int)(*nlist).size(); j++)
+				{
+					SynthNode* node = (*nlist)[j];
+					int nid = node->id;
+					// a scale is a mul
+					if (nid == SCALE_ID)
+						nid = MUL_ID;
+
+					// the number of inputs depends on the node type
+					// in intro mode we inline the mode constants of nodes instead of referring to mode constants
+					// exception there is VOICEMANAGER because it needs 4 bytes for the mode
+					int numInputs;
+					int preSkip = 0;
+					if (nid == MULTIADD_ID || nid == NOTECONTROLLER_ID)
+					{
+						numInputs = node->numInputs;
+					}
+					else
+					{
+						numInputs = NodeMaxGUISignals[nid];
+						// some special cases
+						if (nid > CONSTANT_ID || nid == OSRAND_ID || nid == MIDISIGNAL_ID)
+							numInputs = 1;
+						if (nid == GMDLS_ID)
+							numInputs = 0;
+
+						// reduce adsr inputs when useADSRTriggerGate not used
+						if (nid == ADSR_ID && features.useADSRTriggerGate == false)
+							preSkip = 2;
+					}
+
+					// remove preskip inputs from number of inputs
+					fprintf(expFile, "\tNID(%s,%d,%d),", NodeNames[i], numInputs - preSkip, node->isGlobal);
+					// no preskip for blob (always full feature)
+					int blob4 = NID(i, numInputs, node->isGlobal);
+					fwrite(&blob4, 2, 1, expBlob);
+
+					for (int k = 0; k < numInputs; k++)
+					{
+						// get referenced node and write actual offset
+						SynthNode* refNode = (SynthNode*)(node->input[k]);
+						if (refNode->id != CONSTANT_ID)
+						{
+							// resolve remapped nodes
+							while (refNode != nodeRemap[refNode])
+								refNode = nodeRemap[refNode];
+							// no export for preskipped inputs for .h export
+							if (k >= preSkip)
+								fprintf(expFile, "0x%04x,", nodeOffsets[refNode]);
+							// export all inputs for blob
+							blob4 = nodeOffsetsBlob[refNode];
+							fwrite(&blob4, 2, 1, expBlob);
+						}
+						// search constant by value in the available constant maps
+						else
+						{
+							int refOffset = 0;
+							int refOffsetBlob = 0;
+
+							int consttype;
+							std::string conststr;
+							GetConstantValueString(refNode, conststr, consttype, NULL, blobVec);
+
+							std::map<std::string, SynthNode*>::iterator it = uniqueConstantMap[consttype].find(conststr);
+							if (it != uniqueConstantMap[consttype].end())
+							{
+								refOffset = nodeOffsets[it->second];
+								refOffsetBlob = nodeOffsetsBlob[it->second];
+							}
+
+							if (refOffset && k >= preSkip) // no export for preskipped inputs for .h export
+								fprintf(expFile, "0x%04x,", refOffset);
+							else
+								bool error = true;
+
+							if (refOffsetBlob)
+								fwrite(&refOffsetBlob, 2, 1, expBlob);
+							else
+								bool error = true;
+						}
+					}
+
+					// add inline mode values if needed
+					if (node->numInputs > numInputs)
+					{
+						// get referenced node
+						SynthNode* refNode = (SynthNode*)(node->input[numInputs]);
+
+						int consttype;
+						std::string conststr;
+						GetConstantValueString(refNode, conststr, consttype, node, blobVec);
+
+						// write mode value
+						fprintf(expFile, "%s,", conststr.c_str());
+						fwrite(&blobVec[0], 2, blobVec.size(), expBlob);
+
+						// add triggerseq pattern words inline after the mode word
+						if (nid == TRIGGERSEQ_ID)
+						{
+							std::string tsstr;
+							GetTriggerSeqValueString(node, tsstr, blobVec);
+							fprintf(expFile, "%s", tsstr.c_str());
+							fwrite(&blobVec[0], 2, blobVec.size(), expBlob);
+						}
+					}
+
+					// add formula values in place
+					if (nid == FORMULA_ID)
+					{
+						std::string tsstr;
+						GetFormulaValueString(node, tsstr, blobVec);
+						fprintf(expFile, "%s", tsstr.c_str());
+						fwrite(&blobVec[0], 2, blobVec.size(), expBlob);
+					}
+
+					fprintf(expFile, " // 0x%04x\n", nodeOffsets[node]);
+				}
+			}
+		}
+	}
+	fprintf(expFile, "// total node data size: %d Bytes\n", MonoConstantOffset*2);
+
+	int constsize = 0;
+#ifdef ALIGN_CONSTANTS
+	fprintf(expFile, "\t");
+	// add padding words
+	for (int i = 0; i < ConstAlignPadding; i++)
+	{
+		fprintf(expFile, "0x0000,");
+		constsize += 2;
+	}
+	fprintf(expFile, "\n// total constant padding bytes: %d\n", ConstAlignPadding*2);
+	// add padding words to blob
+	for (int i = 0; i < ConstAlignPaddingBlob; i++)
+	{
+		WORD padzero = 0;
+		fwrite(&padzero, 2, 1, expBlob);
+	}
+#endif
+	// write mono constants
+#ifdef GROUP_BASE_CONSTANTS
+	DWORD bconst;
+	// always put 0.0, 0.25, 0.5, 0.75, 1.0 right in front
+	fprintf(expFile, "\tCONST1(0x0000,0x0000), // 0x%04x , %f\n", MonoConstantOffset, 0.0f);
+	bconst = 0; fwrite(&bconst, 4, 1, expBlob);
+	constsize += 4;
+	fprintf(expFile, "\tCONST1(0x3e80,0x0000), // 0x%04x , %f\n", MonoConstantOffset + 2, 0.25f);
+	bconst = 0x3e800000; fwrite(&bconst, 4, 1, expBlob);
+	constsize += 4;
+	fprintf(expFile, "\tCONST1(0x3f00,0x0000), // 0x%04x , %f\n", MonoConstantOffset + 4, 0.5f);
+	bconst = 0x3f000000; fwrite(&bconst, 4, 1, expBlob);
+	constsize += 4;
+	fprintf(expFile, "\tCONST1(0x3f40,0x0000), // 0x%04x , %f\n", MonoConstantOffset + 6, 0.75f);
+	bconst = 0x3f400000; fwrite(&bconst, 4, 1, expBlob);
+	constsize += 4;
+	fprintf(expFile, "\tCONST1(0x3f80,0x0000), // 0x%04x , %f\n", MonoConstantOffset + 8, 1.0f);
+	bconst = 0x3f800000; fwrite(&bconst, 4, 1, expBlob);
+	constsize += 4;
+#endif
+	for (std::map<std::string, SynthNode*>::iterator it = uniqueConstantMap[1].begin(); it != uniqueConstantMap[1].end(); it++)
+	{
+#ifdef GROUP_BASE_CONSTANTS
+		// skip the numbers already written above
+		if ((it->first == "0x0000,0x0000") || (it->first == "0x3e80,0x0000") || (it->first == "0x3f00,0x0000") || (it->first == "0x3f40,0x0000") || (it->first == "0x3f80,0x0000"))
+			continue;
+#endif
+		int consttype;
+		std::string conststr;
+		GetConstantValueString(it->second, conststr, consttype, NULL, blobVec);
+		fprintf(expFile, "\tCONST1(%s), // 0x%04x , %f\n", conststr.c_str(), nodeOffsets[it->second], (float)(it->second->out.d[0]));
+		fwrite(&blobVec[0], 2, blobVec.size(), expBlob);
+		constsize += 4;
+	}
+	// write stereo constants
+	for (std::map<std::string, SynthNode*>::iterator it = uniqueConstantMap[2].begin(); it != uniqueConstantMap[2].end(); it++)
+	{
+		int consttype;
+		std::string conststr;
+		GetConstantValueString(it->second, conststr, consttype, NULL, blobVec);
+		fprintf(expFile, "\tCONST2(%s), // 0x%04x , %f , %f\n", conststr.c_str(), nodeOffsets[it->second], (float)(it->second->out.d[0]), (float)(it->second->out.d[1]));
+		fwrite(&blobVec[0], 2, blobVec.size(), expBlob);
+		constsize += 8;
+	}
+
+	fprintf(expFile, "// total constants data size: %d Bytes\n", constsize);
+
+	// store arpeggiator sequences if available
+	int arpTotalSize = 0;
+	if (features.useARP)
+	{
+		fprintf(expFile, "\t// arpggiator sequences\n");
+		fprintf(expFile, "\t0x%04x,\n", (int)features.uniqueArpSequenceList.size());
+		WORD arpblob = (WORD)features.uniqueArpSequenceList.size();
+		fwrite(&arpblob, 2, 1, expBlob);
+		arpTotalSize += 2;
+		for (int i = 0; i < (int)features.uniqueArpSequenceList.size(); i++)
+		{
+			fprintf(expFile, "\t%s\n", features.uniqueArpSequenceList[i].c_str());
+			arpTotalSize += 33 * 2;
+		}
+		fwrite(&features.uniqueArpSequenceBlobList[0], 2, features.uniqueArpSequenceBlobList.size(), expBlob);
+		fprintf(expFile, "// total arp sequence data size: %d Bytes\n", arpTotalSize);
+	}
+	else
+	{
+		// only binary blob needs to write count, header export will ifdef this out in player
+		WORD arpblob = 0;
+		fwrite(&arpblob, 2, 1, expBlob);
+	}
+
+	// store special data for global nodes (e.g. sapi text) if available
+	int specialTotalSize = 0;
+	if (features.useSpecialData)
+	{
+		std::list<std::pair<void*, SynthNode*> > specialDataList;
+		int specialDataCount = 0;
+		// loop all special data types
+		for (std::map<int, std::map<void*, SynthNode*> >::iterator itg = features.specialDataMap.begin(); itg != features.specialDataMap.end(); itg++)
+		{
+			// sort each type by offset of referenced node
+			std::map<int, std::pair<void*, SynthNode*> > sortedSpecialData;
+			for (std::map<void*, SynthNode*>::iterator it = itg->second.begin(); it != itg->second.end(); it++)
+			{
+				sortedSpecialData[nodeOffsets[it->second]] = std::make_pair(it->first, it->second);
+				specialDataCount++;
+			}
+			// insert into the one list
+			for (std::map<int, std::pair<void*, SynthNode*> >::iterator it = sortedSpecialData.begin(); it != sortedSpecialData.end(); it++)
+			{
+				specialDataList.push_back(it->second);
+			}
+		}
+		fprintf(expFile, "\t// special data\n");
+		fprintf(expFile, "\t0x%04x,\n", specialDataCount);
+		fwrite(&specialDataCount, 2, 1, expBlob);
+		specialTotalSize += 2;
+		for (std::list<std::pair<void*, SynthNode*> >::iterator it = specialDataList.begin(); it != specialDataList.end(); it++)
+		{
+			if (it->second->id == SAPI_ID)
+				fprintf(expFile, "\t// SAPI text\n");
+
+			// write the node which this special data belongs to
+			fprintf(expFile, "\t0x%04x, ", nodeOffsets[it->second]);
+			WORD snoffs = (WORD)nodeOffsetsBlob[it->second];
+			fwrite(&snoffs, 2, 1, expBlob);
+			specialTotalSize += 2;
+
+			// get the data to store
+			char* storeData = (char*)"";
+			if (it->first)
+				storeData = (char*)(it->first);
+
+			DWORD datalength = 0;
+			// for sapi it's the string length plus terminating 0
+			if (it->second->id == SAPI_ID)
+				datalength = (DWORD)(strlen(storeData) + 1);
+
+			// write length of data to come in bytes
+			DWORD actlength = datalength;
+			if (actlength & 1)
+				actlength++;
+			fprintf(expFile, "0x%04x, ", actlength);
+			fwrite(&actlength, 2, 1, expBlob);
+			specialTotalSize += 2;
+
+			// convert to hex word string and write
+			WORD* buf = (WORD*)storeData;
+			for (int j = 0; j < (int)(datalength / 2); j++)
+			{
+				fprintf(expFile, "0x%04x,", *buf);
+				fwrite(buf, 2, 1, expBlob);
+				specialTotalSize += 2;
+				buf++;
+			}
+			// write an additional word if datalength is odd, so lowbyte contains the last data byte
+			if (datalength & 1)
+			{
+				WORD padding = 0;
+				padding += *((BYTE*)(buf));
+				fprintf(expFile, "0x%04x,", padding);
+				fwrite(&padding, 2, 1, expBlob);
+				specialTotalSize += 2;
+			}
+			fprintf(expFile, "\n");
+		}
+		fprintf(expFile, "// total special data size: %d Bytes\n", specialTotalSize);
+	}
+	else
+	{
+		// only binary blob needs to write count, header export will ifdef this out in player
+		WORD sdblob = 0;
+		fwrite(&sdblob, 2, 1, expBlob);
+	}
+
+	// store compressed samples if available
+	int compTotalSize = 0;
+	if (features.useStoredSamples)
+	{
+		fprintf(expFile, "\t// compressed samples\n");
+		std::map<int, int> writtenTables;
+
+		for (int nt = 0; nt < 2; nt++)
+		{
+			int type = SAMPLER_ID;
+			if (nt == 1)
+				type = WTFOSC_ID;
+			if (groupedNodes.find(type) == groupedNodes.end()) // skip if neither SAMPLER nor WTFOSC are used
+				continue;
+			for (int gl = 0; gl < 2; gl++)
+			{
+				std::vector<SynthNode*>* nlist;
+				if (gl == 0)
+					nlist = &(groupedNodes[type].first);
+				else
+					nlist = &(groupedNodes[type].second);
+
+				for (int i = 0; i < (int)(*nlist).size(); i++)
+				{
+					int table;
+					bool stored = false;
+					if (type == SAMPLER_ID)
+					{
+						stored = ((*nlist)[i]->input[SAMPLER_MODE]->i[0] & SAMPLER_MODEMASK) == SAMPLER_STORED;
+						table = ((*nlist)[i]->input[SAMPLER_MODE]->i[0] & SAMPLER_SRCMASK) >> SAMPLER_SRCSHIFT;
+					}
+					if (type == WTFOSC_ID)
+					{
+						stored = ((*nlist)[i]->input[WTFOSC_MODE]->i[0] & WTFOSC_MODEMASK) == WTFOSC_STORED;
+						table = ((*nlist)[i]->input[WTFOSC_MODE]->i[0] & WTFOSC_SRCMASK) >> WTFOSC_SRCSHIFT;
+					}
+
+					// write table only once, and only if the mode is actually set to stored samples
+					if (stored && (writtenTables.find(table) == writtenTables.end()))
+					{
+						fprintf(expFile, "\t// %s\n", SynthGlobalState.RawWaveFileName[table].c_str());
+						fprintf(expFile, "\t0x%04x, ", table);
+						fwrite(&table, 2, 1, expBlob);
+						compTotalSize += 2;
+						int csr = SynthGlobalState.CompSampleRate[table];
+						fprintf(expFile, "0x%04x,0x%04x, ", (csr >> 0) & 0xffff, (csr >> 16) & 0xffff);
+						fwrite(&csr, 4, 1, expBlob);
+						compTotalSize += 4;
+						int avg = SynthGlobalState.CompAvgBytes[table];
+						fprintf(expFile, "0x%04x,0x%04x, ", (avg >> 0) & 0xffff, (avg >> 16) & 0xffff);
+						fwrite(&avg, 4, 1, expBlob);
+						compTotalSize += 4;
+						int wts = SynthGlobalState.CompWaveTableSize[table];
+						fprintf(expFile, "0x%04x,0x%04x,\n\t", (wts >> 0) & 0xffff, (wts >> 16) & 0xffff);
+						fwrite(&wts, 4, 1, expBlob);
+						compTotalSize += 4;
+						WORD* buf = (WORD*)SynthGlobalState.CompWaveTable[table];
+						for (int j = 0; j < (int)(wts / 2); j++)
+						{
+							fprintf(expFile, "0x%04x,", *buf);
+							fwrite(buf, 2, 1, expBlob);
+							compTotalSize += 2;
+							buf++;
+						}
+						// write an additional word if wts is odd
+						if (wts & 1)
+						{
+							WORD padding = 0;
+							padding += *((BYTE*)(buf));
+							fprintf(expFile, "0x%04x,", padding);
+							fwrite(&padding, 2, 1, expBlob);
+							compTotalSize += 2;
+						}
+
+						writtenTables[table] = 1;
+						fprintf(expFile, "\n");
+					}
+				}
+			}
+		}
+		fprintf(expFile, "// total compressed waves data size: %d Bytes\n", compTotalSize);
+	}
+
+	// mark end of stream
+	fprintf(expFile, "\t0x%04x\n", 0xdead);
+	WORD eos = 0xdead;
+	fwrite(&eos, 2, 1, expBlob);
+
+	fprintf(expFile, "};\n");
+	fprintf(expFile, "// total patch data size: %d Bytes\n\n", MaxOffset * 2 + arpTotalSize + specialTotalSize + compTotalSize + 2);
+
+	fprintf(expFile, "#endif // INCLUDE_NODES\n\n");
+
+	// write the skip defines for the unused nodes
+	fprintf(expFile, "// unused nodes\n");
+	for (int i = 0; i < MAXIMUM_ID; i++)
+	{
+		if ((i != CONSTANT_ID) && (groupedNodes.find(i) == groupedNodes.end()))
+		{
+			fprintf(expFile, "#define %s_SKIP\n", NodeNames[i]);
+		}
+	}
+	// additional defines from features
+	if (!features.useSpecialData)
+		fprintf(expFile, "#define SPECIALDATA_SKIP\n");
+	if (!features.useStoredSamples)
+		fprintf(expFile, "#define STOREDSAMPLES_SKIP\n");
+	if (!features.useAftertouch)
+		fprintf(expFile, "#define SONG_AFTERTOUCH_SKIP\n");
+	if (!features.useARP)
+		fprintf(expFile, "#define VOICEMANAGER_ARP_SKIP\n");
+	if (!features.useGlide)
+		fprintf(expFile, "#define VOICEMANAGER_GLIDE_SKIP\n");
+	if (!features.useADSRTriggerGate)
+		fprintf(expFile, "#define ADSR_SKIP_TRIGGER_GATE\n");
+	if (!features.useADSRDBGain)
+		fprintf(expFile, "#define ADSR_SKIP_DBGAIN\n");
+	if (!features.useADSRExp)
+		fprintf(expFile, "#define ADSR_SKIP_EXP\n");
+	if (!features.useLFOPolarity)
+		fprintf(expFile, "#define LFO_SKIP_POLARITY\n");
+	if (!features.useOSCFrequency)
+		fprintf(expFile, "#define OSCILLATOR_SKIP_FREQUENCY\n");
+	if (!features.useWaveSINE)
+		fprintf(expFile, "#define WAVE_SKIP_SINE\n");
+	if (!features.useWaveSAW)
+		fprintf(expFile, "#define WAVE_SKIP_SAW\n");
+	if (!features.useWavePULSE)
+		fprintf(expFile, "#define WAVE_SKIP_PULSE\n");
+	if (!features.useWaveAATRISAW)
+		fprintf(expFile, "#define WAVE_SKIP_AATRISAW\n");
+	if (!features.useWaveAAPULSE)
+		fprintf(expFile, "#define WAVE_SKIP_AAPULSE\n");
+	if (!features.useWaveAABITRISAW)
+		fprintf(expFile, "#define WAVE_SKIP_AABITRISAW\n");
+	if (!features.useWaveAABIPULSE)
+		fprintf(expFile, "#define WAVE_SKIP_AABIPULSE\n");
+	if (!features.useWaveRPSINE)
+		fprintf(expFile, "#define WAVE_SKIP_RPSINE\n");
+	if (!features.useWavePNOISE)
+		fprintf(expFile, "#define WAVE_SKIP_PNOISE\n");
+	if (!features.useWaveAATRISAWSEQ)
+		fprintf(expFile, "#define WAVE_SKIP_AATRISAWSEQ\n");
+	if (!features.useWaveSINESEQ)
+		fprintf(expFile, "#define WAVE_SKIP_SINESEQ\n");
+	if (!features.useNGBrown)
+		fprintf(expFile, "#define NOISEGEN_SKIP_BROWN\n");
+	if (!features.useFrequencyMap)
+		fprintf(expFile, "#define FREQUENCY_MAP_SKIP\n");
+	if (!features.useBQFLP)
+		fprintf(expFile, "#define BQFILTER_SKIP_LOWPASS\n");
+	if (!features.useBQFHP)
+		fprintf(expFile, "#define BQFILTER_SKIP_HIGHPASS\n");
+	if (!features.useBQFBP)
+		fprintf(expFile, "#define BQFILTER_SKIP_BANDPASS\n");
+	if (!features.useBQFBPBW)
+		fprintf(expFile, "#define BQFILTER_SKIP_BANDPASSBW\n");
+	if (!features.useBQFNOTCH)
+		fprintf(expFile, "#define BQFILTER_SKIP_NOTCH\n");
+	if (!features.useBQFAP)
+		fprintf(expFile, "#define BQFILTER_SKIP_ALLPASS\n");
+	if (!features.useBQFPEAK)
+		fprintf(expFile, "#define BQFILTER_SKIP_PEAK\n");
+	if (!features.useBQFLSHELF)
+		fprintf(expFile, "#define BQFILTER_SKIP_LOWSHELF\n");
+	if (!features.useBQFHSHELF)
+		fprintf(expFile, "#define BQFILTER_SKIP_HIGHSHELF\n");
+	if (!features.useBQFRES)
+		fprintf(expFile, "#define BQFILTER_SKIP_RESONANCE\n");
+	if (!features.useBQFRESN)
+		fprintf(expFile, "#define BQFILTER_SKIP_RESONANCENORM\n");
+	if (!features.useDSTOD)
+		fprintf(expFile, "#define DISTORTION_SKIP_OVERDRIVE\n");
+	if (!features.useDSTDAMP)
+		fprintf(expFile, "#define DISTORTION_SKIP_DAMP\n");
+	if (!features.useDSTQUANT)
+		fprintf(expFile, "#define DISTORTION_SKIP_QUANT\n");
+	if (!features.useDSTLIMIT)
+		fprintf(expFile, "#define DISTORTION_SKIP_LIMIT\n");
+	if (!features.useDSTASYM)
+		fprintf(expFile, "#define DISTORTION_SKIP_ASYM\n");
+	if (!features.useDSTSIN)
+		fprintf(expFile, "#define DISTORTION_SKIP_SIN\n");
+	if (!features.useDLAP)
+		fprintf(expFile, "#define DELAY_SKIP_ALLPASS\n");
+	if (!features.useDLBPM)
+		fprintf(expFile, "#define DELAY_SKIP_BPMSYNC\n");
+	if (!features.useDLS)
+		fprintf(expFile, "#define DELAY_SKIP_SHORT\n");
+	if (!features.useDLM)
+		fprintf(expFile, "#define DELAY_SKIP_MIDDLE\n");
+	if (!features.useDLL)
+		fprintf(expFile, "#define DELAY_SKIP_LONG\n");
+	if (!features.useDLNM)
+		fprintf(expFile, "#define DELAY_SKIP_NOTEMAP\n");
+	if (!features.useDLNM2)
+		fprintf(expFile, "#define DELAY_SKIP_NOTEMAP2\n");
+	if (!features.useSMPLoop)
+		fprintf(expFile, "#define SAMPLER_SKIP_LOOP\n");
+	if (!features.useWTFReduceClick)
+		fprintf(expFile, "#define WTFOSC_SKIP_REDUCECLICK\n");
+	if (!features.useGLTS)
+		fprintf(expFile, "#define GLITCH_SKIP_TAPESTOP\n");
+	if (!features.useGLRT)
+		fprintf(expFile, "#define GLITCH_SKIP_RETRIGGER\n");
+	if (!features.useGLSH)
+		fprintf(expFile, "#define GLITCH_SKIP_SHUFFLE\n");
+	if (!features.useGLREV)
+		fprintf(expFile, "#define GLITCH_SKIP_REVERSE\n");
+	if (!features.useSNHSM)
+		fprintf(expFile, "#define SNH_SKIP_SNHSMOOTH\n");
+
+	// for formula just write out the used op ids in a comment
+	if (groupedNodes.find(FORMULA_ID) != groupedNodes.end())
+	{
+		std::map<int, int> ops;
+		for (int gl = 0; gl < 2; gl++)
+		{
+			std::vector<SynthNode*>* nlist;
+			if (gl == 0)
+				nlist = &(groupedNodes[FORMULA_ID].first);
+			else
+				nlist = &(groupedNodes[FORMULA_ID].second);
+
+			for (int i = 0; i < (int)(*nlist).size(); i++)
+			{
+				BYTE* cmdbuf = (BYTE*)(SynthGlobalState.SpecialDataPointer[(*nlist)[i]->valueOffset]);
+				BYTE* command = cmdbuf;
+				while (*command != FORMULA_DONE)
+				{
+					ops[*command] = 1;
+					if (*command == FORMULA_CMD_CONSTANT)
+						command += 4;
+					else
+						command++;
+				}
+			}
+		}
+		fprintf(expFile, "// Used Formula OPs: ");
+		for (std::map<int, int>::iterator it = ops.begin(); it != ops.end(); it++)
+		{
+			fprintf(expFile, "%2d, ", it->first);
+		}
+		fprintf(expFile, "\n");
+	}
+
+	fprintf(expFile, "#endif // _64K2PATCH_H_\n");
+
+	fclose(expFile);
+	fclose(expBlob);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
