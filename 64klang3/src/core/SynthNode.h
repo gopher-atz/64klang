@@ -167,6 +167,10 @@ enum NodeIDs
 	VOICE_GATE_ID,
 	VOICE_AFTERTOUCH_ID,
 
+	// vsti specific
+#ifdef COMPILE_VSTI
+	SIGNAL_VISUALIZER_ID,
+#endif
 	MAXIMUM_ID
 };
 
@@ -1355,6 +1359,42 @@ enum VOICEPARAM_INPUT
 	VOICEPARAM_MAX_GUI_SIGNALS = 0
 };
 void SYNTHCALL VOICEPARAM_tick(SynthNode* n);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#ifdef COMPILE_VSTI
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SIGNAL_VISUALIZER node
+// customMem layout (all DWORD/float aliased):
+//   [0] = write_pos (uint32, ring index)
+//   [1] = pkL (float, peak left)
+//   [2] = pkR (float, peak right)
+//   [3] = hold_ctr_L (uint32, samples remaining in peak hold)
+//   [4] = hold_ctr_R (uint32)
+//   [5..7] = reserved
+//   [8 .. 8 + SIGVIZ_BUF_SIZE*2 - 1] = ring buffer (L,R interleaved floats)
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#define SIGVIZ_BUF_SIZE  4096
+#define SIGVIZ_HEADER_DW 8
+
+enum SIGNAL_VISUALIZER_INPUT
+{
+	SIGNAL_VISUALIZER_IN = 0,
+	SIGNAL_VISUALIZER_MODE,
+	SIGNAL_VISUALIZER_MAX,
+	SIGNAL_VISUALIZER_REQ_GUI_SIGNALS = 1,
+	SIGNAL_VISUALIZER_MAX_GUI_SIGNALS = SIGNAL_VISUALIZER_MODE
+};
+
+enum SIGNAL_VISUALIZER_MODE_ENUM
+{
+	SIGNAL_VISUALIZER_VU    = 0,
+	SIGNAL_VISUALIZER_SCOPE = 1
+};
+
+void SYNTHCALL SIGNAL_VISUALIZER_init(SynthNode* n);
+void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n);
+#endif // COMPILE_VSTI
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // global synth info struct

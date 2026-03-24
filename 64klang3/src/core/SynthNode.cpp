@@ -340,12 +340,17 @@ SynthFunction NodeTickFunctions[MAXIMUM_ID] =
 	0, 0, 0, 0,
 	CONTSTANT_TICK,	
 
-	VOICEPARAM_tick, //VOICE_FREQUENCY_ID,		
-	VOICEPARAM_tick, //VOICE_NOTE_ID,		
-	VOICEPARAM_tick, //VOICE_ATTACKVELOCITY_ID,	
-	VOICEPARAM_tick, //VOICE_RELEASEVELOCITY_ID,	
-	VOICEPARAM_tick, //VOICE_TRIGGER_ID,			
-	VOICEPARAM_tick, //VOICE_GATE_ID,			
+	VOICEPARAM_tick, //VOICE_FREQUENCY_ID,
+	VOICEPARAM_tick, //VOICE_NOTE_ID,
+	VOICEPARAM_tick, //VOICE_ATTACKVELOCITY_ID,
+	VOICEPARAM_tick, //VOICE_TRIGGER_ID,
+	VOICEPARAM_tick, //VOICE_GATE_ID,
+	VOICEPARAM_tick, //VOICE_AFTERTOUCH_ID,
+	
+	// vsti specific
+#ifdef COMPILE_VSTI
+	SIGNAL_VISUALIZER_tick, //SIGNAL_VISUALIZER_ID
+#endif
 };
 
 // the id specific init functions (if any)
@@ -452,12 +457,17 @@ SynthFunction NodeInitFunctions[MAXIMUM_ID] =
 
 	0,	//CONSTANT_tick,
 
-	0,	//VOICE_FREQUENCY_ID,		
-	0,	//VOICE_NOTE_ID,		
-	0,	//VOICE_ATTACKVELOCITY_ID,	
-	0,	//VOICE_RELEASEVELOCITY_ID,	
-	0,	//VOICE_TRIGGER_ID,			
-	0,	//VOICE_GATE_ID,			
+	0,	//VOICE_FREQUENCY_ID,
+	0,	//VOICE_NOTE_ID,
+	0,	//VOICE_ATTACKVELOCITY_ID,
+	0,	//VOICE_TRIGGER_ID,
+	0,	//VOICE_GATE_ID,
+	0,	//VOICE_AFTERTOUCH_ID,
+
+	// vsti specific
+#ifdef COMPILE_VSTI
+	SIGNAL_VISUALIZER_init, //SIGNAL_VISUALIZER_ID
+#endif
 };
 
 // factors for bpm sync
@@ -4930,6 +4940,49 @@ void SYNTHCALL VOICEPARAM_tick(SynthNode* n)
 
 	n->out = INP(VOICEPARAM_SCALE) * ((sample_t*)(SynthGlobalState.CurrentVoice))[n->id - CONSTANT_ID + 2];
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SIGNAL_VISUALIZER — VSTi-only passthrough + ring buffer capture
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#ifdef COMPILE_VSTI
+void SYNTHCALL SIGNAL_VISUALIZER_init(SynthNode* n)
+{
+	DWORD total = SIGVIZ_HEADER_DW + SIGVIZ_BUF_SIZE * 2;
+	n->customMem = (DWORD*)SynthMalloc(total * sizeof(float));
+	n->customMem[0] = n->customMem[1] = n->customMem[2] =
+	n->customMem[3] = n->customMem[4] = 0;
+}
+
+void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
+{
+	NODE_STATEFUL_PROLOG;
+	NODE_CALL_INPUT(SIGNAL_VISUALIZER_IN);
+	n->out = INP(SIGNAL_VISUALIZER_IN); // passthrough
+	if (!n->customMem) return;
+
+	DWORD* dw   = n->customMem;
+	float* ring = (float*)(dw + SIGVIZ_HEADER_DW);
+	DWORD  wp   = dw[0] & (SIGVIZ_BUF_SIZE - 1);
+	float  L    = (float)n->out.d[0];
+	float  R    = (float)n->out.d[1];
+	ring[wp * 2    ] = L;
+	ring[wp * 2 + 1] = R;
+	dw[0] = wp + 1;
+
+	// VU peak hold + decay
+	float absL = L < 0.f ? -L : L;
+	float absR = R < 0.f ? -R : R;
+	float* pkL = (float*)(dw + 1);
+	float* pkR = (float*)(dw + 2);
+	const DWORD kHold = 4410; // ~100ms hold at 44100Hz
+	if (absL >= *pkL) { *pkL = absL; dw[3] = kHold; }
+	else if (dw[3] > 0) dw[3]--;
+	else *pkL *= 0.99995f;
+	if (absR >= *pkR) { *pkR = absR; dw[4] = kHold; }
+	else if (dw[4] > 0) dw[4]--;
+	else *pkR *= 0.99995f;
+}
+#endif // COMPILE_VSTI
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

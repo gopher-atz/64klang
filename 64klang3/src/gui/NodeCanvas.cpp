@@ -153,7 +153,7 @@ int NodeCanvas::effectiveInputCount(int guiIndex) const
     // signal inputs — their numInputs stores Scale/mode constants, not wiring slots.
     {
         int nt = sc->gnType(guiIndex);
-        if (nt == MIDISIGNAL_ID || nt >= CONSTANT_ID)
+        if (nt == MIDISIGNAL_ID || (nt >= CONSTANT_ID && nt != (int)SIGNAL_VISUALIZER_ID))
             return 0;
     }
     int maxSignals = sc->gnNodeMaxSignals(guiIndex);
@@ -222,7 +222,7 @@ std::string NodeCanvas::buildModeText(int guiIndex) const
 
     // Constants and OsRand: show L/R values of first parameter.
     // Constant stores its value in node->out (index -1); voice params store Scale at input[0].
-    if (nodeType == 35 || nodeType >= CONSTANT_ID) // OsRand=35, constants>=64
+    if ((nodeType == 35 || nodeType >= CONSTANT_ID) && nodeType != (int)SIGNAL_VISUALIZER_ID) // OsRand=35, constants>=64
     {
         DWORD valIdx = (nodeType == CONSTANT_ID) ? (DWORD)-1 : 0u;
         double l = sc->getInputValue((DWORD)nodeID, valIdx, 0);
@@ -1158,7 +1158,7 @@ static bool isStructuralNodeType(int type)
 // (VoiceRoot and all voice-parameter nodes with typeID > CONSTANT_ID).
 static bool isVoiceOnlyNodeType(int type)
 {
-    return type == (int)VOICEROOT_ID || type > (int)CONSTANT_ID;
+    return type == (int)VOICEROOT_ID || (type > (int)CONSTANT_ID && type != (int)SIGNAL_VISUALIZER_ID);
 }
 
 void NodeCanvas::buildClipboardFromSelection()
@@ -1385,6 +1385,8 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
     }
     if (nodeType == SAPI_ID || nodeType == FORMULA_ID)
         ph += 4.f + 72.f + 4.f + 20.f + 8.f;
+    if (nodeType == (int)SIGNAL_VISUALIZER_ID)
+        ph += 4.f + 120.f + 4.f;
 
     return { pw, ph };
 }
@@ -1575,10 +1577,10 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         if (isConstant) numParams = 1;
         // Voice param and Midi CC nodes have a Scale input at inputs[0] but numMaxGUIInputs=0,
         // so the regular loop skips it; inject one row to show the Scale knob.
-        bool isVoiceInput = (nodeType == MIDISIGNAL_ID || nodeType > CONSTANT_ID);
+        bool isVoiceInput = (nodeType == MIDISIGNAL_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID));
         if (isVoiceInput) numParams = 1;
         // Constant and voice params use -1..1 signal range; Midi CC keeps its -128..128 config range.
-        bool isSignalRange = (isConstant || nodeType > CONSTANT_ID);
+        bool isSignalRange = (isConstant || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID));
         InputDef signalRangeDef;  // used for Constant and voice params
         if (isSignalRange)
         {
@@ -1598,7 +1600,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         bool isVoiceManager = (nodeType == VOICEMANAGER_ID);
         bool isTriggerSeq   = (nodeType == TRIGGERSEQ_ID);
         bool isSAPI         = (nodeType == SAPI_ID);
-        bool isFormula      = (nodeType == FORMULA_ID);
+        bool isSigViz       = (nodeType == (int)SIGNAL_VISUALIZER_ID);
 
         // Count visible flags (for layout)
         float flagsH = 0.f;
@@ -2376,60 +2378,160 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             {
                 sc->setSAPIText((DWORD)nodeID, std::string(buf.data()));
             }
-            curY += btnH + 4.f * z;
-        }
 
-        // ── Formula: multiline text entry + Update button ──
-        if (isFormula)
-        {
-            // Lazy-init: read formula text from core on first display
-            if (textEditBuffers.find(nodeID) == textEditBuffers.end())
-            {
-                std::string txt = sc->getFormulaText((DWORD)nodeID);
-                auto& arr = textEditBuffers[nodeID];
-                arr.fill(0);
-                txt.copy(arr.data(), std::min(txt.size(), arr.size() - 1));
-            }
-            auto& buf = textEditBuffers[nodeID];
-
-            float textAreaH = 72.f * z;
-            float btnH      = 20.f * z;
-            float btnW      = 70.f * z;
-
-            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
-            curY += 4.f * z;
-
-            ImGui::SetCursorScreenPos(ImVec2(px + 4.f*z, curY));
-            ImGui::PushFont(pickFont(fontSize));
-            ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
-            std::string textId = "##formulatext" + std::to_string(nodeID);
-            ImGui::InputTextMultiline(textId.c_str(), buf.data(), buf.size(),
-                                      ImVec2(pw - 8.f*z, textAreaH));
-            ImGui::SetWindowFontScale(1.f);
-            ImGui::PopFont();
-            curY += textAreaH + 4.f * z;
-
-            float btnX = px + pw - btnW - 4.f*z;
-            ImVec2 btnMin(btnX, curY);
-            ImVec2 btnMax(btnX + btnW, curY + btnH);
-            dl->AddRectFilled(btnMin, btnMax, IM_COL32(50, 140, 50, 255));
+            // "Paste Text" button — left-aligned, same row as Update
+            float pasteBtnW = 80.f * z;
+            ImVec2 pasteMin(px + 4.f * z, curY);
+            ImVec2 pasteMax(px + 4.f * z + pasteBtnW, curY + btnH);
+            dl->AddRectFilled(pasteMin, pasteMax, IM_COL32(60, 80, 140, 255));
             if (fontSize >= 6.f)
             {
-                const char* lbl = "Update";
+                const char* lbl = "Paste Text";
                 float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, lbl).x;
                 dl->AddText(pickFont(fontSize), fontSize,
-                            ImVec2(btnMin.x + (btnW - fw)*0.5f, btnMin.y + (btnH - fontSize)*0.5f),
+                            ImVec2(pasteMin.x + (pasteBtnW - fw) * 0.5f, pasteMin.y + (btnH - fontSize) * 0.5f),
                             IM_COL32(255, 255, 255, 255), lbl);
             }
             if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
-                mousePos.y >= btnMin.y && mousePos.y <= btnMax.y)
+                mousePos.x >= pasteMin.x && mousePos.x <= pasteMax.x &&
+                mousePos.y >= pasteMin.y && mousePos.y <= pasteMax.y)
             {
-                // Pass the same text as both formula and RPN (full RPN compiler is deferred).
-                std::string txt(buf.data());
-                sc->setFormulaText((DWORD)nodeID, txt, txt);
+                const char* clip = ImGui::GetClipboardText();
+                if (clip)
+                {
+                    size_t len = std::min(strlen(clip), buf.size() - 1);
+                    memcpy(buf.data(), clip, len);
+                    buf[len] = '\0';
+                    sc->setSAPIText((DWORD)nodeID, std::string(buf.data()));
+                }
             }
+
             curY += btnH + 4.f * z;
+        }
+
+        // ── Signal Visualizer: VU meter or oscilloscope ──
+        if (isSigViz)
+        {
+            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
+            curY += 4.f * z;
+            float vizW = pw - 8.f * z;
+            float vizH = 120.f * z;
+            ImVec2 vizMin(px + 4.f * z, curY);
+            ImVec2 vizMax(vizMin.x + vizW, curY + vizH);
+            dl->AddRectFilled(vizMin, vizMax, IM_COL32(0, 0, 0, 255));
+            dl->AddRect(vizMin, vizMax, kColPanelBorder, 0.f, 0, 1.f);
+
+            int vizMode = sc->getInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE);
+            SynthNode* vizNode = sc->getNode((DWORD)nodeID);
+
+            if (vizMode == (int)SIGNAL_VISUALIZER_VU) // VU meter
+            {
+                float peakL = 0.f, peakR = 0.f;
+                if (vizNode && vizNode->customMem)
+                {
+                    peakL = *((float*)(vizNode->customMem + 1));
+                    peakR = *((float*)(vizNode->customMem + 2));
+                }
+                float rawL = (float)std::abs(sc->getNodeSignal((DWORD)nodeID, 0, -1));
+                float rawR = (float)std::abs(sc->getNodeSignal((DWORD)nodeID, 1, -1));
+                auto dbNorm = [](float amp) -> float {
+                    if (amp <= 0.f) return 0.f;
+                    float db = 20.f * std::log10f(amp);
+                    return std::max(0.f, std::min(1.f, (db + 60.f) / 60.f));
+                };
+                float normL  = dbNorm(rawL),  normR  = dbNorm(rawR);
+                float normPL = dbNorm(peakL), normPR = dbNorm(peakR);
+
+                auto drawBar = [&](float bx, float bw2, float norm, float pkNorm)
+                {
+                    const float zG = 0.80f, zY = 0.90f;
+                    float botY = vizMax.y;
+                    if (norm > 0.f)
+                    {
+                        float gH = std::min(vizH * norm, vizH * zG);
+                        dl->AddRectFilled(ImVec2(bx, botY - gH), ImVec2(bx + bw2, botY),
+                                          IM_COL32(40, 200, 40, 255));
+                    }
+                    if (norm > zG)
+                    {
+                        float yH = vizH * std::min(norm - zG, zY - zG);
+                        float yB = botY - vizH * zG;
+                        dl->AddRectFilled(ImVec2(bx, yB - yH), ImVec2(bx + bw2, yB),
+                                          IM_COL32(220, 180, 40, 255));
+                    }
+                    if (norm > zY)
+                    {
+                        float rH = vizH * (norm - zY);
+                        float rB = botY - vizH * zY;
+                        dl->AddRectFilled(ImVec2(bx, rB - rH), ImVec2(bx + bw2, rB),
+                                          IM_COL32(220, 50, 50, 255));
+                    }
+                    if (pkNorm > 0.01f)
+                    {
+                        float pY = botY - vizH * pkNorm;
+                        ImU32 pc = pkNorm < zG ? IM_COL32(40,200,40,255)
+                                 : pkNorm < zY ? IM_COL32(220,180,40,255)
+                                               : IM_COL32(220,50,50,255);
+                        dl->AddLine(ImVec2(bx, pY), ImVec2(bx + bw2, pY), pc, 1.5f);
+                    }
+                    dl->AddRect(ImVec2(bx, vizMin.y), ImVec2(bx + bw2, botY),
+                                IM_COL32(60, 60, 60, 255), 0.f, 0, 0.5f);
+                };
+                float bpad = 4.f * z;
+                float bw2  = vizW * 0.5f - bpad * 1.5f;
+                drawBar(vizMin.x + bpad,              bw2, normL, normPL);
+                drawBar(vizMin.x + vizW*0.5f + bpad*0.5f, bw2, normR, normPR);
+                if (fontSize >= 6.f)
+                {
+                    float lfsz = fontSize * 0.8f;
+                    dl->AddText(pickFont(lfsz), lfsz,
+                        ImVec2(vizMin.x + bpad + bw2*0.5f - 3.f*z, vizMax.y - lfsz - 2.f*z),
+                        IM_COL32(180,180,180,255), "L");
+                    dl->AddText(pickFont(lfsz), lfsz,
+                        ImVec2(vizMin.x + vizW*0.5f + bpad*0.5f + bw2*0.5f - 3.f*z, vizMax.y - lfsz - 2.f*z),
+                        IM_COL32(180,180,180,255), "R");
+                }
+            }
+            else // Oscilloscope
+            {
+                if (vizNode && vizNode->customMem)
+                {
+                    DWORD* dw   = vizNode->customMem;
+                    float* ring = (float*)(dw + SIGVIZ_HEADER_DW);
+                    const int DISP   = 512;
+                    const int SEARCH = 128;
+                    DWORD wp       = dw[0] & (SIGVIZ_BUF_SIZE - 1);
+                    int startSearch = (int)((int)wp - DISP - SEARCH + SIGVIZ_BUF_SIZE * 2) & (SIGVIZ_BUF_SIZE - 1);
+                    int syncPos    = startSearch;
+                    for (int si = 0; si < SEARCH; si++)
+                    {
+                        int a = (startSearch + si)     & (SIGVIZ_BUF_SIZE - 1);
+                        int b = (startSearch + si + 1) & (SIGVIZ_BUF_SIZE - 1);
+                        if (ring[a * 2] <= 0.f && ring[b * 2] > 0.f) { syncPos = b; break; }
+                    }
+                    float midY = vizMin.y + vizH * 0.5f;
+                    dl->AddLine(ImVec2(vizMin.x, midY), ImVec2(vizMax.x, midY),
+                                IM_COL32(50, 50, 50, 255), 0.5f);
+                    for (int ch = 0; ch < 2; ch++)
+                    {
+                        ImU32 col = (ch == 0) ? IM_COL32(100,180,255,220) : IM_COL32(80,220,100,200);
+                        float px0 = 0.f, py0 = 0.f;
+                        for (int si = 0; si < DISP; si++)
+                        {
+                            int idx = (syncPos + si) & (SIGVIZ_BUF_SIZE - 1);
+                            float s = ring[idx * 2 + ch];
+                            if (s >  1.f) s =  1.f;
+                            if (s < -1.f) s = -1.f;
+                            float scx = vizMin.x + (float)si / (float)(DISP - 1) * vizW;
+                            float scy = midY - s * vizH * 0.47f;
+                            if (si > 0)
+                                dl->AddLine(ImVec2(px0, py0), ImVec2(scx, scy), col, 1.f);
+                            px0 = scx; py0 = scy;
+                        }
+                    }
+                }
+            }
+            curY += vizH + 4.f * z;
         }
     }
 }
@@ -3277,6 +3379,72 @@ void NodeCanvas::render()
                 if (ImGui::MenuItem("Paste as Global"))
                 {
                     pasteNodes(true, false);
+                    ImGui::CloseCurrentPopup();
+                    showContextMenu = false;
+                }
+                ImGui::Separator();
+            }
+
+            // Signal Visualizer — wire right-click shortcut (inserts on the wire)
+            if (!wireDragInsertMode && contextWireFromID >= 0 && contextWireToID >= 0 && contextWirePinIndex >= 0)
+            {
+                if (ImGui::MenuItem("Signal Visualizer"))
+                {
+                    int channel = -2;
+                    bool isGlobal = false;
+                    if (sc)
+                    {
+                        int refID = contextWireFromID >= 0 ? contextWireFromID
+                                  : (!selectedNodeIDs.empty() ? *selectedNodeIDs.begin() : -1);
+                        if (refID >= 0)
+                        {
+                            int gi2 = findGuiIndex(refID);
+                            if (gi2 >= 0)
+                            {
+                                channel  = sc->gnChannel(gi2);
+                                isGlobal = sc->gnIsGlobal(gi2);
+                            }
+                        }
+                        bool doInsert = (contextWireFromID >= 0 && contextWireToID >= 0 &&
+                                         contextWirePinIndex >= 0);
+                        if (doInsert)
+                        {
+                            int fromGI2 = findGuiIndex(contextWireFromID);
+                            int toGI2   = findGuiIndex(contextWireToID);
+                            if (fromGI2 < 0 || toGI2 < 0)
+                                doInsert = false;
+                            else
+                            {
+                                int fromType = sc->gnType(fromGI2);
+                                int toType   = sc->gnType(toGI2);
+                                bool forbidden = (fromType == (int)VOICEROOT_ID && toType == (int)VOICEMANAGER_ID) ||
+                                                 (fromType == (int)VOICEMANAGER_ID && toType == (int)NOTECONTROLLER_ID);
+                                if (forbidden)
+                                    doInsert = false;
+                            }
+                        }
+                        sc->killVoices();
+                        SynthNode* newNode = sc->createGUINode((DWORD)SIGNAL_VISUALIZER_ID,
+                                                               (DWORD)channel,
+                                                               (DWORD)(isGlobal ? 1 : 0),
+                                                               contextMenuCanvasPos.x,
+                                                               contextMenuCanvasPos.y);
+                        if (newNode)
+                        {
+                            int newID = (int)newNode->valueOffset;
+                            bringToFront(newID);
+                            if (doInsert)
+                            {
+                                sc->disconnectInput((DWORD)contextWireToID, (DWORD)contextWirePinIndex);
+                                sc->connectInput((DWORD)contextWireFromID, (DWORD)newID, 0);
+                                sc->connectInput((DWORD)newID, (DWORD)contextWireToID, (DWORD)contextWirePinIndex);
+                            }
+                        }
+                        contextWireFromID = -1;
+                        contextWireToID = -1;
+                        contextWirePinIndex = -1;
+                        sc->numGUINodes();
+                    }
                     ImGui::CloseCurrentPopup();
                     showContextMenu = false;
                 }

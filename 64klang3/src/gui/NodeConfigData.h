@@ -1449,11 +1449,6 @@ R"xml(					<ModeItem name="Drums Ride2 " value="316"/>
 			<NodeInput name="Vibrato" minValue="0" maxValue="128"/>
 			<NodeInput name="Friction Sym" minValue="-128" maxValue="128"/>
 		</Node>
-		<Node typeid="54" name="Formula" numInputs="3" numReqGUIInputs="2" numMaxGUIInputs="2" allowSignalInsertion="1">
-		  <NodeInput name="In0"/>
-		  <NodeInput name="In1"/>
-		  <NodeInput name="Mode"/>
-		</Node>
 		<Node typeid="55" name="SampleAndHold" numInputs="4" numReqGUIInputs="1" numMaxGUIInputs="3" allowSignalInsertion="1">
 		  <NodeInput name="In"/>
 		  <NodeInput name="SNH" minValue="0" maxValue="128" mapping="14"/>
@@ -1581,6 +1576,15 @@ R"xml(
 		<Node typeid="70" name="Voice Aftertouch" numInputs="1" numReqGUIInputs="0" numMaxGUIInputs="0">
 			<NodeInput name="Scale" minValue="-128" maxValue="128"/>		
 		</Node>
+		<Node typeid="71" name="Signal Visualizer" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
+			<NodeInput name="In"/>
+			<NodeInput name="Mode">
+				<ModeGroup name="Visualizer" mask="3" shift="0">
+					<ModeItem name="VU Meter"     value="0"/>
+					<ModeItem name="Oscilloscope" value="1"/>
+				</ModeGroup>
+			</NodeInput>
+		</Node>
 	</Nodes>
 	<Menu>
 		<MenuItem Header="Input">
@@ -1671,7 +1675,6 @@ R"xml(
 		<MenuItem Header="Special">
 			<MenuItem id="3" />
 			<MenuItem id="4" />
-			<MenuItem id="54" />
 		</MenuItem>	
 	</Menu>
 </Config>)xml";
