@@ -151,18 +151,21 @@ int NodeCanvas::effectiveInputCount(int guiIndex) const
     if (!sc) return 0;
     // Input-category nodes (Midi CC, Constant, voice params) have no connectable
     // signal inputs — their numInputs stores Scale/mode constants, not wiring slots.
-    {
-        int nt = sc->gnType(guiIndex);
-        if (nt == MIDISIGNAL_ID || (nt >= CONSTANT_ID && nt != (int)SIGNAL_VISUALIZER_ID))
-            return 0;
-    }
+    int nt = sc->gnType(guiIndex);
+    if (nt == MIDISIGNAL_ID || (nt >= CONSTANT_ID && nt != (int)SIGNAL_VISUALIZER_ID))
+        return 0;
     int maxSignals = sc->gnNodeMaxSignals(guiIndex);
     // For non-variable-input nodes, maxSignals already excludes mode inputs.
     // For variable-input nodes (NoteController, MultiAdd), maxSignals is 0;
     // use gnNodeInputs() which returns the actual live count.
     if (maxSignals > 0)
         return maxSignals;
-    return sc->gnNodeInputs(guiIndex);
+    // Only fall back to live input count for variable-input nodes.
+    // Fixed-input nodes with 0 signal inputs (e.g. GMDLS whose only input is a mode)
+    // must return 0 so their mode constant is not drawn as a connectable pin.
+    if (nt == MULTIADD_ID || nt == NOTECONTROLLER_ID)
+        return sc->gnNodeInputs(guiIndex);
+    return 0;
 }
 
 bool NodeCanvas::nodeHasEditButton(int guiIndex) const

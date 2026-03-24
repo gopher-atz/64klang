@@ -474,7 +474,8 @@ SynthNode* SynthController::createGUINode(DWORD id, DWORD channel, DWORD isGloba
 	// force global flag for some nodes
 	if (id <= VOICEMANAGER_ID ||
 		id == MIDISIGNAL_ID ||
-		id == CONSTANT_ID)
+		id == CONSTANT_ID ||
+		id == SAPI_ID)   // TextToSpeech is always a global (singleton) node
 	{
 		isGlobal = 1;
 	}
