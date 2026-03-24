@@ -1080,21 +1080,13 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             contextWireFromID = wireHit.fromID;
             contextWireToID = wireHit.toID;
             contextWirePinIndex = wireHit.pinIndex;
-            // Position new node at wire midpoint (between p1 and p2)
+            // Position new node at the right-click position (upper-left corner at cursor)
             int fromGI = findGuiIndex(wireHit.fromID);
             int toGI = findGuiIndex(wireHit.toID);
             if (fromGI >= 0 && toGI >= 0)
             {
-                ImVec2 fromPos = nodeScreenPos(sc->gnX(fromGI), sc->gnY(fromGI), canvasPos);
-                ImVec2 toPos = nodeScreenPos(sc->gnX(toGI), sc->gnY(toGI), canvasPos);
-                ImVec2 p0 = outputPinPos(fromPos);
-                ImVec2 p3 = inputPinPos(toPos, wireHit.pinIndex);
-                ImVec2 p1(p0.x + kWireStubLen * zoom, p0.y);
-                ImVec2 p2(p3.x - kWireStubLen * zoom, p3.y);
-                float mx = (p1.x + p2.x) * 0.5f;
-                float my = (p1.y + p2.y) * 0.5f;
-                contextMenuCanvasPos.x = (float)((mx - canvasPos.x) / zoom - offsetX);
-                contextMenuCanvasPos.y = (float)((my - canvasPos.y) / zoom - offsetY);
+                contextMenuCanvasPos.x = (float)((mousePos.x - canvasPos.x) / zoom - offsetX);
+                contextMenuCanvasPos.y = (float)((mousePos.y - canvasPos.y) / zoom - offsetY);
             }
             else
             {
