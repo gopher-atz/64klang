@@ -1371,7 +1371,13 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
     if (nodeType == SAPI_ID || nodeType == FORMULA_ID)
         ph += 4.f + 72.f + 4.f + 20.f + 8.f;
     if (nodeType == (int)SIGNAL_VISUALIZER_ID)
-        ph += 4.f + 120.f + 4.f;
+    {
+        int svMode = sc ? sc->getInputMode((DWORD)nodeID, (DWORD)SIGNAL_VISUALIZER_MODE) : 0;
+        if ((svMode & SIGNAL_VISUALIZER_DISPLAYMASK) == (int)SIGNAL_VISUALIZER_RAW)
+            ph += 4.f + 60.f + 4.f + 80.f + 4.f + 18.f + 4.f; // bars(60)+history(80)+combo(18)
+        else
+            ph += 4.f + 120.f + 4.f;
+    }
 
     return { pw, ph };
 }

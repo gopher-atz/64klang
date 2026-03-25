@@ -715,20 +715,204 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
     float       pw       = ctx.pw;
     float       z        = ctx.z;
     float       fontSize = ctx.fontSize;
+    ImVec2      mousePos = ctx.mousePos;
+    bool        canClick = ctx.canClick;
 
     dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
     curY += 4.f * z;
     float vizW = pw - 8.f * z;
+
+    int vizMode = sc->getInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE);
+    int vizDisp  = vizMode & SIGNAL_VISUALIZER_DISPLAYMASK;
+    SynthNode* vizNode    = sc->getLiveNode((DWORD)nodeID);
+    SynthNode* tmplNode   = sc->getNode((DWORD)nodeID);
+
+    // For voice-level nodes: while the voice is active, copy its ring buffer into the
+    // template node's customMem so the data persists after the voice is destroyed.
+    if (vizNode && tmplNode && vizNode != tmplNode &&
+        vizNode->customMem && tmplNode->customMem)
+    {
+        const DWORD kTotal = (SIGVIZ_HEADER_DW + SIGVIZ_BUF_SIZE * 2u) * sizeof(float);
+        memcpy(tmplNode->customMem, vizNode->customMem, kTotal);
+    }
+
+    // Raw mode: shorter bar section + scrolling history — drawn before shared box
+    if (vizDisp == (int)SIGNAL_VISUALIZER_RAW)
+    {
+        // When no voice is active, fall back to the template (which still holds the last data).
+        if (!vizNode && tmplNode && tmplNode->customMem)
+            vizNode = tmplNode;
+
+        // --- current-value bipolar bars ---
+        float barH = 60.f * z;
+        ImVec2 barMin(px + 4.f * z, curY);
+        ImVec2 barMax(barMin.x + vizW, curY + barH);
+        dl->AddRectFilled(barMin, barMax, IM_COL32(0, 0, 0, 255));
+        dl->AddRect(barMin, barMax, kColPanelBorder, 0.f, 0, 1.f);
+
+        float sampleL = 0.f, sampleR = 0.f;
+        DWORD* rawDw  = nullptr;
+        float* rawRing = nullptr;
+        if (vizNode && vizNode->customMem)
+        {
+            rawDw  = vizNode->customMem;
+            rawRing = (float*)(rawDw + SIGVIZ_HEADER_DW);
+            DWORD last = (rawDw[0] - 1u) & (DWORD)(SIGVIZ_BUF_SIZE - 1);
+            sampleL = rawRing[last * 2];
+            sampleR = rawRing[last * 2 + 1];
+        }
+
+        float midY = barMin.y + barH * 0.5f;
+        dl->AddLine(ImVec2(barMin.x, midY), ImVec2(barMax.x, midY), IM_COL32(80, 80, 80, 255), 0.5f);
+
+        float bpad = 4.f * z;
+        float bw2  = vizW * 0.5f - bpad * 1.5f;
+        float halfBarH = barH * 0.5f;
+
+        auto drawBipolarBar = [&](float bx, float val, ImU32 col)
+        {
+            float v = val < -1.f ? -1.f : (val > 1.f ? 1.f : val);
+            float fill = v * halfBarH * 0.95f; // signed, positive = up
+            float y0 = midY, y1 = midY - fill;
+            if (y0 > y1) { float tmp = y0; y0 = y1; y1 = tmp; }
+            if (y1 > y0)
+                dl->AddRectFilled(ImVec2(bx, y0), ImVec2(bx + bw2, y1), col);
+            float tickY = midY - v * halfBarH * 0.95f;
+            dl->AddLine(ImVec2(bx, tickY), ImVec2(bx + bw2, tickY),
+                        IM_COL32(255, 255, 255, 200), 1.5f);
+            dl->AddRect(ImVec2(bx, barMin.y), ImVec2(bx + bw2, barMax.y),
+                        IM_COL32(60, 60, 60, 255), 0.f, 0, 0.5f);
+        };
+        drawBipolarBar(barMin.x + bpad,                  sampleL, IM_COL32(0, 200, 200, 220));
+        drawBipolarBar(barMin.x + vizW*0.5f + bpad*0.5f, sampleR, IM_COL32(200, 200, 0,  220));
+        if (fontSize >= 6.f)
+        {
+            float lfsz = fontSize * 0.8f;
+            dl->AddText(pickFont(lfsz), lfsz,
+                ImVec2(barMin.x + bpad + bw2*0.5f - 3.f*z, barMax.y - lfsz - 2.f*z),
+                IM_COL32(180,180,180,255), "L");
+            dl->AddText(pickFont(lfsz), lfsz,
+                ImVec2(barMin.x + vizW*0.5f + bpad*0.5f + bw2*0.5f - 3.f*z, barMax.y - lfsz - 2.f*z),
+                IM_COL32(180,180,180,255), "R");
+        }
+        curY += barH + 4.f * z;
+
+        // --- scrolling history waveform ---
+        float histH = 80.f * z;
+        ImVec2 histMin(px + 4.f * z, curY);
+        ImVec2 histMax(histMin.x + vizW, curY + histH);
+        dl->AddRectFilled(histMin, histMax, IM_COL32(0, 0, 0, 255));
+        dl->AddRect(histMin, histMax, kColPanelBorder, 0.f, 0, 1.f);
+        float histMidY = histMin.y + histH * 0.5f;
+        dl->AddLine(ImVec2(histMin.x, histMidY), ImVec2(histMax.x, histMidY),
+                    IM_COL32(50, 50, 50, 255), 0.5f);
+
+        // --- History-length combobox ---
+        static const DWORD kHistLengths[]  = { 65536, 32768, 16384, 8192, 4096, 2048, 1024, 512, 256 };
+        static const char* kHistLabels[]   = { "65536 (~1.5s)", "32768 (~0.74s)", "16384 (~0.37s)",
+                                               "8192 (~0.19s)",  "4096 (~93ms)",  "2048 (~46ms)",
+                                               "1024 (~23ms)",   "512 (~12ms)",   "256 (~6ms)" };
+        static const int   kHistCount      = 9;
+
+        int histIdx = (vizMode & SIGNAL_VISUALIZER_HISTMASK) >> SIGNAL_VISUALIZER_HISTSHIFT;
+        if (histIdx < 0 || histIdx >= kHistCount) histIdx = 0;
+        DWORD kHistory = (DWORD)kHistLengths[histIdx] - 1u;
+
+        if (rawRing)
+        {
+            int numCols = (int)(vizW / z + 0.5f);
+            if (numCols < 2) numCols = 2;
+            DWORD nextWp = rawDw[0];
+            float px0L = 0.f, py0L = 0.f;
+            float px0R = 0.f, py0R = 0.f;
+            for (int xi = 0; xi <= numCols; xi++)
+            {
+                // xi=0 → kHistory ticks ago (oldest), xi=numCols → 0 ticks ago (newest)
+                DWORD ago = kHistory - (DWORD)((float)xi / numCols * kHistory + 0.5f);
+                DWORD pos = (nextWp - 1u - ago) & (DWORD)(SIGVIZ_BUF_SIZE - 1);
+                float L = rawRing[pos * 2];
+                float R = rawRing[pos * 2 + 1];
+                float sx  = histMin.x + (float)xi / numCols * vizW;
+                float syL = histMidY - std::max(-1.f, std::min(1.f, L)) * histH * 0.47f;
+                float syR = histMidY - std::max(-1.f, std::min(1.f, R)) * histH * 0.47f;
+                if (xi > 0)
+                {
+                    dl->AddLine(ImVec2(px0L, py0L), ImVec2(sx, syL), IM_COL32(0,200,200,200), 1.f);
+                    dl->AddLine(ImVec2(px0R, py0R), ImVec2(sx, syR), IM_COL32(200,200,0, 160), 1.f);
+                }
+                px0L = sx; py0L = syL;
+                px0R = sx; py0R = syR;
+            }
+        }
+        curY += histH + 4.f * z;
+
+        {
+            float btnH  = 18.f * z;
+            float btnX  = px + 4.f * z;
+            float btnW  = pw - 8.f * z;
+            ImVec2 btnMin(btnX, curY);
+            ImVec2 btnMax(btnX + btnW, curY + btnH);
+            bool hov = mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
+                       mousePos.y >= btnMin.y && mousePos.y <= btnMax.y;
+            dl->AddRectFilled(btnMin, btnMax, hov ? IM_COL32(60,60,70,255) : IM_COL32(40,40,48,255));
+            dl->AddRect(btnMin, btnMax, IM_COL32(120,120,130,255), 0.f, 0, 1.f);
+
+            if (fontSize >= 6.f)
+            {
+                char label[64];
+                snprintf(label, sizeof(label), "History: %s", kHistLabels[histIdx]);
+                float lfsz = fontSize * 0.9f;
+                dl->AddText(pickFont(lfsz), lfsz,
+                            ImVec2(btnX + 4.f*z, curY + (btnH - lfsz) * 0.5f),
+                            IM_COL32(220,220,230,255), label);
+            }
+            // dropdown arrow
+            float arMidX = btnMax.x - 10.f*z, arMidY = curY + btnH * 0.5f, arH = 4.f*z;
+            dl->AddTriangleFilled(
+                ImVec2(arMidX - arH, arMidY - arH*0.5f),
+                ImVec2(arMidX + arH, arMidY - arH*0.5f),
+                ImVec2(arMidX,       arMidY + arH*0.5f),
+                IM_COL32(200,200,210,255));
+
+            char popupId[64];
+            snprintf(popupId, sizeof(popupId), "##svhist%d", nodeID);
+            if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hov)
+                ImGui::OpenPopup(popupId);
+
+            {
+                float itemH = fontSize * 1.35f;
+                float padY  = ImGui::GetStyle().WindowPadding.y * 2.f;
+                ImGui::SetNextWindowSizeConstraints(ImVec2(0,0), ImVec2(FLT_MAX, itemH * 9.f + padY));
+            }
+            ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y));
+            ImGui::PushFont(pickFont(fontSize));
+            if (ImGui::BeginPopup(popupId))
+            {
+                ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
+                for (int i = 0; i < kHistCount; i++)
+                {
+                    bool sel = (i == histIdx);
+                    if (ImGui::Selectable(kHistLabels[i], sel, 0, ImVec2(btnW, 0)))
+                        sc->setInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE,
+                                         (DWORD)(i << SIGNAL_VISUALIZER_HISTSHIFT),
+                                         (DWORD)SIGNAL_VISUALIZER_HISTMASK);
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopFont();
+            curY += btnH + 4.f * z;
+        }
+        return;
+    }
+
     float vizH = 120.f * z;
     ImVec2 vizMin(px + 4.f * z, curY);
     ImVec2 vizMax(vizMin.x + vizW, curY + vizH);
     dl->AddRectFilled(vizMin, vizMax, IM_COL32(0, 0, 0, 255));
     dl->AddRect(vizMin, vizMax, kColPanelBorder, 0.f, 0, 1.f);
 
-    int vizMode = sc->getInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE);
-    SynthNode* vizNode = sc->getLiveNode((DWORD)nodeID);
-
-    if (vizMode == (int)SIGNAL_VISUALIZER_VU)
+    if (vizDisp == (int)SIGNAL_VISUALIZER_VU)
     {
         float peakL = 0.f, peakR = 0.f;
         float rawL  = 0.f, rawR  = 0.f;
@@ -797,7 +981,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                 IM_COL32(180,180,180,255), "R");
         }
     }
-    else // Oscilloscope
+    else if (vizDisp == (int)SIGNAL_VISUALIZER_SCOPE) // Oscilloscope
     {
         if (vizNode && vizNode->customMem)
         {

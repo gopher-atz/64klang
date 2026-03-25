@@ -1376,7 +1376,7 @@ void SYNTHCALL VOICEPARAM_tick(SynthNode* n);
 //   [7] = trig_pos (DWORD, ring index of last rising zero-crossing at the point DISP samples behind wp)
 //   [8 .. 8 + SIGVIZ_BUF_SIZE*2 - 1] = ring buffer (L,R interleaved floats)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define SIGVIZ_BUF_SIZE  4096
+#define SIGVIZ_BUF_SIZE  65536   // 44100 Hz * ~1.49 s; must be power-of-2
 #define SIGVIZ_HEADER_DW 8
 
 enum SIGNAL_VISUALIZER_INPUT
@@ -1391,7 +1391,11 @@ enum SIGNAL_VISUALIZER_INPUT
 enum SIGNAL_VISUALIZER_MODE_ENUM
 {
 	SIGNAL_VISUALIZER_VU    = 0,
-	SIGNAL_VISUALIZER_SCOPE = 1
+	SIGNAL_VISUALIZER_SCOPE = 1,
+	SIGNAL_VISUALIZER_RAW   = 2,
+	SIGNAL_VISUALIZER_DISPLAYMASK = 0x0F,  // bits [3:0]: display mode (up to 16 types)
+	SIGNAL_VISUALIZER_HISTMASK    = 0xF0,  // bits [7:4]: history-length index (0=65536 .. 8=256)
+	SIGNAL_VISUALIZER_HISTSHIFT   = 4,
 };
 
 void SYNTHCALL SIGNAL_VISUALIZER_init(SynthNode* n);

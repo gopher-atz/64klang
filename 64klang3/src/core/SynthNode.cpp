@@ -5116,7 +5116,10 @@ void DestroyVoiceNodes(SynthNode* node)
 	if (node && !node->isGlobal)
 	{
 #if defined(COMPILE_VSTI) || defined(USE_BLOBS)
-		SynthGlobalState.GlobalNodes[node->valueOffset] = NULL;
+		// Only clear the slot when it still points to this node.
+		// If a newer voice already replaced it, leave the newer pointer intact.
+		if (SynthGlobalState.GlobalNodes[node->valueOffset] == node)
+			SynthGlobalState.GlobalNodes[node->valueOffset] = NULL;
 #endif
 		// mark processed voice nodes by the global flag, so they wont be processed again
 		node->isGlobal = 1;

@@ -64,7 +64,7 @@ void drawTriggerSeqPanel(const EditPanelCtx& ctx, float& curY, SynthController* 
 void drawSAPIPanel(const EditPanelCtx& ctx, float& curY, SynthController* sc,
                    std::unordered_map<int, std::array<char, 4096>>& textEditBuffers);
 
-// Draw the Signal Visualizer (VU meter / oscilloscope) sub-panel.
+// Draw the Signal Visualizer (VU meter / oscilloscope / raw) sub-panel.
 void drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, SynthController* sc);
 
 } // namespace Widgets

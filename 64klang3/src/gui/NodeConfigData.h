@@ -1579,9 +1579,10 @@ R"xml(
 		<Node typeid="71" name="Signal Visualizer" numInputs="2" numReqGUIInputs="1" numMaxGUIInputs="1" allowSignalInsertion="1">
 			<NodeInput name="In"/>
 			<NodeInput name="Mode">
-				<ModeGroup name="Visualizer" mask="3" shift="0">
+				<ModeGroup name="Visualizer" mask="15" shift="0">
 					<ModeItem name="VU Meter"     value="0"/>
 					<ModeItem name="Oscilloscope" value="1"/>
+					<ModeItem name="Raw"          value="2"/>
 				</ModeGroup>
 			</NodeInput>
 		</Node>
