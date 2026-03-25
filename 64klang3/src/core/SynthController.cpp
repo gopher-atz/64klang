@@ -1209,11 +1209,9 @@ void SynthController::resetEventSignal(DWORD nodeid)
 
 int SynthController::getArpStepData(DWORD nodeid, DWORD step)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
+	SynthNode* node = getNode(nodeid);
+	if (node)
 	{
-		SynthNode* node = it->second.Node;
-
 		if (node->id != VOICEMANAGER_ID)
 			return 0;
 
@@ -1231,11 +1229,9 @@ int SynthController::getArpStepData(DWORD nodeid, DWORD step)
 
 int SynthController::getArpPlayPos(DWORD nodeid)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
+	SynthNode* node = getNode(nodeid);
+	if (node)
 	{
-		SynthNode* node = it->second.Node;
-
 		if (node->id != VOICEMANAGER_ID)
 			return 0;
 
@@ -1252,10 +1248,9 @@ int SynthController::getArpPlayPos(DWORD nodeid)
 
 int SynthController::getTriggerSeqPlayPos(DWORD nodeid)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
+	SynthNode* node = getLiveNode(nodeid);
+	if (node)
 	{
-		SynthNode* node = it->second.Node;
 		if (node->id != TRIGGERSEQ_ID)
 			return -1;
 		// v[0] doubles each step: 1→tick0, 2→tick1, 4→tick2, ..., 128→tick7
@@ -1274,11 +1269,9 @@ int SynthController::getTriggerSeqPlayPos(DWORD nodeid)
 
 void SynthController::setArpStepData(DWORD nodeid, DWORD step, DWORD value)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
+	SynthNode* node = getNode(nodeid);
+	if (node)
 	{
-		SynthNode* node = it->second.Node;
-
 		if (node->id != VOICEMANAGER_ID)
 			return;
 
@@ -1339,17 +1332,17 @@ std::string SynthController::getName(DWORD nodeid)
 
 void SynthController::setSAPIText(DWORD nodeid, std::string text)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
+	SynthNode* node = getNode(nodeid);
+	if (node)
 	{
-		if (it->second.Node->specialData)
-			free(it->second.Node->specialData);
-		it->second.Node->specialData = (char*)malloc(text.length()+1);
-		char* specialData = (char*)(it->second.Node->specialData);
+		if (node->specialData)
+			free(node->specialData);
+		node->specialData = (char*)malloc(text.length()+1);
+		char* specialData = (char*)(node->specialData);
 		memcpy(specialData, text.c_str(), text.length());
 		specialData[text.length()] = 0; // terminator
-		it->second.Node->e = sample_t::zero(); // activate processing again
-		SynthGlobalState.SpecialDataPointer[it->second.Node->valueOffset] = specialData;
+		node->e = sample_t::zero(); // activate processing again
+		SynthGlobalState.SpecialDataPointer[node->valueOffset] = specialData;
 	}
 }
 
@@ -1357,12 +1350,12 @@ void SynthController::setSAPIText(DWORD nodeid, std::string text)
 
 std::string SynthController::getSAPIText(DWORD nodeid)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
+	SynthNode* node = getNode(nodeid);
+	if (node)
 	{
-		if (it->second.Node->specialData == 0)
+		if (node->specialData == 0)
 			return "";
-		return (char*)(it->second.Node->specialData);
+		return (char*)(node->specialData);
 	}
 	else
 		return "";
@@ -1372,12 +1365,12 @@ std::string SynthController::getSAPIText(DWORD nodeid)
 
 void SynthController::setFormulaText(DWORD nodeid, std::string text, std::string rpn)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
+	SynthNode* node = getNode(nodeid);
+	if (node)
 	{
 		// store the actual input formula
-		it->second.Node->specialDataText = text;
-		it->second.Node->specialDataText2 = rpn;
+		node->specialDataText = text;
+		node->specialDataText2 = rpn;
 
 		std::vector<BYTE> comseq;
 		char* token = (char*)(rpn.c_str());
@@ -1504,9 +1497,9 @@ void SynthController::setFormulaText(DWORD nodeid, std::string text, std::string
 		comseq.push_back(FORMULA_DONE);
 
 		// first assignment? (mem stays constant and is reused)
-		if (!SynthGlobalState.SpecialDataPointer[it->second.Node->valueOffset])
-			SynthGlobalState.SpecialDataPointer[it->second.Node->valueOffset] = (char*)malloc(65536);
-		BYTE* buf = (BYTE*)SynthGlobalState.SpecialDataPointer[it->second.Node->valueOffset];
+		if (!SynthGlobalState.SpecialDataPointer[node->valueOffset])
+			SynthGlobalState.SpecialDataPointer[node->valueOffset] = (char*)malloc(65536);
+		BYTE* buf = (BYTE*)SynthGlobalState.SpecialDataPointer[node->valueOffset];
 
 		// fill the buffer
 		for (int i = 0; i < (int)comseq.size(); i++)
@@ -1520,10 +1513,10 @@ void SynthController::setFormulaText(DWORD nodeid, std::string text, std::string
 
 std::string SynthController::getFormulaText(DWORD nodeid)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
+	SynthNode* node = getNode(nodeid);
+	if (node)
 	{
-		return it->second.Node->specialDataText;
+		return node->specialDataText;
 	}
 	else
 		return "";
@@ -1784,13 +1777,15 @@ int SynthController::getNumActiveVoices()
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-int SynthController::getNumActiveVoices(DWORD node)
+int SynthController::getNumActiveVoices(DWORD nodeid)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(node);
-	if (it->second.Node->id == VOICEMANAGER_ID)
-		return ((VMWork*)(it->second.Node->customMem))->NumActiveVoices;
-	else
-		return 0;
+	SynthNode* node = getNode(nodeid);
+	if (node)
+	{
+		if (node->id == VOICEMANAGER_ID)
+			return ((VMWork*)(node->customMem))->NumActiveVoices;
+	}
+	return 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

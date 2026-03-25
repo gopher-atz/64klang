@@ -21,10 +21,8 @@ namespace K64GUI {
 
 // ── Named color constants for edit panels and knobs ──────────────────────────
 static constexpr ImU32 kColPanelBg      = IM_COL32(180, 180, 180, 255);
-static constexpr ImU32 kColPanelBorder  = IM_COL32(100, 100, 105, 255);
 static constexpr ImU32 kColPanelHeader  = IM_COL32(160, 160, 165, 255);
-static constexpr ImU32 kColPanelText    = IM_COL32(  0,   0,   0, 255);
-static constexpr ImU32 kColPanelDimText = IM_COL32( 50,  50,  55, 255);
+// kColPanelBorder / kColPanelText / kColPanelDimText are defined in Widgets.h
 
 static constexpr ImU32 kColCheckboxBg   = IM_COL32( 30,  30,  35, 255);
 static constexpr ImU32 kColCheckboxRim  = IM_COL32(120, 120, 125, 255);
@@ -111,14 +109,6 @@ void NodeCanvas::jumpToChannel(int channel)
 
 // Pick the font whose loaded size is closest to the requested pixel size.
 // Fonts[0] = 14 px (sharp at zoom ≤ 1.5×), Fonts[1] = 32 px (sharp at zoom ≥ 2×).
-static ImFont* pickFont(float desiredPx)
-{
-    auto& fv = ImGui::GetIO().Fonts->Fonts;
-    if (fv.Size >= 2 && desiredPx >= fv[1]->FontSize * 0.75f)
-        return fv[1];
-    return fv[0];
-}
-
 // Check if a gnInput() return value represents a real connection
 // (not unwired constant0, not 0, not -1)
 static bool isRealConnection(int srcID, SynthController* sc)
@@ -1593,9 +1583,6 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         float ph = eps.ph * z;
 
         bool isVoiceManager = (nodeType == VOICEMANAGER_ID);
-        bool isTriggerSeq   = (nodeType == TRIGGERSEQ_ID);
-        bool isSAPI         = (nodeType == SAPI_ID);
-        bool isSigViz       = (nodeType == (int)SIGNAL_VISUALIZER_ID);
 
         // Count visible flags (for layout)
         float flagsH = 0.f;
@@ -2075,460 +2062,27 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         }
 
         // ── TriggerSequencer: Max Patterns, BPM sync, then N rows of 8L+8R tick cells ──
-        // Data layout: each PATTERN mode word holds 4 patterns packed as bytes.
-        // Pattern p: wordIdx = PATTERN0_3L + p/4, byteOfs = (p%4)*8, ticks in bits [byteOfs..byteOfs+7].
-        if (isTriggerSeq)
+        if (nodeType == TRIGGERSEQ_ID)
         {
-            static const char* kTsBpmNames[33] = {
-                "1/128","1/64T","1/128D","1/64","1/32T","1/64D","1/32","1/16T",
-                "1/32D","1/16","1/8T","1/16D","1/8","1/4T","1/8D","1/4",
-                "1/2T","1/4D","1/2","1T","1/2D","1","1D","3/8",
-                "5/8","7/8","9/8","11/8","13/8","15/8","3/4","5/4","7/4"
-            };
-
-            int modeWord    = sc->getInputMode((DWORD)nodeID, TRIGGERSEQ_MODE);
-            int maxPatterns = modeWord & (int)TRIGGERSEQ_COUNTMASK;
-            if (maxPatterns < 1 || maxPatterns > 16) maxPatterns = 16;
-            int bpmIdx      = (modeWord & (int)TRIGGERSEQ_BPMMASK) >> 8;
-            if (bpmIdx < 0 || bpmIdx > 32) bpmIdx = 0;
-
-            float ctrlH  = 20.f * z;
-            float cellH  = 14.f * z;
-            // Layout per row: [labelW][8 L cells][gap][8 R cells] + left/right padding
-            float labelW  = 18.f * z;
-            float cellGap = 4.f * z;
-            float cellW   = (pw - 8.f*z - labelW - cellGap) / 16.f;
-
-            curY += 4.f * z;
-
-            // ── Max Patterns row ──
-            if (fontSize >= 6.f)
-                dl->AddText(pickFont(fontSize), fontSize,
-                            ImVec2(px + 4.f*z, curY + (ctrlH - fontSize) * 0.5f),
-                            kColPanelText, "Max Patterns:");
-
-            float btnSz = 16.f * z, btnGap = 2.f * z;
-            char mpVal[8]; snprintf(mpVal, sizeof(mpVal), "%d", maxPatterns);
-            ImVec2 plusMin (px + pw - btnSz - 4.f*z,           curY + (ctrlH - btnSz)*0.5f);
-            ImVec2 plusMax (plusMin.x + btnSz,                  plusMin.y + btnSz);
-            ImVec2 minusMin(plusMin.x - btnGap - btnSz,         plusMin.y);
-            ImVec2 minusMax(minusMin.x + btnSz,                 plusMin.y + btnSz);
-            ImVec2 valMin  (minusMin.x - btnGap - btnSz*1.2f,  plusMin.y);
-            ImVec2 valMax  (valMin.x + btnSz*1.2f,              plusMin.y + btnSz);
-            dl->AddRectFilled(minusMin, minusMax, IM_COL32(70, 70, 80, 255));
-            dl->AddRectFilled(plusMin,  plusMax,  IM_COL32(70, 70, 80, 255));
-            dl->AddRectFilled(valMin,   valMax,   IM_COL32(50, 50, 58, 255));
-            if (fontSize >= 6.f)
-            {
-                float fw;
-                fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, "-").x;
-                dl->AddText(pickFont(fontSize), fontSize,
-                            ImVec2(minusMin.x + (btnSz-fw)*0.5f, minusMin.y + (btnSz-fontSize)*0.5f),
-                            IM_COL32(255,255,255,255), "-");
-                fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, "+").x;
-                dl->AddText(pickFont(fontSize), fontSize,
-                            ImVec2(plusMin.x + (btnSz-fw)*0.5f, plusMin.y + (btnSz-fontSize)*0.5f),
-                            IM_COL32(255,255,255,255), "+");
-                fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, mpVal).x;
-                dl->AddText(pickFont(fontSize), fontSize,
-                            ImVec2(valMin.x + (valMax.x-valMin.x-fw)*0.5f, valMin.y + (btnSz-fontSize)*0.5f),
-                            IM_COL32(220,220,220,255), mpVal);
-            }
-            if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-            {
-                if (mousePos.x >= minusMin.x && mousePos.x < minusMax.x &&
-                    mousePos.y >= minusMin.y && mousePos.y < minusMax.y && maxPatterns > 1)
-                    sc->setInputMode((DWORD)nodeID, TRIGGERSEQ_MODE,
-                                     (DWORD)(maxPatterns - 1), (DWORD)TRIGGERSEQ_COUNTMASK);
-                if (mousePos.x >= plusMin.x && mousePos.x < plusMax.x &&
-                    mousePos.y >= plusMin.y && mousePos.y < plusMax.y && maxPatterns < 16)
-                    sc->setInputMode((DWORD)nodeID, TRIGGERSEQ_MODE,
-                                     (DWORD)(maxPatterns + 1), (DWORD)TRIGGERSEQ_COUNTMASK);
-            }
-            curY += ctrlH;
-
-            // ── BPM sync row — full-width combo, same style as mode-group dropdowns ──
-            {
-                float btnX = px + 6.f * z;
-                float btnW = pw - 12.f * z;
-                float btnH = (ctrlH - 2.f * z);
-                float btnY = curY + 1.f * z;
-                ImVec2 btnMin(btnX, btnY);
-                ImVec2 btnMax(btnX + btnW, btnY + btnH);
-                bool hov = mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
-                           mousePos.y >= btnMin.y && mousePos.y <= btnMax.y;
-                dl->AddRectFilled(btnMin, btnMax, hov ? IM_COL32(60,60,70,255) : IM_COL32(40,40,48,255));
-                dl->AddRect(btnMin, btnMax, IM_COL32(120,120,130,255), 0.f, 0, 1.f);
-
-                if (fontSize >= 6.f)
-                {
-                    char label[64];
-                    snprintf(label, sizeof(label), "BPM Sync: %s", kTsBpmNames[bpmIdx]);
-                    float lfsz = fontSize * 0.9f;
-                    float labelY = btnY + (btnH - lfsz) * 0.5f;
-                    dl->AddText(pickFont(lfsz), lfsz, ImVec2(btnX + 4.f*z, labelY),
-                                IM_COL32(220,220,230,255), label);
-                }
-
-                // Drop arrow
-                float arrMidX = btnMax.x - 10.f*z;
-                float arrMidY = btnY + btnH * 0.5f;
-                float arrHalf = 4.f * z;
-                dl->AddTriangleFilled(
-                    ImVec2(arrMidX - arrHalf, arrMidY - arrHalf * 0.5f),
-                    ImVec2(arrMidX + arrHalf, arrMidY - arrHalf * 0.5f),
-                    ImVec2(arrMidX, arrMidY + arrHalf * 0.5f),
-                    IM_COL32(200, 200, 210, 255));
-
-                char popupId[64];
-                snprintf(popupId, sizeof(popupId), "##tsbpm%d", nodeID);
-
-                if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hov)
-                    ImGui::OpenPopup(popupId);
-
-                {
-                    float itemH = fontSize * 1.35f;
-                    float padY  = ImGui::GetStyle().WindowPadding.y * 2.f;
-                    ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, itemH * 8.f + padY));
-                }
-                ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y));
-                ImGui::PushFont(pickFont(fontSize));
-                if (ImGui::BeginPopup(popupId))
-                {
-                    ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
-                    for (int i = 0; i < 33; i++)
-                    {
-                        bool sel = (i == bpmIdx);
-                        if (ImGui::Selectable(kTsBpmNames[i], sel, 0, ImVec2(btnW, 0)))
-                            sc->setInputMode((DWORD)nodeID, TRIGGERSEQ_MODE,
-                                             (DWORD)(i << 8), (DWORD)TRIGGERSEQ_BPMMASK);
-                        if (sel) ImGui::SetItemDefaultFocus();
-                    }
-                    ImGui::EndPopup();
-                }
-                ImGui::PopFont();
-            }
-            curY += ctrlH;
-
-            // ── Column header ──
-            {
-                float gridX = px + 4.f*z + labelW;
-                float hdrH  = 12.f * z;
-                float smallFsz = fontSize * 0.85f;
-                // Tick number labels (1-8 for L, 1-8 for R)
-                for (int t = 0; t < 8; t++)
-                {
-                    char tn[4]; snprintf(tn, sizeof(tn), "%d", t+1);
-                    float tx = gridX + t * cellW + cellW * 0.5f;
-                    float tw = pickFont(smallFsz)->CalcTextSizeA(smallFsz, FLT_MAX, 0.f, tn).x;
-                    if (smallFsz >= 5.f)
-                        dl->AddText(pickFont(smallFsz), smallFsz,
-                                    ImVec2(tx - tw*0.5f, curY + (hdrH - smallFsz)*0.5f),
-                                    kColPanelDimText, tn);
-                    float rx = gridX + 8.f*cellW + cellGap + t*cellW + cellW*0.5f;
-                    if (smallFsz >= 5.f)
-                        dl->AddText(pickFont(smallFsz), smallFsz,
-                                    ImVec2(rx - tw*0.5f, curY + (hdrH - smallFsz)*0.5f),
-                                    kColPanelDimText, tn);
-                }
-                curY += hdrH;
-            }
-
-            // ── Live playback cursor ──
-            int playPos     = sc->getTriggerSeqPlayPos((DWORD)nodeID);
-            int liveTick    = (playPos >= 0) ? (playPos & 0xFF)        : -1;
-            int livePattern = (playPos >= 0) ? ((playPos >> 8) & 0xFF) : -1;
-
-            // ── Pattern rows ──
-            for (int p = 0; p < maxPatterns; p++)
-            {
-                // Row label (pattern index, 1-based)
-                char rowLbl[8]; snprintf(rowLbl, sizeof(rowLbl), "%d", p + 1);
-                if (fontSize >= 6.f)
-                {
-                    float lw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, rowLbl).x;
-                    dl->AddText(pickFont(fontSize), fontSize,
-                                ImVec2(px + 4.f*z + (labelW - 4.f*z - lw)*0.5f,
-                                       curY + (cellH - fontSize)*0.5f),
-                                kColPanelDimText, rowLbl);
-                }
-
-                // Active pattern row: faint highlight behind the row label
-                if (p == livePattern)
-                    dl->AddRectFilled(ImVec2(px + 4.f*z, curY),
-                                      ImVec2(px + 4.f*z + labelW, curY + cellH),
-                                      IM_COL32(255, 220, 50, 30));
-
-                // wordIdx: which PATTERN input word holds pattern p
-                // byteOfs: which byte within that word (each pattern = 8 bits = 1 byte)
-                int wordBase = p / 4;
-                int byteOfs  = (p % 4) * 8;
-                int lWordIdx = TRIGGERSEQ_PATTERN0_3L + wordBase;
-                int rWordIdx = TRIGGERSEQ_PATTERN0_3R + wordBase;
-                int lWord    = sc->getInputMode((DWORD)nodeID, (DWORD)lWordIdx);
-                int rWord    = sc->getInputMode((DWORD)nodeID, (DWORD)rWordIdx);
-
-                float gridX = px + 4.f*z + labelW;
-
-                for (int t = 0; t < 8; t++)
-                {
-                    // L cell
-                    bool lActive = (lWord >> (byteOfs + t)) & 1;
-                    float lcx = gridX + t * cellW;
-                    ImVec2 lcMin(lcx + 1.f, curY + 1.f);
-                    ImVec2 lcMax(lcx + cellW - 1.f, curY + cellH - 1.f);
-                    dl->AddRectFilled(lcMin, lcMax,
-                        lActive ? IM_COL32(100, 200, 100, 255) : IM_COL32(45, 50, 45, 255));
-                    dl->AddRect(lcMin, lcMax, IM_COL32(30, 30, 30, 160));
-                    if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                        mousePos.x >= lcMin.x && mousePos.x < lcMax.x &&
-                        mousePos.y >= lcMin.y && mousePos.y < lcMax.y)
-                    {
-                        int bit     = byteOfs + t;
-                        int newWord = lWord ^ (1 << bit);
-                        sc->setInputMode((DWORD)nodeID, (DWORD)lWordIdx,
-                                         (DWORD)newWord, (DWORD)(1 << bit));
-                    }
-
-                    // R cell
-                    bool rActive = (rWord >> (byteOfs + t)) & 1;
-                    float rcx = gridX + 8.f*cellW + cellGap + t * cellW;
-                    ImVec2 rcMin(rcx + 1.f, curY + 1.f);
-                    ImVec2 rcMax(rcx + cellW - 1.f, curY + cellH - 1.f);
-                    dl->AddRectFilled(rcMin, rcMax,
-                        rActive ? IM_COL32(100, 160, 220, 255) : IM_COL32(45, 45, 55, 255));
-                    dl->AddRect(rcMin, rcMax, IM_COL32(30, 30, 30, 160));
-                    if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                        mousePos.x >= rcMin.x && mousePos.x < rcMax.x &&
-                        mousePos.y >= rcMin.y && mousePos.y < rcMax.y)
-                    {
-                        int bit     = byteOfs + t;
-                        int newWord = rWord ^ (1 << bit);
-                        sc->setInputMode((DWORD)nodeID, (DWORD)rWordIdx,
-                                         (DWORD)newWord, (DWORD)(1 << bit));
-                    }
-                }
-
-                // Live cursor: bright border on the active tick column, active pattern row only
-                if (p == livePattern && liveTick >= 0 && liveTick < 8)
-                {
-                    float lcx = gridX + liveTick * cellW;
-                    float rcx = gridX + 8.f*cellW + cellGap + liveTick * cellW;
-                    dl->AddRect(ImVec2(lcx, curY), ImVec2(lcx + cellW, curY + cellH),
-                                IM_COL32(255, 220, 50, 220), 0.f, 0, 1.5f);
-                    dl->AddRect(ImVec2(rcx, curY), ImVec2(rcx + cellW, curY + cellH),
-                                IM_COL32(255, 220, 50, 220), 0.f, 0, 1.5f);
-                }
-
-                curY += cellH;
-            }
-            curY += 4.f * z;
+            Widgets::EditPanelCtx ctx{ dl, nodeID, px, pw, z, fontSize, mousePos, canClick };
+            Widgets::drawTriggerSeqPanel(ctx, curY, sc);
         }
 
         // ── TextToSpeech (SAPI): multiline text entry + Speak button ──
-        if (isSAPI)
+        if (nodeType == SAPI_ID)
         {
-            // Lazy-init: read current text from core on first display
-            if (textEditBuffers.find(nodeID) == textEditBuffers.end())
-            {
-                std::string txt = sc->getSAPIText((DWORD)nodeID);
-                auto& arr = textEditBuffers[nodeID];
-                arr.fill(0);
-                txt.copy(arr.data(), std::min(txt.size(), arr.size() - 1));
-            }
-            auto& buf = textEditBuffers[nodeID];
-
-            float textAreaH = 72.f * z;
-            float btnH      = 20.f * z;
-            float btnW      = 70.f * z;
-
-            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
-            curY += 4.f * z;
-
-            ImGui::SetCursorScreenPos(ImVec2(px + 4.f*z, curY));
-            ImGui::PushFont(pickFont(fontSize));
-            ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
-            std::string textId = "##sapitext" + std::to_string(nodeID);
-            ImGui::InputTextMultiline(textId.c_str(), buf.data(), buf.size(),
-                                      ImVec2(pw - 8.f*z, textAreaH));
-            ImGui::SetWindowFontScale(1.f);
-            ImGui::PopFont();
-            curY += textAreaH + 4.f * z;
-
-            float btnX = px + pw - btnW - 4.f*z;
-            ImVec2 btnMin(btnX, curY);
-            ImVec2 btnMax(btnX + btnW, curY + btnH);
-            dl->AddRectFilled(btnMin, btnMax, IM_COL32(50, 140, 50, 255));
-            if (fontSize >= 6.f)
-            {
-                const char* lbl = "Update";
-                float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, lbl).x;
-                dl->AddText(pickFont(fontSize), fontSize,
-                            ImVec2(btnMin.x + (btnW - fw)*0.5f, btnMin.y + (btnH - fontSize)*0.5f),
-                            IM_COL32(255, 255, 255, 255), lbl);
-            }
-            if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
-                mousePos.y >= btnMin.y && mousePos.y <= btnMax.y)
-            {
-                sc->setSAPIText((DWORD)nodeID, std::string(buf.data()));
-            }
-
-            // "Paste Text" button — left-aligned, same row as Update
-            float pasteBtnW = 80.f * z;
-            ImVec2 pasteMin(px + 4.f * z, curY);
-            ImVec2 pasteMax(px + 4.f * z + pasteBtnW, curY + btnH);
-            dl->AddRectFilled(pasteMin, pasteMax, IM_COL32(60, 80, 140, 255));
-            if (fontSize >= 6.f)
-            {
-                const char* lbl = "Paste Text";
-                float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, lbl).x;
-                dl->AddText(pickFont(fontSize), fontSize,
-                            ImVec2(pasteMin.x + (pasteBtnW - fw) * 0.5f, pasteMin.y + (btnH - fontSize) * 0.5f),
-                            IM_COL32(255, 255, 255, 255), lbl);
-            }
-            if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
-                mousePos.x >= pasteMin.x && mousePos.x <= pasteMax.x &&
-                mousePos.y >= pasteMin.y && mousePos.y <= pasteMax.y)
-            {
-                const char* clip = ImGui::GetClipboardText();
-                if (clip)
-                {
-                    size_t len = std::min(strlen(clip), buf.size() - 1);
-                    memcpy(buf.data(), clip, len);
-                    buf[len] = '\0';
-                    sc->setSAPIText((DWORD)nodeID, std::string(buf.data()));
-                }
-            }
-
-            curY += btnH + 4.f * z;
+            Widgets::EditPanelCtx ctx{ dl, nodeID, px, pw, z, fontSize, mousePos, canClick };
+            Widgets::drawSAPIPanel(ctx, curY, sc, textEditBuffers);
         }
 
         // ── Signal Visualizer: VU meter or oscilloscope ──
-        if (isSigViz)
+        if (nodeType == (int)SIGNAL_VISUALIZER_ID)
         {
-            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
-            curY += 4.f * z;
-            float vizW = pw - 8.f * z;
-            float vizH = 120.f * z;
-            ImVec2 vizMin(px + 4.f * z, curY);
-            ImVec2 vizMax(vizMin.x + vizW, curY + vizH);
-            dl->AddRectFilled(vizMin, vizMax, IM_COL32(0, 0, 0, 255));
-            dl->AddRect(vizMin, vizMax, kColPanelBorder, 0.f, 0, 1.f);
-
-            int vizMode = sc->getInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE);
-            // getLiveNode() returns the active audio instance from GlobalNodes[]: for global
-            // nodes this is the same as getNode(); for voice nodes it is the most recently
-            // created voice instance (last note played), matching how getNodeSignal() works.
-            SynthNode* vizNode = sc->getLiveNode((DWORD)nodeID);
-
-            if (vizMode == (int)SIGNAL_VISUALIZER_VU) // VU meter
-            {
-                float peakL = 0.f, peakR = 0.f;
-                float rawL  = 0.f, rawR  = 0.f;
-                if (vizNode && vizNode->customMem)
-                {
-                    peakL = *((float*)(vizNode->customMem + 1));
-                    peakR = *((float*)(vizNode->customMem + 2));
-                    rawL  = *((float*)(vizNode->customMem + 5));
-                    rawR  = *((float*)(vizNode->customMem + 6));
-                }
-                auto dbNorm = [](float amp) -> float {
-                    if (amp <= 0.f) return 0.f;
-                    float db = 20.f * std::log10f(amp);
-                    return std::max(0.f, std::min(1.f, (db + 60.f) / 60.f));
-                };
-                float normL  = dbNorm(rawL),  normR  = dbNorm(rawR);
-                float normPL = dbNorm(peakL), normPR = dbNorm(peakR);
-
-                auto drawBar = [&](float bx, float bw2, float norm, float pkNorm)
-                {
-                    const float zG = 0.80f, zY = 0.90f;
-                    float botY = vizMax.y;
-                    if (norm > 0.f)
-                    {
-                        float gH = std::min(vizH * norm, vizH * zG);
-                        dl->AddRectFilled(ImVec2(bx, botY - gH), ImVec2(bx + bw2, botY),
-                                          IM_COL32(40, 200, 40, 255));
-                    }
-                    if (norm > zG)
-                    {
-                        float yH = vizH * std::min(norm - zG, zY - zG);
-                        float yB = botY - vizH * zG;
-                        dl->AddRectFilled(ImVec2(bx, yB - yH), ImVec2(bx + bw2, yB),
-                                          IM_COL32(220, 180, 40, 255));
-                    }
-                    if (norm > zY)
-                    {
-                        float rH = vizH * (norm - zY);
-                        float rB = botY - vizH * zY;
-                        dl->AddRectFilled(ImVec2(bx, rB - rH), ImVec2(bx + bw2, rB),
-                                          IM_COL32(220, 50, 50, 255));
-                    }
-                    if (pkNorm > 0.01f)
-                    {
-                        float pY = botY - vizH * pkNorm;
-                        ImU32 pc = pkNorm < zG ? IM_COL32(40,200,40,255)
-                                 : pkNorm < zY ? IM_COL32(220,180,40,255)
-                                               : IM_COL32(220,50,50,255);
-                        dl->AddLine(ImVec2(bx, pY), ImVec2(bx + bw2, pY), pc, 1.5f);
-                    }
-                    dl->AddRect(ImVec2(bx, vizMin.y), ImVec2(bx + bw2, botY),
-                                IM_COL32(60, 60, 60, 255), 0.f, 0, 0.5f);
-                };
-                float bpad = 4.f * z;
-                float bw2  = vizW * 0.5f - bpad * 1.5f;
-                drawBar(vizMin.x + bpad,              bw2, normL, normPL);
-                drawBar(vizMin.x + vizW*0.5f + bpad*0.5f, bw2, normR, normPR);
-                if (fontSize >= 6.f)
-                {
-                    float lfsz = fontSize * 0.8f;
-                    dl->AddText(pickFont(lfsz), lfsz,
-                        ImVec2(vizMin.x + bpad + bw2*0.5f - 3.f*z, vizMax.y - lfsz - 2.f*z),
-                        IM_COL32(180,180,180,255), "L");
-                    dl->AddText(pickFont(lfsz), lfsz,
-                        ImVec2(vizMin.x + vizW*0.5f + bpad*0.5f + bw2*0.5f - 3.f*z, vizMax.y - lfsz - 2.f*z),
-                        IM_COL32(180,180,180,255), "R");
-                }
-            }
-            else // Oscilloscope
-            {
-                if (vizNode && vizNode->customMem)
-                {
-                    DWORD* dw   = vizNode->customMem;
-                    float* ring = (float*)(dw + SIGVIZ_HEADER_DW);
-                    const int DISP = 512;
-                    // dw[7] is always the most recent zero-crossing at least DISP samples
-                    // behind the write head — safe to use directly with no lag check.
-                    int syncPos = (int)(dw[7] & (SIGVIZ_BUF_SIZE - 1));
-                    float midY = vizMin.y + vizH * 0.5f;
-                    dl->AddLine(ImVec2(vizMin.x, midY), ImVec2(vizMax.x, midY),
-                                IM_COL32(128, 128, 128, 255), 0.5f);
-                    for (int ch = 0; ch < 2; ch++)
-                    {
-                        ImU32 col = (ch == 0) ? IM_COL32(0,255,255,220) : IM_COL32(255,255,0,220);
-                        float px0 = 0.f, py0 = 0.f;
-                        for (int si = 0; si < DISP; si++)
-                        {
-                            int idx = (syncPos + si) & (SIGVIZ_BUF_SIZE - 1);
-                            float s = ring[idx * 2 + ch];
-                            if (s >  1.f) s =  1.f;
-                            if (s < -1.f) s = -1.f;
-                            float scx = vizMin.x + (float)si / (float)(DISP - 1) * vizW;
-                            float scy = midY - s * vizH * 0.47f;
-                            if (si > 0)
-                                dl->AddLine(ImVec2(px0, py0), ImVec2(scx, scy), col, 1.f);
-                            px0 = scx; py0 = scy;
-                        }
-                    }
-                }
-            }
-            curY += vizH + 4.f * z;
+            Widgets::EditPanelCtx ctx{ dl, nodeID, px, pw, z, fontSize, mousePos, canClick };
+            Widgets::drawSignalVisualizerPanel(ctx, curY, sc);
         }
     }
 }
-
-// ── Rubber Band Drawing ─────────────────────────────────────────────────
 
 void NodeCanvas::drawRubberBand(ImDrawList* dl)
 {
