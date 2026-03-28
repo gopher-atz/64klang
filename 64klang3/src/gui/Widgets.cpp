@@ -1,7 +1,9 @@
 #include "Widgets.h"
 #include "imgui.h"
 #include "core/SynthNode.h"
+#include "core/SynthController.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -724,24 +726,35 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
 
     int vizMode = sc->getInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE);
     int vizDisp  = vizMode & SIGNAL_VISUALIZER_DISPLAYMASK;
-    SynthNode* vizNode    = sc->getLiveNode((DWORD)nodeID);
-    SynthNode* tmplNode   = sc->getNode((DWORD)nodeID);
+    SynthNode* tmplNode = sc->getNode((DWORD)nodeID);
 
-    // For voice-level nodes: while the voice is active, copy its ring buffer into the
-    // template node's customMem so the data persists after the voice is destroyed.
-    if (vizNode && tmplNode && vizNode != tmplNode &&
-        vizNode->customMem && tmplNode->customMem)
+    // For voice-level nodes: copy the live voice's ring buffer into the template node's
+    // customMem so the data persists after the voice is destroyed. Guard under the mutex
+    // so this cannot race with DestroyVoiceNodes + DeferredSynthFree in the audio thread.
+    // A 1ms try_lock is safe: audio buffers are ~11ms apart at 44100 Hz.
     {
-        const DWORD kTotal = (SIGVIZ_HEADER_DW + SIGVIZ_BUF_SIZE * 2u) * sizeof(float);
-        memcpy(tmplNode->customMem, vizNode->customMem, kTotal);
+        bool locked = SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(1));
+        if (locked)
+        {
+            SynthNode* liveNode = sc->getLiveNode((DWORD)nodeID);
+            if (liveNode && tmplNode && liveNode != tmplNode &&
+                liveNode->customMem && tmplNode->customMem)
+            {
+                const DWORD kTotal = (SIGVIZ_HEADER_DW + SIGVIZ_BUF_SIZE * 2u) * sizeof(float);
+                memcpy(tmplNode->customMem, liveNode->customMem, kTotal);
+            }
+            SynthController::DataAccessMutex.unlock();
+        }
     }
+    // All display sections use tmplNode exclusively — never a potentially-freed voice pointer.
+    SynthNode* vizNode = tmplNode;
 
     // Raw mode: shorter bar section + scrolling history — drawn before shared box
     if (vizDisp == (int)SIGNAL_VISUALIZER_RAW)
     {
-        // When no voice is active, fall back to the template (which still holds the last data).
-        if (!vizNode && tmplNode && tmplNode->customMem)
-            vizNode = tmplNode;
+        // When no voice is active the template still holds the last captured data.
+        if (!vizNode || !vizNode->customMem)
+            vizNode = nullptr;
 
         // --- current-value bipolar bars ---
         float barH = 60.f * z;

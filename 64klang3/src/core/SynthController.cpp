@@ -1848,10 +1848,12 @@ double SynthController::getNodeSignal(DWORD nodeid, int left, int inp)
 		// generic input signal
 		else if (inp < useNode->numInputs)
 		{
+			sample_t* sig = useNode->input[inp];
+			if (!sig) return 0;
 			if (left == 0)
-				return useNode->input[inp]->d[0];
+				return sig->d[0];
 			else
-				return useNode->input[inp]->d[1];
+				return sig->d[1];
 		}
 	}
 	return 0;
@@ -1969,7 +1971,7 @@ void SynthController::DeferredSynthFree()
 	{
 		for (size_t i = 0; i < _deferredFreeNodes.size(); i++)
 		{
-			SynthFree(_deferredFreeNodes[i]);
+			k64_aligned_free(_deferredFreeNodes[i]);
 		}
 		_deferredFreeNodes.clear();
 	}
@@ -5688,6 +5690,7 @@ void SynthController::tick(float* left, float* right, int samples)
 {
 	Recorder.AddSamples(samples);
 	_64klang_Tick(left, right, samples);
+	DeferredSynthFree();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
