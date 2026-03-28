@@ -1583,6 +1583,7 @@ R"xml(
 					<ModeItem name="VU Meter"     value="0"/>
 					<ModeItem name="Oscilloscope" value="1"/>
 					<ModeItem name="Raw"          value="2"/>
+					<ModeItem name="Timeline"     value="3"/>
 				</ModeGroup>
 			</NodeInput>
 		</Node>

@@ -198,6 +198,10 @@ bool NodeCanvas::nodeHasEditButton(int guiIndex) const
     if (nodeType >= CONSTANT_ID)
         return true;
 
+    // OneShot Random has a Gain parameter but numMaxGUIInputs=0; treat like MIDISIGNAL
+    if (nodeType == OSRAND_ID)
+        return true;
+
     return hasParams || hasModes;
 }
 
@@ -1340,7 +1344,7 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
     int numParams = 0;
     for (int i = typeDef->numReqGUIInputs; i < typeDef->numMaxGUIInputs && i < (int)typeDef->inputs.size(); i++)
         numParams++;
-    if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID))
+    if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || nodeType == OSRAND_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID))
         numParams = 1;
 
     float flagsH = 0.f;
@@ -1372,9 +1376,14 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
         ph += 4.f + 72.f + 4.f + 20.f + 8.f;
     if (nodeType == (int)SIGNAL_VISUALIZER_ID)
     {
+        // Override ph entirely: avoid the over-allocated kEditFlagH for the (absent) inline
+        // checkbox row and the spurious +4 base padding — the viz section supplies its own.
+        // Actual drawing: header(25) + flags-label(16) + mode-combo(18) + [viz section]
         int svMode = sc ? sc->getInputMode((DWORD)nodeID, (DWORD)SIGNAL_VISUALIZER_MODE) : 0;
-        if ((svMode & SIGNAL_VISUALIZER_DISPLAYMASK) == (int)SIGNAL_VISUALIZER_RAW)
-            ph += 4.f + 60.f + 4.f + 80.f + 4.f + 18.f + 4.f; // bars(60)+history(80)+combo(18)
+        int svDisp = svMode & SIGNAL_VISUALIZER_DISPLAYMASK;
+        ph = kEditHeaderH + kEditLabelH + kEditFlagH; // 25 + 16 + 18 = 59
+        if (svDisp == (int)SIGNAL_VISUALIZER_TIMELINE)
+            ph += 4.f + 120.f + 4.f + 14.f + 4.f + 18.f + 4.f;
         else
             ph += 4.f + 120.f + 4.f;
     }
@@ -1568,7 +1577,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         if (isConstant) numParams = 1;
         // Voice param and Midi CC nodes have a Scale input at inputs[0] but numMaxGUIInputs=0,
         // so the regular loop skips it; inject one row to show the Scale knob.
-        bool isVoiceInput = (nodeType == MIDISIGNAL_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID));
+        bool isVoiceInput = (nodeType == MIDISIGNAL_ID || nodeType == OSRAND_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID));
         if (isVoiceInput) numParams = 1;
         // Constant and voice params use -1..1 signal range; Midi CC keeps its -128..128 config range.
         bool isSignalRange = (isConstant || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID));

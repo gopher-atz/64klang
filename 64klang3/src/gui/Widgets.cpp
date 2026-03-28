@@ -9,6 +9,7 @@
 #include <cstring>
 #include <algorithm>
 #include <string>
+#include <unordered_map>
 
 namespace K64GUI {
 namespace Widgets {
@@ -749,55 +750,48 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
     // All display sections use tmplNode exclusively — never a potentially-freed voice pointer.
     SynthNode* vizNode = tmplNode;
 
-    // Raw mode: shorter bar section + scrolling history — drawn before shared box
+    // Raw Signal mode: full-height bipolar bars
     if (vizDisp == (int)SIGNAL_VISUALIZER_RAW)
     {
-        // When no voice is active the template still holds the last captured data.
         if (!vizNode || !vizNode->customMem)
             vizNode = nullptr;
 
-        // --- current-value bipolar bars ---
-        float barH = 60.f * z;
+        float barH = 120.f * z;
         ImVec2 barMin(px + 4.f * z, curY);
         ImVec2 barMax(barMin.x + vizW, curY + barH);
         dl->AddRectFilled(barMin, barMax, IM_COL32(0, 0, 0, 255));
         dl->AddRect(barMin, barMax, kColPanelBorder, 0.f, 0, 1.f);
 
         float sampleL = 0.f, sampleR = 0.f;
-        DWORD* rawDw  = nullptr;
-        float* rawRing = nullptr;
         if (vizNode && vizNode->customMem)
         {
-            rawDw  = vizNode->customMem;
-            rawRing = (float*)(rawDw + SIGVIZ_HEADER_DW);
-            DWORD last = (rawDw[0] - 1u) & (DWORD)(SIGVIZ_BUF_SIZE - 1);
-            sampleL = rawRing[last * 2];
-            sampleR = rawRing[last * 2 + 1];
+            DWORD* dw  = vizNode->customMem;
+            float* ring = (float*)(dw + SIGVIZ_HEADER_DW);
+            DWORD last  = (dw[0] - 1u) & (DWORD)(SIGVIZ_BUF_SIZE - 1);
+            sampleL = ring[last * 2];
+            sampleR = ring[last * 2 + 1];
         }
 
-        float midY = barMin.y + barH * 0.5f;
+        float midY  = barMin.y + barH * 0.5f;
+        float bpad  = 4.f * z;
+        float bw2   = vizW * 0.5f - bpad * 1.5f;
+        float halfH = barH * 0.5f;
         dl->AddLine(ImVec2(barMin.x, midY), ImVec2(barMax.x, midY), IM_COL32(80, 80, 80, 255), 0.5f);
-
-        float bpad = 4.f * z;
-        float bw2  = vizW * 0.5f - bpad * 1.5f;
-        float halfBarH = barH * 0.5f;
 
         auto drawBipolarBar = [&](float bx, float val, ImU32 col)
         {
-            float v = val < -1.f ? -1.f : (val > 1.f ? 1.f : val);
-            float fill = v * halfBarH * 0.95f; // signed, positive = up
-            float y0 = midY, y1 = midY - fill;
-            if (y0 > y1) { float tmp = y0; y0 = y1; y1 = tmp; }
+            float v    = val < -1.f ? -1.f : (val > 1.f ? 1.f : val);
+            float fill = v * halfH * 0.95f;
+            float y0   = midY, y1 = midY - fill;
+            if (y0 > y1) { float t = y0; y0 = y1; y1 = t; }
             if (y1 > y0)
                 dl->AddRectFilled(ImVec2(bx, y0), ImVec2(bx + bw2, y1), col);
-            float tickY = midY - v * halfBarH * 0.95f;
-            dl->AddLine(ImVec2(bx, tickY), ImVec2(bx + bw2, tickY),
-                        IM_COL32(255, 255, 255, 200), 1.5f);
-            dl->AddRect(ImVec2(bx, barMin.y), ImVec2(bx + bw2, barMax.y),
-                        IM_COL32(60, 60, 60, 255), 0.f, 0, 0.5f);
+            float tickY = midY - v * halfH * 0.95f;
+            dl->AddLine(ImVec2(bx, tickY), ImVec2(bx + bw2, tickY), IM_COL32(255,255,255,200), 1.5f);
+            dl->AddRect(ImVec2(bx, barMin.y), ImVec2(bx + bw2, barMax.y), IM_COL32(60,60,60,255), 0.f, 0, 0.5f);
         };
-        drawBipolarBar(barMin.x + bpad,                  sampleL, IM_COL32(0, 200, 200, 220));
-        drawBipolarBar(barMin.x + vizW*0.5f + bpad*0.5f, sampleR, IM_COL32(200, 200, 0,  220));
+        drawBipolarBar(barMin.x + bpad,                  sampleL, IM_COL32(0,200,200,220));
+        drawBipolarBar(barMin.x + vizW*0.5f + bpad*0.5f, sampleR, IM_COL32(200,200,0,  220));
         if (fontSize >= 6.f)
         {
             float lfsz = fontSize * 0.8f;
@@ -809,9 +803,45 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                 IM_COL32(180,180,180,255), "R");
         }
         curY += barH + 4.f * z;
+        return;
+    }
 
-        // --- scrolling history waveform ---
-        float histH = 80.f * z;
+    // Signal Timeline mode: scrollable history waveform + scrollbar + history-length combo
+    if (vizDisp == (int)SIGNAL_VISUALIZER_TIMELINE)
+    {
+        // Persistent per-node GUI state (UI-only, never stored in core mode word)
+        // scrollFrac: 0=oldest at left, 1=newest at right (default=1, live view)
+        static std::unordered_map<int, float> s_timelineScroll;
+        static std::unordered_map<int, float> s_sbDragStartX;
+        static std::unordered_map<int, float> s_sbDragStartFrac;
+
+        if (!vizNode || !vizNode->customMem)
+            vizNode = nullptr;
+
+        static const DWORD kHistLengths[] = { 65536, 32768, 16384, 8192, 4096, 2048, 1024, 512, 256 };
+        static const char* kHistLabels[]  = { "65536 (~1.5s)", "32768 (~0.74s)", "16384 (~0.37s)",
+                                              "8192 (~0.19s)",  "4096 (~93ms)",  "2048 (~46ms)",
+                                              "1024 (~23ms)",   "512 (~12ms)",   "256 (~6ms)" };
+        static const int   kHistCount     = 9;
+
+        int histIdx = (vizMode & SIGNAL_VISUALIZER_HISTMASK) >> SIGNAL_VISUALIZER_HISTSHIFT;
+        if (histIdx < 0 || histIdx >= kHistCount) histIdx = 0;
+
+        DWORD windowSize = kHistLengths[histIdx];
+        DWORD maxScroll  = (histIdx == 0) ? 0u : (DWORD)(SIGVIZ_BUF_SIZE - windowSize);
+        bool  sbActive   = (histIdx != 0);
+
+        // Insert with 1.0f default (thumb at right = newest) only on first encounter
+        auto [it, inserted] = s_timelineScroll.emplace(nodeID, 1.0f);
+        float& scrollFrac = it->second;
+        if (!sbActive) scrollFrac = 1.f; // full buffer: no scroll, keep thumb at right
+        // Invert: scrollFrac=1 → newest (scrollOff=0), scrollFrac=0 → oldest (scrollOff=max)
+        DWORD scrollOff = (maxScroll > 0u)
+            ? std::min((DWORD)((1.f - scrollFrac) * (float)maxScroll + 0.5f), maxScroll)
+            : 0u;
+
+        // --- scrolling history waveform (120 px, same height as VU/Scope/Raw) ---
+        float histH = 120.f * z;
         ImVec2 histMin(px + 4.f * z, curY);
         ImVec2 histMax(histMin.x + vizW, curY + histH);
         dl->AddRectFilled(histMin, histMax, IM_COL32(0, 0, 0, 255));
@@ -820,34 +850,25 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         dl->AddLine(ImVec2(histMin.x, histMidY), ImVec2(histMax.x, histMidY),
                     IM_COL32(50, 50, 50, 255), 0.5f);
 
-        // --- History-length combobox ---
-        static const DWORD kHistLengths[]  = { 65536, 32768, 16384, 8192, 4096, 2048, 1024, 512, 256 };
-        static const char* kHistLabels[]   = { "65536 (~1.5s)", "32768 (~0.74s)", "16384 (~0.37s)",
-                                               "8192 (~0.19s)",  "4096 (~93ms)",  "2048 (~46ms)",
-                                               "1024 (~23ms)",   "512 (~12ms)",   "256 (~6ms)" };
-        static const int   kHistCount      = 9;
-
-        int histIdx = (vizMode & SIGNAL_VISUALIZER_HISTMASK) >> SIGNAL_VISUALIZER_HISTSHIFT;
-        if (histIdx < 0 || histIdx >= kHistCount) histIdx = 0;
-        DWORD kHistory = (DWORD)kHistLengths[histIdx] - 1u;
-
-        if (rawRing)
+        if (vizNode && vizNode->customMem)
         {
-            int numCols = (int)(vizW / z + 0.5f);
+            DWORD* dw    = vizNode->customMem;
+            float* ring  = (float*)(dw + SIGVIZ_HEADER_DW);
+            DWORD  nextWp = dw[0];
+            int numCols   = (int)(vizW / z + 0.5f);
             if (numCols < 2) numCols = 2;
-            DWORD nextWp = rawDw[0];
-            float px0L = 0.f, py0L = 0.f;
-            float px0R = 0.f, py0R = 0.f;
+            float px0L = 0.f, py0L = 0.f, px0R = 0.f, py0R = 0.f;
             for (int xi = 0; xi <= numCols; xi++)
             {
-                // xi=0 → kHistory ticks ago (oldest), xi=numCols → 0 ticks ago (newest)
-                DWORD ago = kHistory - (DWORD)((float)xi / numCols * kHistory + 0.5f);
-                DWORD pos = (nextWp - 1u - ago) & (DWORD)(SIGVIZ_BUF_SIZE - 1);
-                float L = rawRing[pos * 2];
-                float R = rawRing[pos * 2 + 1];
-                float sx  = histMin.x + (float)xi / numCols * vizW;
-                float syL = histMidY - std::max(-1.f, std::min(1.f, L)) * histH * 0.47f;
-                float syR = histMidY - std::max(-1.f, std::min(1.f, R)) * histH * 0.47f;
+                // xi=0 → oldest visible sample, xi=numCols → newest visible sample
+                DWORD base = (windowSize - 1u) - (DWORD)((float)xi / numCols * (float)(windowSize - 1u) + 0.5f);
+                DWORD ago  = base + scrollOff;
+                DWORD pos  = (nextWp - 1u - ago) & (DWORD)(SIGVIZ_BUF_SIZE - 1);
+                float L    = ring[pos * 2];
+                float R    = ring[pos * 2 + 1];
+                float sx   = histMin.x + (float)xi / numCols * vizW;
+                float syL  = histMidY - std::max(-1.f, std::min(1.f, L)) * histH * 0.47f;
+                float syR  = histMidY - std::max(-1.f, std::min(1.f, R)) * histH * 0.47f;
                 if (xi > 0)
                 {
                     dl->AddLine(ImVec2(px0L, py0L), ImVec2(sx, syL), IM_COL32(0,200,200,200), 1.f);
@@ -859,39 +880,73 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         }
         curY += histH + 4.f * z;
 
+        // --- horizontal scrollbar (14 px, always visible; inactive when histIdx==0) ---
+        float sbH = 14.f * z;
+        ImVec2 sbMin(px + 4.f * z, curY);
+        ImVec2 sbMax(sbMin.x + vizW, curY + sbH);
+        float thumbFrac  = (float)windowSize / (float)SIGVIZ_BUF_SIZE;
+        float thumbW     = std::max(8.f * z, vizW * thumbFrac);
+        float trackRange = vizW - thumbW;
+        float thumbX     = sbMin.x + (trackRange > 0.f ? scrollFrac * trackRange : 0.f);
+        ImU32 trackCol   = sbActive ? IM_COL32( 30, 30, 35, 255) : IM_COL32(20, 20, 25, 180);
+        ImU32 rimCol     = sbActive ? IM_COL32( 80, 80, 90, 255) : IM_COL32(50, 50, 55, 180);
+        ImU32 thumbCol   = sbActive ? IM_COL32(100,100,110, 255) : IM_COL32(50, 50, 55, 180);
+        dl->AddRectFilled(sbMin, sbMax, trackCol);
+        dl->AddRect(sbMin, sbMax, rimCol, 0.f, 0, 1.f);
+        dl->AddRectFilled(ImVec2(thumbX, sbMin.y + 2.f), ImVec2(thumbX + thumbW, sbMax.y - 2.f), thumbCol);
+
+        if (sbActive && trackRange > 0.f)
         {
-            float btnH  = 18.f * z;
+            bool inSb = mousePos.x >= sbMin.x && mousePos.x <= sbMax.x &&
+                        mousePos.y >= sbMin.y && mousePos.y <= sbMax.y;
+            if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && inSb)
+            {
+                s_sbDragStartX[nodeID]    = mousePos.x;
+                s_sbDragStartFrac[nodeID] = scrollFrac;
+            }
+            if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && s_sbDragStartX.count(nodeID))
+            {
+                float dx = ImGui::GetMousePos().x - s_sbDragStartX[nodeID];
+                scrollFrac = std::max(0.f, std::min(1.f, s_sbDragStartFrac[nodeID] + dx / trackRange));
+            }
+            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+            {
+                s_sbDragStartX.erase(nodeID);
+                s_sbDragStartFrac.erase(nodeID);
+            }
+        }
+        curY += sbH + 4.f * z;
+
+        // --- history-length combobox (18 px) ---
+        {
+            float btnH2 = 18.f * z;
             float btnX  = px + 4.f * z;
             float btnW  = pw - 8.f * z;
             ImVec2 btnMin(btnX, curY);
-            ImVec2 btnMax(btnX + btnW, curY + btnH);
+            ImVec2 btnMax(btnX + btnW, curY + btnH2);
             bool hov = mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
                        mousePos.y >= btnMin.y && mousePos.y <= btnMax.y;
             dl->AddRectFilled(btnMin, btnMax, hov ? IM_COL32(60,60,70,255) : IM_COL32(40,40,48,255));
             dl->AddRect(btnMin, btnMax, IM_COL32(120,120,130,255), 0.f, 0, 1.f);
-
             if (fontSize >= 6.f)
             {
                 char label[64];
                 snprintf(label, sizeof(label), "History: %s", kHistLabels[histIdx]);
                 float lfsz = fontSize * 0.9f;
                 dl->AddText(pickFont(lfsz), lfsz,
-                            ImVec2(btnX + 4.f*z, curY + (btnH - lfsz) * 0.5f),
+                            ImVec2(btnX + 4.f*z, curY + (btnH2 - lfsz) * 0.5f),
                             IM_COL32(220,220,230,255), label);
             }
-            // dropdown arrow
-            float arMidX = btnMax.x - 10.f*z, arMidY = curY + btnH * 0.5f, arH = 4.f*z;
+            float arMidX = btnMax.x - 10.f*z, arMidY = curY + btnH2 * 0.5f, arH = 4.f*z;
             dl->AddTriangleFilled(
                 ImVec2(arMidX - arH, arMidY - arH*0.5f),
                 ImVec2(arMidX + arH, arMidY - arH*0.5f),
                 ImVec2(arMidX,       arMidY + arH*0.5f),
                 IM_COL32(200,200,210,255));
-
             char popupId[64];
             snprintf(popupId, sizeof(popupId), "##svhist%d", nodeID);
             if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hov)
                 ImGui::OpenPopup(popupId);
-
             {
                 float itemH = fontSize * 1.35f;
                 float padY  = ImGui::GetStyle().WindowPadding.y * 2.f;
@@ -914,7 +969,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                 ImGui::EndPopup();
             }
             ImGui::PopFont();
-            curY += btnH + 4.f * z;
+            curY += btnH2 + 4.f * z;
         }
         return;
     }
