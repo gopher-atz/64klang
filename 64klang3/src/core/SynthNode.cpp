@@ -5004,7 +5004,8 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 	if (n->input[SIGNAL_VISUALIZER_MODE])
 	{
 		int vizMode = n->input[SIGNAL_VISUALIZER_MODE]->i[0];
-		if ((vizMode & SIGNAL_VISUALIZER_DISPLAYMASK) == (int)SIGNAL_VISUALIZER_SPECTRUM)
+		if ((vizMode & SIGNAL_VISUALIZER_DISPLAYMASK) == (int)SIGNAL_VISUALIZER_SPECTRUM_TIMELINE ||
+			(vizMode & SIGNAL_VISUALIZER_DISPLAYMASK) == (int)SIGNAL_VISUALIZER_SPECTRUM)
 		{
 			DWORD*  specBase  = n->customMem + SIGVIZ_SPEC_BASE;
 			DWORD&  colCtr    = specBase[0];
@@ -5071,7 +5072,7 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 					switch (chanSel) {
 						case 1:  s = sL; break;
 						case 2:  s = sR; break;
-						default: s = sL + sR; break;
+						default: s = (sL + sR) * .5f; break;
 					}
 					s_fftBuf[i] = complexsample_t((double)(s * s_winCoeff[i]));
 				}

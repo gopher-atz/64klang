@@ -770,7 +770,8 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
             if (liveNode && tmplNode && liveNode != tmplNode &&
                 liveNode->customMem && tmplNode->customMem)
             {
-                if (vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
+                if (vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM_TIMELINE ||
+                    vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
                 {
                     // ~8 KB: just the spectrum header + magnitude bins
                     const DWORD kSpecBytes = (SIGVIZ_SPEC_HDR_DW + SIGVIZ_SPEC_BINS) * (DWORD)sizeof(float);
@@ -791,8 +792,8 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
     // All display sections use tmplNode exclusively — never a potentially-freed voice pointer.
     SynthNode* vizNode = tmplNode;
 
-    // ── Spectrum mode: scrolling spectrogram (X=time, Y=frequency, color=magnitude) ──
-    if (vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
+    // ── Spectrum Timeline mode: scrolling spectrogram (X=frequency, Y=time, color=magnitude) ──
+    if (vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM_TIMELINE)
     {
         // Mode bits needed for layout/combos and bin mapping (not for FFT — core handles that)
         int fftSel = (vizMode & SIGNAL_VISUALIZER_FFTMASK) >> SIGNAL_VISUALIZER_FFTSHIFT;
@@ -1087,7 +1088,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
             else
                 snprintf(tooltip, sizeof(tooltip), "%.1f Hz", hoverFreq);
 
-            float lfsz = fontSize * 0.85f;
+            float lfsz = fontSize * 0.72f;
             ImVec2 ts  = ImGui::CalcTextSize(tooltip);
             float  tw  = ts.x * lfsz / ImGui::GetFont()->FontSize;
             float  th  = lfsz;
@@ -1103,7 +1104,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                         ImVec2(tx + tw + 4.f, ty + th + 2.f),
                         IM_COL32(200, 200, 180, 120), 0.f, 0, 1.f);
             dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty),
-                        IM_COL32(255, 255, 200, 255), tooltip);
+                        IM_COL32(255, 255, 200, 230), tooltip);
         }
 
         curY += specH + 4.f * z;
@@ -1120,7 +1121,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                 int groupIdx = 0;
                 for (const auto& mg : modeDef.modeGroups)
                 {
-                    if (mg.showFor != (int)SIGNAL_VISUALIZER_SPECTRUM) { groupIdx++; continue; }
+                    if (mg.showFor != (int)SIGNAL_VISUALIZER_SPECTRUM_TIMELINE) { groupIdx++; continue; }
 
                     int groupVal = (currentBits & (int)mg.mask) >> mg.shift;
                     const char* activeName = "???";
@@ -1195,6 +1196,405 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         }
         return;
     }
+
+    // ── Spectrum Bars mode: current FFT frame as frequency bars (X=freq log, Y=dB level) ──
+    if (vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
+    {
+        int fftSel = (vizMode & SIGNAL_VISUALIZER_FFTMASK) >> SIGNAL_VISUALIZER_FFTSHIFT;
+        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096 };
+        if (fftSel < 0 || fftSel >= 5) fftSel = 3;
+        int fftHalf = kFFTSizes[fftSel] / 2;
+
+        // ---------- read core pre-computed spectrum section ----------
+        DWORD* specBase = (vizNode && vizNode->customMem) ? (vizNode->customMem + SIGVIZ_SPEC_BASE) : nullptr;
+        int    fftHalfV = specBase ? (int)specBase[3] : 0;
+        float* specMags = specBase ? (float*)(specBase + SIGVIZ_SPEC_HDR_DW) : nullptr;
+        if (fftHalfV <= 0) fftHalfV = fftHalf;
+
+        // ---------- Plasma colormap ----------
+        static const float kPlasmaBars[][3] = {
+            {0.050383f, 0.029803f, 0.152797f},
+            {0.341500f, 0.009905f, 0.646365f},
+            {0.572067f, 0.143868f, 0.567643f},
+            {0.748751f, 0.306346f, 0.444733f},
+            {0.876168f, 0.486385f, 0.301656f},
+            {0.945636f, 0.671269f, 0.166163f},
+            {0.991365f, 0.848964f, 0.882468f},
+        };
+        static const int kPlasmaBarsN = (int)(sizeof(kPlasmaBars) / sizeof(kPlasmaBars[0])) - 1;
+        auto plasmaColorBars = [&](float t) -> ImU32 {
+            t = std::max(0.f, std::min(1.f, t));
+            float c = t * kPlasmaBarsN;
+            int ci = std::min((int)c, kPlasmaBarsN - 1);
+            float f = c - (float)ci;
+            float r = kPlasmaBars[ci][0] + (kPlasmaBars[ci+1][0] - kPlasmaBars[ci][0]) * f;
+            float g = kPlasmaBars[ci][1] + (kPlasmaBars[ci+1][1] - kPlasmaBars[ci][1]) * f;
+            float b = kPlasmaBars[ci][2] + (kPlasmaBars[ci+1][2] - kPlasmaBars[ci][2]) * f;
+            return IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), 255);
+        };
+
+        // ---------- layout ----------
+        float specH    = 120.f * z;
+        float barAreaW = vizW;   // bars fill the full panel width; dB labels overlay on top
+
+        // Zoom-responsive bin resolution: target ~3 screen pixels per column so zooming
+        // in shows more individual bins and zooming out merges bins via power combination.
+        // barAreaW is already in screen pixels (scales with z), so dividing by a fixed
+        // pixel target gives the correct zoom-dependent column count.
+        const float kTargetColPx = 3.f;
+        int numCols = std::max(8, (int)(barAreaW / kTargetColPx + 0.5f));
+        if (fftHalfV > 0) numCols = std::min(numCols, fftHalfV);
+
+        ImVec2 specMin(px + 4.f * z, curY);
+        ImVec2 specMax(specMin.x + vizW, curY + specH);
+
+        dl->AddRectFilled(specMin, specMax, IM_COL32(0, 0, 0, 255));
+
+        // ---------- guide lines (drawn before bars so bars render on top) ----------
+        // Horizontal: one per dB tick
+        {
+            static const int kDbTicks[] = { 0, -20, -40, -60, -80, -100 };
+            for (int i = 0; i < 6; i++) {
+                float tn = ((float)kDbTicks[i] + 100.f) / 100.f;
+                float sy = specMax.y - tn * specH;
+                dl->AddLine(ImVec2(specMin.x, sy), ImVec2(specMax.x, sy),
+                            IM_COL32(255, 255, 255, 28), 1.f);
+            }
+        }
+        // Vertical: one per freq tick
+        if (fftHalfV > 0) {
+            static const float kFreqTicksB[] = { 50.f, 100.f, 200.f, 500.f,
+                                                  1000.f, 2000.f, 5000.f, 10000.f, 20000.f };
+            const float logmin = logf(2.f), logmax = logf((float)fftHalfV);
+            for (int i = 0; i < 9; i++) {
+                float bin = kFreqTicksB[i] * (float)(fftHalfV * 2) / 44100.f;
+                if (bin < 2.f || bin >= (float)fftHalfV) continue;
+                float normX   = (logf(bin) - logmin) / (logmax - logmin);
+                float screenX = specMin.x + (normX + 0.5f / (float)numCols) * barAreaW;
+                if (screenX < specMin.x + 1.f || screenX > specMax.x - 1.f) continue;
+                dl->AddLine(ImVec2(screenX, specMin.y), ImVec2(screenX, specMax.y),
+                            IM_COL32(255, 255, 255, 28), 1.f);
+            }
+        }
+
+        // ---------- per-node peak tracker (2s falloff) ----------
+        struct SpecBarPeaks {
+            std::vector<float> setVal;   // column value at last peak hit
+            std::vector<float> setTime;  // ImGui time when peak was last hit
+            int lastNumCols = -1;
+            int lastFftHalf = -1;
+        };
+        static std::unordered_map<int, SpecBarPeaks> s_sbPeaks;
+        SpecBarPeaks& pk = s_sbPeaks[nodeID];
+        if (pk.lastNumCols != numCols || pk.lastFftHalf != fftHalfV) {
+            pk.setVal.assign(numCols, 0.f);
+            pk.setTime.assign(numCols, 0.f);
+            pk.lastNumCols = numCols;
+            pk.lastFftHalf = fftHalfV;
+        }
+        const float kHoldSec      = 2.f;    // hold peak steady for 2s
+        const float kFalloffPerSec = 0.5f;   // then full-scale decay over further 2s
+        float now = (float)ImGui::GetTime();
+
+        // ---------- compute column values + update peaks ----------
+        std::vector<float> colTn(numCols, 0.f);
+        std::vector<float> colPk(numCols, 0.f);
+        if (specMags && fftHalfV > 0) {
+            float logmin = logf(2.f), logmax = logf((float)fftHalfV);
+            std::vector<int> binLo(numCols + 1);
+            for (int x = 0; x <= numCols; x++) {
+                float ld = ((float)x / numCols * (logmax - logmin)) + logmin;
+                binLo[x] = std::min((int)expf(ld), fftHalfV - 1);
+            }
+            for (int x = 0; x < numCols; x++) {
+                int lo = binLo[x], hi = binLo[x + 1];
+                if (hi <= lo) hi = lo + 1;
+                hi = std::min(hi, fftHalfV);
+                // Power-sum (RMS) when multiple bins map to one column; single bin → direct
+                float power;
+                int count = hi - lo;
+                if (count <= 1) {
+                    power = specMags[lo];
+                } else {
+                    float sumSq = 0.f;
+                    for (int b = lo; b < hi; b++) sumSq += specMags[b] * specMags[b];
+                    power = sqrtf(sumSq / (float)count);
+                }
+                float db  = log2f(power * 2.f + 1e-9f) * 6.f;
+                float tn  = 1.f - std::max(std::min(db, 0.f), -100.f) / -100.f;
+                colTn[x]  = tn;
+                // Hold for kHoldSec, then decay; update if current exceeds held/decayed peak
+                float age     = now - pk.setTime[x];
+                float peakNow = (age < kHoldSec)
+                    ? pk.setVal[x]
+                    : std::max(0.f, pk.setVal[x] - (age - kHoldSec) * kFalloffPerSec);
+                if (tn >= peakNow) {
+                    pk.setVal[x]  = tn;
+                    pk.setTime[x] = now;
+                    peakNow       = tn;
+                }
+                colPk[x] = peakNow;
+            }
+        }
+
+        // ---------- draw spectrum: filled area + instantaneous outline + peak line ----------
+        if (numCols > 0) {
+            // Center-X of column x (bars rendered between adjacent centers for smooth interpolation)
+            auto colCX = [&](int x) -> float {
+                return specMin.x + ((float)x + 0.5f) / (float)numCols * barAreaW;
+            };
+
+            // Filled area under the interpolated curve.
+            // Each segment is a convex trapezoid between adjacent column centres; left/right
+            // half-columns are capped with axis-aligned rects so no gap at the edges.
+            {
+                float cx0 = colCX(0);
+                ImU32 col = (plasmaColorBars(colTn[0] * colTn[0]) & 0x00FFFFFFu) | (ImU32(0xA0) << 24u);
+                dl->AddRectFilled(ImVec2(specMin.x, specMax.y - colTn[0] * specH),
+                                  ImVec2(cx0,       specMax.y), col);
+            }
+            for (int x = 0; x < numCols - 1; x++) {
+                float cx0 = colCX(x),     cy0 = specMax.y - colTn[x]   * specH;
+                float cx1 = colCX(x + 1), cy1 = specMax.y - colTn[x+1] * specH;
+                ImU32 col = (plasmaColorBars(colTn[x] * colTn[x]) & 0x00FFFFFFu) | (ImU32(0xA0) << 24u);
+                dl->AddQuadFilled(ImVec2(cx0, specMax.y), ImVec2(cx0, cy0),
+                                  ImVec2(cx1, cy1),       ImVec2(cx1, specMax.y), col);
+            }
+            {
+                int   lc  = numCols - 1;
+                float cxL = colCX(lc);
+                ImU32 col = (plasmaColorBars(colTn[lc] * colTn[lc]) & 0x00FFFFFFu) | (ImU32(0xA0) << 24u);
+                dl->AddRectFilled(ImVec2(cxL,       specMax.y - colTn[lc] * specH),
+                                  ImVec2(specMax.x, specMax.y), col);
+            }
+
+            // Instantaneous outline polyline — plasma-colored full alpha, 1.5px
+            for (int x = 0; x < numCols - 1; x++) {
+                float cx0 = colCX(x),     cy0 = specMax.y - colTn[x]   * specH;
+                float cx1 = colCX(x + 1), cy1 = specMax.y - colTn[x+1] * specH;
+                dl->AddLine(ImVec2(cx0, cy0), ImVec2(cx1, cy1),
+                            plasmaColorBars(colTn[x] * colTn[x]), 1.5f);
+            }
+
+            // Peak polyline — warm white, semi-transparent, 1px
+            for (int x = 0; x < numCols - 1; x++) {
+                if (colPk[x] < 0.005f && colPk[x+1] < 0.005f) continue;
+                float cx0 = colCX(x),     py0 = specMax.y - colPk[x]   * specH;
+                float cx1 = colCX(x + 1), py1 = specMax.y - colPk[x+1] * specH;
+                dl->AddLine(ImVec2(cx0, py0), ImVec2(cx1, py1),
+                            IM_COL32(255, 255, 200, 170), 1.f);
+            }
+        }
+
+        // ---------- dB legend (overlaid on left edge) ----------
+        if (fontSize >= 6.f) {
+            static const int kDbTicks[] = { 0, -20, -40, -60, -80, -100 };
+            float lfSz = fontSize * 0.72f;
+            for (int i = 0; i < 6; i++) {
+                float tn  = ((float)kDbTicks[i] + 100.f) / 100.f;
+                float sy  = specMax.y - tn * specH;
+
+                char dbLabel[8];
+                snprintf(dbLabel, sizeof(dbLabel), "%d", kDbTicks[i]);
+                ImVec2 ts = ImGui::CalcTextSize(dbLabel);
+                float  tw = ts.x * lfSz / ImGui::GetFont()->FontSize;
+                float  th = lfSz;
+                float  lx = specMin.x + 3.f * z;
+                float  ly = sy - th * 0.5f;
+                ly = std::max(specMin.y + 1.f, std::min(ly, specMax.y - th - 1.f));
+                dl->AddRectFilled(ImVec2(lx - 1.f, ly - 1.f),
+                                  ImVec2(lx + tw + 2.f, ly + th + 1.f),
+                                  IM_COL32(0, 0, 0, 150));
+                dl->AddText(pickFont(lfSz), lfSz, ImVec2(lx, ly),
+                            IM_COL32(255, 255, 200, 230), dbLabel);
+            }
+        }
+
+        // ---------- frequency legend (top-edge overlay, log scale) ----------
+        if (fftHalfV > 0 && fontSize >= 6.f) {
+            static const float kFreqTicksB[] = { 50.f, 100.f, 200.f, 500.f,
+                                                  1000.f, 2000.f, 5000.f, 10000.f, 20000.f };
+            static const int   kFreqTickBN   = 9;
+            const float sr     = 44100.f;
+            const float logmin = logf(2.f);
+            const float logmax = logf((float)fftHalfV);
+            float lfSz  = fontSize * 0.72f;
+            for (int i = 0; i < kFreqTickBN; i++) {
+                float freq = kFreqTicksB[i];
+                float bin  = freq * (float)(fftHalfV * 2) / sr;
+                if (bin < 2.f || bin >= (float)fftHalfV) continue;
+                float normX   = (logf(bin) - logmin) / (logmax - logmin);
+                float screenX = specMin.x + (normX + 0.5f / (float)numCols) * barAreaW;
+                if (screenX < specMin.x + 2.f || screenX > specMax.x - 2.f) continue;
+
+                dl->AddLine(ImVec2(screenX, specMin.y),
+                            ImVec2(screenX, specMin.y + 5.f * z),
+                            IM_COL32(255, 255, 255, 140), 1.f);
+
+                char freqLabel[12];
+                if (freq >= 1000.f)
+                    snprintf(freqLabel, sizeof(freqLabel), "%.0fk", freq / 1000.f);
+                else
+                    snprintf(freqLabel, sizeof(freqLabel), "%.0f", freq);
+
+                ImVec2 ts = ImGui::CalcTextSize(freqLabel);
+                float  tw = ts.x * lfSz / ImGui::GetFont()->FontSize;
+                float  th = lfSz;
+                float  lx = screenX - tw * 0.5f;
+                float  ly = specMin.y + 7.f * z;
+                lx = std::max(specMin.x + 1.f, std::min(lx, specMax.x - tw - 1.f));
+                dl->AddRectFilled(ImVec2(lx - 1.f, ly - 1.f),
+                                  ImVec2(lx + tw + 2.f, ly + th + 1.f),
+                                  IM_COL32(0, 0, 0, 140));
+                dl->AddText(pickFont(lfSz), lfSz,
+                            ImVec2(lx, ly),
+                            IM_COL32(255, 255, 200, 230), freqLabel);
+            }
+        }
+
+        dl->AddRect(specMin, specMax, kColPanelBorder, 0.f, 0, 1.f);
+
+        // ---------- hover frequency label (X axis) ----------
+        if (fftHalfV > 0 && fontSize >= 6.f &&
+            mousePos.x >= specMin.x && mousePos.x <= specMax.x &&
+            mousePos.y >= specMin.y && mousePos.y <= specMax.y)
+        {
+            float normX = (mousePos.x - specMin.x) / barAreaW;
+            normX = std::max(0.f, std::min(1.f, normX));
+            int   hoverCol      = std::min((int)(normX * (float)numCols), numCols - 1);
+            float colCentreNorm = ((float)hoverCol + 0.5f) / (float)numCols;
+            colCentreNorm = std::max(0.f, std::min(1.f, colCentreNorm));
+            float logmin    = logf(2.f);
+            float logmax    = logf((float)fftHalfV);
+            float hoverBin  = expf(colCentreNorm * (logmax - logmin) + logmin);
+            float hoverFreq = hoverBin * 44100.f / (float)(fftHalfV * 2);
+
+            // dB values from the column
+            float hoverTn  = (hoverCol >= 0 && hoverCol < (int)colTn.size()) ? colTn[hoverCol] : 0.f;
+            float hoverDb  = hoverTn * 100.f - 100.f;   // 0..1 → -100..0 dB
+            float hoverPkTn = (hoverCol >= 0 && hoverCol < (int)colPk.size()) ? colPk[hoverCol] : 0.f;
+            float hoverPkDb = hoverPkTn * 100.f - 100.f;
+
+            char freqStr[24], dbStr[16], pkStr[16];
+            if (hoverFreq >= 1000.f)
+                snprintf(freqStr, sizeof(freqStr), "%.2f kHz", hoverFreq * 0.001f);
+            else
+                snprintf(freqStr, sizeof(freqStr), "%.1f Hz", hoverFreq);
+            snprintf(dbStr,  sizeof(dbStr),  "%.1f dB", hoverDb);
+            snprintf(pkStr,  sizeof(pkStr),  "%.1f dB pk", hoverPkDb);
+
+            float lfsz  = fontSize * 0.72f;
+            float scale = lfsz / ImGui::GetFont()->FontSize;
+            float tw    = std::max({ ImGui::CalcTextSize(freqStr).x * scale,
+                                    ImGui::CalcTextSize(dbStr).x   * scale,
+                                    ImGui::CalcTextSize(pkStr).x   * scale });
+            float th    = lfsz * 3.f + 4.f * z;   // three lines + two gaps
+            float tx    = mousePos.x - tw * 0.5f;
+            float ty    = mousePos.y - th - 6.f * z;
+            tx = std::max(specMin.x + 1.f, std::min(tx, specMax.x - tw - 1.f));
+            if (ty < specMin.y + 2.f) ty = mousePos.y + 6.f * z;
+            dl->AddRectFilled(ImVec2(tx - 3.f, ty - 2.f),
+                              ImVec2(tx + tw + 4.f, ty + th + 2.f),
+                              IM_COL32(0, 0, 0, 190));
+            dl->AddRect(ImVec2(tx - 3.f, ty - 2.f),
+                        ImVec2(tx + tw + 4.f, ty + th + 2.f),
+                        IM_COL32(200, 200, 180, 120), 0.f, 0, 1.f);
+            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty),
+                        IM_COL32(255, 255, 200, 230), freqStr);
+            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + lfsz + 2.f * z),
+                        IM_COL32(180, 220, 255, 220), dbStr);
+            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + lfsz * 2.f + 4.f * z),
+                        IM_COL32(255, 180, 100, 220), pkStr);
+        }
+
+        curY += specH + 4.f * z;
+
+        // ---------- spectrum-specific mode combos (FFT Window, Channel, FFT Size) ----------
+        {
+            const NodeTypeDef* svTypeDef = NodeConfig::instance().getNodeType((int)SIGNAL_VISUALIZER_ID);
+            if (svTypeDef && SIGNAL_VISUALIZER_MODE < (int)svTypeDef->inputs.size())
+            {
+                const InputDef& modeDef = svTypeDef->inputs[SIGNAL_VISUALIZER_MODE];
+                int currentBits = vizMode;
+                int groupIdx = 0;
+                for (const auto& mg : modeDef.modeGroups)
+                {
+                    if (mg.showFor != (int)SIGNAL_VISUALIZER_SPECTRUM) { groupIdx++; continue; }
+
+                    int groupVal = (currentBits & (int)mg.mask) >> mg.shift;
+                    const char* activeName = "???";
+                    int activeIdx = 0;
+                    for (int j = 0; j < (int)mg.items.size(); j++)
+                    {
+                        if (mg.items[j].value == groupVal)
+                        {
+                            activeName = mg.items[j].name.c_str();
+                            activeIdx = j;
+                        }
+                    }
+
+                    float btnH2 = 18.f * z;
+                    float btnX  = px + 4.f * z;
+                    float btnW  = pw - 8.f * z;
+                    ImVec2 btnMin(btnX, curY);
+                    ImVec2 btnMax(btnX + btnW, curY + btnH2);
+                    bool hov = mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
+                               mousePos.y >= btnMin.y && mousePos.y <= btnMax.y;
+                    dl->AddRectFilled(btnMin, btnMax, hov ? IM_COL32(60,60,70,255) : IM_COL32(40,40,48,255));
+                    dl->AddRect(btnMin, btnMax, IM_COL32(120,120,130,255), 0.f, 0, 1.f);
+                    if (fontSize >= 6.f)
+                    {
+                        char label[128];
+                        snprintf(label, sizeof(label), "%s: %s", mg.name.c_str(), activeName);
+                        float lfsz = fontSize * 0.9f;
+                        dl->AddText(pickFont(lfsz), lfsz,
+                                    ImVec2(btnX + 4.f*z, curY + (btnH2 - lfsz) * 0.5f),
+                                    IM_COL32(220,220,230,255), label);
+                    }
+                    float arMidX = btnMax.x - 10.f*z, arMidY = curY + btnH2 * 0.5f, arH = 4.f*z;
+                    dl->AddTriangleFilled(
+                        ImVec2(arMidX - arH, arMidY - arH*0.5f),
+                        ImVec2(arMidX + arH, arMidY - arH*0.5f),
+                        ImVec2(arMidX,       arMidY + arH*0.5f),
+                        IM_COL32(200,200,210,255));
+
+                    char popupId[64];
+                    snprintf(popupId, sizeof(popupId), "##specbmg%d_%d", nodeID, groupIdx);
+                    if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hov)
+                        ImGui::OpenPopup(popupId);
+                    {
+                        float itemH = fontSize * 1.35f;
+                        float padY  = ImGui::GetStyle().WindowPadding.y * 2.f;
+                        ImGui::SetNextWindowSizeConstraints(ImVec2(0,0), ImVec2(FLT_MAX, itemH * 8.f + padY));
+                    }
+                    ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y));
+                    ImGui::PushFont(pickFont(fontSize));
+                    if (ImGui::BeginPopup(popupId))
+                    {
+                        ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
+                        for (int j = 0; j < (int)mg.items.size(); j++)
+                        {
+                            bool sel = (j == activeIdx);
+                            if (ImGui::Selectable(mg.items[j].name.c_str(), sel, 0, ImVec2(btnW, 0)))
+                            {
+                                int newBits = (currentBits & ~(int)mg.mask) | (mg.items[j].value << mg.shift);
+                                sc->setInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE,
+                                                 (DWORD)newBits, (DWORD)mg.mask);
+                                currentBits = newBits;
+                            }
+                            if (sel) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndPopup();
+                    }
+                    ImGui::PopFont();
+                    curY += btnH2 + 4.f * z;
+                    groupIdx++;
+                }
+            }
+        }
+        return;
+    }
+
     // Raw Signal mode: full-height bipolar bars
     if (vizDisp == (int)SIGNAL_VISUALIZER_RAW)
     {
@@ -1252,7 +1652,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
     }
 
     // Signal Timeline mode: scrollable history waveform + scrollbar + history-length combo
-    if (vizDisp == (int)SIGNAL_VISUALIZER_TIMELINE)
+    if (vizDisp == (int)SIGNAL_VISUALIZER_RAW_TIMELINE)
     {
         // Persistent per-node GUI state (UI-only, never stored in core mode word)
         // scrollFrac: 0=oldest at left, 1=newest at right (default=1, live view)
