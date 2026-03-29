@@ -1605,6 +1605,12 @@ R"xml(
 					<ModeItem name="Left Only"    value="1"/>
 					<ModeItem name="Right Only"   value="2"/>
 				</ModeGroup>
+				<ModeGroup name="Slope" mask="98304" shift="15" showFor="3">
+					<ModeItem name="0 dB/oct"   value="0"/>
+					<ModeItem name="1.5 dB/oct" value="1"/>
+					<ModeItem name="3 dB/oct"   value="2"/>
+					<ModeItem name="4.5 dB/oct" value="3"/>
+				</ModeGroup>
 				<ModeGroup name="FFT Size" mask="28672" shift="12" showFor="5">
 					<ModeItem name="256"  value="0"/>
 					<ModeItem name="512"  value="1"/>
@@ -1622,6 +1628,12 @@ R"xml(
 					<ModeItem name="L+R (Sum)"   value="0"/>
 					<ModeItem name="Left Only"    value="1"/>
 					<ModeItem name="Right Only"   value="2"/>
+				</ModeGroup>
+				<ModeGroup name="Slope" mask="98304" shift="15" showFor="5">
+					<ModeItem name="0 dB/oct"   value="0"/>
+					<ModeItem name="1.5 dB/oct" value="1"/>
+					<ModeItem name="3 dB/oct"   value="2"/>
+					<ModeItem name="4.5 dB/oct" value="3"/>
 				</ModeGroup>
 			</NodeInput>
 		</Node>

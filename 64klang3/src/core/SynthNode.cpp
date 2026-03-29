@@ -5016,16 +5016,14 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 
 			if (modeBits != (DWORD)vizMode) { stepCtr = 0; modeBits = (DWORD)vizMode; }
 
-			static const int   kFFTSizes[]    = { 256, 512, 1024, 2048, 4096 };
-			static const DWORD kHistLengths[] = { 65536, 32768, 16384, 8192, 4096, 2048, 1024, 512, 256 };
-			int fftSel  = (vizMode & SIGNAL_VISUALIZER_FFTMASK)  >> SIGNAL_VISUALIZER_FFTSHIFT;
-			int histIdx = (vizMode & SIGNAL_VISUALIZER_HISTMASK) >> SIGNAL_VISUALIZER_HISTSHIFT;
-			if (fftSel  < 0 || fftSel  >= 5) fftSel  = 3;
-			if (histIdx < 0 || histIdx >= 9) histIdx  = 0;
-			int   fftSize    = kFFTSizes[fftSel];
-			int   fftHalfV   = fftSize / 2;
-			DWORD windowSize = kHistLengths[histIdx];
-			int   step       = (int)windowSize / 512; if (step < 1) step = 1;
+			static const int   kFFTSizes[] = { 256, 512, 1024, 2048, 4096 };
+			int fftSel = (vizMode & SIGNAL_VISUALIZER_FFTMASK) >> SIGNAL_VISUALIZER_FFTSHIFT;
+			if (fftSel < 0 || fftSel >= 5) fftSel = 3;
+			int   fftSize  = kFFTSizes[fftSel];
+			int   fftHalfV = fftSize / 2;
+			// Neither spectrum mode uses the History setting for its FFT update rate —
+			// step=128 gives ~344 FFTs/s at 44100 Hz (equivalent to histIdx=0 / 65536 samples).
+			int   step = 128;
 
 			if (++stepCtr >= (DWORD)step)
 			{

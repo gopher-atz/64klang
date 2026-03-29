@@ -797,6 +797,9 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
     {
         // Mode bits needed for layout/combos and bin mapping (not for FFT — core handles that)
         int fftSel = (vizMode & SIGNAL_VISUALIZER_FFTMASK) >> SIGNAL_VISUALIZER_FFTSHIFT;
+        int slopeSel = (vizMode & SIGNAL_VISUALIZER_SLOPEMASK) >> SIGNAL_VISUALIZER_SLOPESHIFT;
+        static const float kSlopeDbOct[] = { 0.f, 1.5f, 3.f, 4.5f };
+        float slopeDbPerOct = kSlopeDbOct[slopeSel & 3];
         static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096 };
         if (fftSel < 0 || fftSel >= 5) fftSel = 3;
         int fftHalf = kFFTSizes[fftSel] / 2;
@@ -821,6 +824,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
             DWORD lastColCtr  = 0;   // last colCtr consumed from core
             int   lastNumCols = -1;
             int   lastFftHalf = -1;
+            int   lastSlope   = -1;
 #ifndef __APPLE__
             unsigned int texID = 0;
             int          texW  = 0;
@@ -867,13 +871,15 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         // ---------- check if full reset needed ----------
         bool fullRecomp = (!vizNode || !vizNode->customMem ||
                            cache.numCols != numCols || cache.numRows != numRows ||
-                           cache.lastNumCols != numCols || cache.lastFftHalf != fftHalf);
+                           cache.lastNumCols != numCols || cache.lastFftHalf != fftHalf ||
+                           cache.lastSlope != slopeSel);
 
         if (fullRecomp) {
             cache.numCols     = numCols;
             cache.numRows     = numRows;
             cache.lastNumCols = numCols;
             cache.lastFftHalf = fftHalf;
+            cache.lastSlope   = slopeSel;
             cache.lastColCtr  = colCtr;   // skip history; populate from new rows only
             cache.writePos    = 0;
             cache.pixels.assign(numCols * bufRows * 4, 0);
@@ -919,6 +925,12 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                     for (int b = lo; b < hi; b++)
                         if (specMags[b] > power) power = specMags[b];
                     float db = log2f(power * 2.f + 1e-9f) * 6.f;
+                    // spectral slope tilt: pivot at 1 kHz, +slopeDbPerOct per octave up
+                    if (slopeDbPerOct != 0.f) {
+                        float binCentre = expf(((float)x + 0.5f) / numCols * (logmax - logmin) + logmin);
+                        float freqHz    = binCentre * 44100.f / (float)(fftHalfV * 2);
+                        db += slopeDbPerOct * log2f(freqHz / 1000.f);
+                    }
                     float tn = 1.f - std::max(std::min(db, 0.f), -100.f) / -100.f;
                     float t  = tn * tn;  // gamma-2
                     int pixIdx = (rowSlot * numCols + x) * 4;
@@ -1201,6 +1213,9 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
     if (vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
     {
         int fftSel = (vizMode & SIGNAL_VISUALIZER_FFTMASK) >> SIGNAL_VISUALIZER_FFTSHIFT;
+        int slopeSel = (vizMode & SIGNAL_VISUALIZER_SLOPEMASK) >> SIGNAL_VISUALIZER_SLOPESHIFT;
+        static const float kSlopeDbOctB[] = { 0.f, 1.5f, 3.f, 4.5f };
+        float slopeDbPerOct = kSlopeDbOctB[slopeSel & 3];
         static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096 };
         if (fftSel < 0 || fftSel >= 5) fftSel = 3;
         int fftHalf = kFFTSizes[fftSel] / 2;
@@ -1321,6 +1336,13 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                     power = sqrtf(sumSq / (float)count);
                 }
                 float db  = log2f(power * 2.f + 1e-9f) * 6.f;
+                // spectral slope tilt: pivot at 1 kHz, +slopeDbPerOct per octave up
+                if (slopeDbPerOct != 0.f) {
+                    float logmin2 = logf(2.f), logmax2 = logf((float)fftHalfV);
+                    float binCentre = expf(((float)x + 0.5f) / numCols * (logmax2 - logmin2) + logmin2);
+                    float freqHz    = binCentre * 44100.f / (float)(fftHalfV * 2);
+                    db += slopeDbPerOct * log2f(freqHz / 1000.f);
+                }
                 float tn  = 1.f - std::max(std::min(db, 0.f), -100.f) / -100.f;
                 colTn[x]  = tn;
                 // Hold for kHoldSec, then decay; update if current exceeds held/decayed peak

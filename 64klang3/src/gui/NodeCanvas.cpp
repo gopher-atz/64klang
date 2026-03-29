@@ -1437,9 +1437,9 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
         if (svDisp == (int)SIGNAL_VISUALIZER_RAW_TIMELINE)
             ph += 4.f + 120.f + 4.f + 14.f + 4.f + 18.f + 4.f;
         else if (svDisp == (int)SIGNAL_VISUALIZER_SPECTRUM_TIMELINE)
-            ph += 4.f + 120.f + 4.f + 3.f * (18.f + 4.f);
+            ph += 4.f + 120.f + 4.f + 4.f * (18.f + 4.f);
         else if (svDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
-            ph += 4.f + 120.f + 4.f + 3.f * (18.f + 4.f);
+            ph += 4.f + 120.f + 4.f + 4.f * (18.f + 4.f);
         else
             ph += 4.f + 120.f + 4.f;
     }
