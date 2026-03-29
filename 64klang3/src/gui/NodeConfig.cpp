@@ -91,6 +91,8 @@ bool NodeConfig::load()
                     if (mgElem->QueryIntAttribute("hidemodetext", &hmt) == TIXML_SUCCESS)
                         mg.hideModeText = (hmt != 0);
 
+                    mgElem->QueryIntAttribute("showFor", &mg.showFor);
+
                     for (TiXmlElement* miElem = mgElem->FirstChildElement("ModeItem");
                          miElem; miElem = miElem->NextSiblingElement("ModeItem"))
                     {

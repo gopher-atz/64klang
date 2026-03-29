@@ -1584,6 +1584,25 @@ R"xml(
 					<ModeItem name="Oscilloscope" value="1"/>
 					<ModeItem name="Raw"          value="2"/>
 					<ModeItem name="Timeline"     value="3"/>
+					<ModeItem name="Spectrum"     value="4"/>
+				</ModeGroup>
+				<ModeGroup name="FFT Window" mask="768" shift="8" showFor="4">
+					<ModeItem name="Rectangular"     value="0"/>
+					<ModeItem name="Hamming"         value="1"/>
+					<ModeItem name="Blackman"        value="2"/>
+					<ModeItem name="Blackman-Harris" value="3"/>
+				</ModeGroup>
+				<ModeGroup name="Channel" mask="3072" shift="10" showFor="4">
+					<ModeItem name="L+R (Sum)"   value="0"/>
+					<ModeItem name="Left Only"    value="1"/>
+					<ModeItem name="Right Only"   value="2"/>
+				</ModeGroup>
+				<ModeGroup name="FFT Size" mask="28672" shift="12" showFor="4">
+					<ModeItem name="256"  value="0"/>
+					<ModeItem name="512"  value="1"/>
+					<ModeItem name="1024" value="2"/>
+					<ModeItem name="2048" value="3"/>
+					<ModeItem name="4096" value="4"/>
 				</ModeGroup>
 			</NodeInput>
 		</Node>

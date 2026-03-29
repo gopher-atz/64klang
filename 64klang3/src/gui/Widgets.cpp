@@ -750,6 +750,359 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
     // All display sections use tmplNode exclusively — never a potentially-freed voice pointer.
     SynthNode* vizNode = tmplNode;
 
+    // ── Spectrum mode: scrolling spectrogram (X=time, Y=frequency, color=magnitude) ──
+    if (vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
+    {
+        // ---------- decode mode bits ----------
+        int winSel  = (vizMode & SIGNAL_VISUALIZER_WINMASK)  >> SIGNAL_VISUALIZER_WINSHIFT;   // 0=BH,1=Rect,2=Hamming,3=Blackman
+        int chanSel = (vizMode & SIGNAL_VISUALIZER_CHANMASK) >> SIGNAL_VISUALIZER_CHANSHIFT;   // 0=L+R,1=L,2=R
+        int fftSel  = (vizMode & SIGNAL_VISUALIZER_FFTMASK)  >> SIGNAL_VISUALIZER_FFTSHIFT;    // 0=2048,1=256,2=512,3=1024,4=4096
+        int histIdx = (vizMode & SIGNAL_VISUALIZER_HISTMASK) >> SIGNAL_VISUALIZER_HISTSHIFT;
+
+        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096 };
+        int fftSize = (fftSel >= 0 && fftSel < 5) ? kFFTSizes[fftSel] : 2048;
+        int fftHalf = fftSize / 2;
+
+        static const DWORD kHistLengths[] = { 65536, 32768, 16384, 8192, 4096, 2048, 1024, 512, 256 };
+        static const char* kHistLabels[]  = { "65536 (~1.5s)", "32768 (~0.74s)", "16384 (~0.37s)",
+                                              "8192 (~0.19s)",  "4096 (~93ms)",  "2048 (~46ms)",
+                                              "1024 (~23ms)",   "512 (~12ms)",   "256 (~6ms)" };
+        static const int   kHistCount     = 9;
+        if (histIdx < 0 || histIdx >= kHistCount) histIdx = 0;
+        DWORD windowSize = kHistLengths[histIdx];
+
+        // ---------- persistent per-node spectrogram cache ----------
+        struct SpecCache {
+            std::vector<uint8_t> pixels;   // RGBA, numCols * numRows * 4
+            int   numCols   = 0;
+            int   numRows   = 0;
+            DWORD lastWp    = 0;           // ring-buffer write-pos last time we updated
+            int   lastFFTSize = 0;
+            int   lastWinSel  = -1;
+            int   lastChanSel = -1;
+            int   lastHistIdx = -1;
+        };
+        static std::unordered_map<int, SpecCache> s_specCache;
+        SpecCache& cache = s_specCache[nodeID];
+
+        // ---------- layout ----------
+        float specH = 120.f * z;
+        int numCols = std::max(8, std::min(512, (int)(vizW / z + 0.5f)));
+        int numRows = std::max(8, std::min(fftHalf, (int)(specH / z + 0.5f)));
+
+        // ---------- Plasma colormap ----------
+        static const float kPlasma[][3] = {
+            {0.050383f, 0.029803f, 0.152797f},
+            {0.341500f, 0.009905f, 0.646365f},
+            {0.572067f, 0.143868f, 0.567643f},
+            {0.748751f, 0.306346f, 0.444733f},
+            {0.876168f, 0.486385f, 0.301656f},
+            {0.945636f, 0.671269f, 0.166163f},
+            {0.991365f, 0.848964f, 0.882468f},
+        };
+        static const int kPlasmaN = (int)(sizeof(kPlasma) / sizeof(kPlasma[0])) - 1;
+
+        auto plasmaColor = [&](float t) -> ImU32 {
+            t = std::max(0.f, std::min(1.f, t));
+            float c = t * kPlasmaN;
+            int ci = std::min((int)c, kPlasmaN - 1);
+            float f = c - (float)ci;
+            float r = kPlasma[ci][0] + (kPlasma[ci+1][0] - kPlasma[ci][0]) * f;
+            float g = kPlasma[ci][1] + (kPlasma[ci+1][1] - kPlasma[ci][1]) * f;
+            float b = kPlasma[ci][2] + (kPlasma[ci+1][2] - kPlasma[ci][2]) * f;
+            return IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), 255);
+        };
+
+        // ---------- check if full recompute needed ----------
+        bool fullRecomp = (!vizNode || !vizNode->customMem ||
+                           cache.numCols != numCols || cache.numRows != numRows ||
+                           cache.lastFFTSize != fftSize || cache.lastWinSel != winSel ||
+                           cache.lastChanSel != chanSel || cache.lastHistIdx != histIdx);
+
+        DWORD curWp = 0;
+        float* ring = nullptr;
+        if (vizNode && vizNode->customMem) {
+            DWORD* dw = vizNode->customMem;
+            ring = (float*)(dw + SIGVIZ_HEADER_DW);
+            curWp = dw[0];
+        }
+
+        if (fullRecomp) {
+            cache.numCols = numCols;
+            cache.numRows = numRows;
+            cache.lastFFTSize = fftSize;
+            cache.lastWinSel  = winSel;
+            cache.lastChanSel = chanSel;
+            cache.lastHistIdx = histIdx;
+            cache.lastWp = curWp;
+            cache.pixels.assign(numCols * numRows * 4, 0);
+        }
+
+        // ---------- compute FFT columns ----------
+        // step = how many ring-buffer samples per spectrogram column
+        int step = std::max(1, (int)windowSize / numCols);
+        // how many new columns since last frame
+        int newCols = 0;
+        if (ring && !fullRecomp) {
+            int elapsed = (int)((curWp - cache.lastWp) & (SIGVIZ_BUF_SIZE - 1));
+            newCols = std::min(elapsed / step, numCols);
+            if (newCols <= 0) newCols = 0;
+        } else if (ring && fullRecomp) {
+            newCols = numCols;
+        }
+
+        if (newCols > 0 && ring) {
+            // shift existing columns left by newCols
+            if (newCols < numCols) {
+                int keepCols = numCols - newCols;
+                for (int row = 0; row < numRows; row++) {
+                    memmove(&cache.pixels[row * numCols * 4],
+                            &cache.pixels[(row * numCols + newCols) * 4],
+                            keepCols * 4);
+                }
+            }
+
+            // pre-compute log frequency mapping (Y pixel -> FFT bin)
+            std::vector<int> binMap(numRows);
+            float logmin = logf(2.f), logmax = logf((float)fftHalf);
+            for (int y = 0; y < numRows; y++) {
+                float logdata = ((float)y / numRows * (logmax - logmin)) + logmin;
+                binMap[y] = std::min((int)expf(logdata), fftHalf - 1);
+            }
+
+            // pre-compute window function coefficients
+            std::vector<float> winCoeff(fftSize);
+            float sumW = 0.f;
+            for (int i = 0; i < fftSize; i++) {
+                float a = 2.f * 3.14159265358979f * i / (fftSize - 1);
+                float w;
+                switch (winSel) {
+                    case 1:  w = 0.54f - 0.46f * cosf(a); break; // Hamming
+                    case 2:  w = 0.42f - 0.5f * cosf(a) + 0.08f * cosf(2.f * a); break; // Blackman
+                    case 3:  w = 0.35875f - 0.48829f * cosf(a) + 0.14128f * cosf(2.f * a) - 0.01168f * cosf(3.f * a); break; // Blackman-Harris
+                    default: w = 1.f; break; // Rectangular (0)
+                }
+                winCoeff[i] = w;
+                sumW += w;
+            }
+            float scaling = 1.f / sumW;
+
+            // allocate FFT buffer (complexsample_t, real-valued input: im=0)
+            std::vector<complexsample_t> fftBuf(fftSize);
+
+            // compute each new column
+            for (int col = 0; col < newCols; col++) {
+                int colIdx = numCols - newCols + col; // destination column
+                // end of this FFT window: newest column ends at curWp-1 (last written sample)
+                int agoSamples = (newCols - 1 - col) * step;
+                DWORD center = (curWp - agoSamples) & (SIGVIZ_BUF_SIZE - 1);
+
+                // fill FFT input: window = [center-fftSize .. center-1], all within written data
+                for (int i = 0; i < fftSize; i++) {
+                    DWORD pos = (center - fftSize + i) & (SIGVIZ_BUF_SIZE - 1);
+                    float L = ring[pos * 2];
+                    float R = ring[pos * 2 + 1];
+                    float s;
+                    switch (chanSel) {
+                        case 1:  s = L; break;
+                        case 2:  s = R; break;
+                        default: s = L + R; break;
+                    }
+                    fftBuf[i] = complexsample_t((double)(s * winCoeff[i]));  // real-valued: im=0
+                }
+
+                c_fft(fftBuf.data(), fftSize);
+
+                // convert to magnitude and map to pixels for each row (log freq)
+                for (int y = 0; y < numRows; y++) {
+                    int bin = binMap[y];
+                    double re = fftBuf[bin].re.d[0];
+                    double im = fftBuf[bin].im.d[0];
+                    float power = (float)sqrt(re * re + im * im) * scaling;
+                    // 0 dBFS: full-scale sine (power≈0.5 after window norm) * 2 = 1.0 → 0 dB.
+                    // Floor at -100 dB;
+                    float db = log2f(power * 2.f + 1e-9f) * 6.f;          // ≈ 20*log10, power*2 → 0dBFS ref
+                    float tn = 1.f - std::max(std::min(db, 0.f), -100.f) / -100.f;  // 0=floor,1=0dBFS
+                    float t = tn * tn;                                              // gamma 2: suppress low-level
+
+                    // pack into pixel buffer (row 0 = bottom = low freq, stored top-down for rendering)
+                    int pixIdx = ((numRows - 1 - y) * numCols + colIdx) * 4;
+                    ImU32 c = plasmaColor(t);
+                    cache.pixels[pixIdx + 0] = (c >> 0) & 0xFF;
+                    cache.pixels[pixIdx + 1] = (c >> 8) & 0xFF;
+                    cache.pixels[pixIdx + 2] = (c >> 16) & 0xFF;
+                    cache.pixels[pixIdx + 3] = 255;
+                }
+            }
+            cache.lastWp = curWp;
+        }
+
+        // ---------- render spectrogram ----------
+        ImVec2 specMin(px + 4.f * z, curY);
+        ImVec2 specMax(specMin.x + vizW, curY + specH);
+        dl->AddRectFilled(specMin, specMax, IM_COL32(0, 0, 0, 255));
+
+        if (cache.numCols > 0 && cache.numRows > 0 && !cache.pixels.empty()) {
+            float colW = vizW / (float)cache.numCols;
+            float rowH = specH / (float)cache.numRows;
+            for (int row = 0; row < cache.numRows; row++) {
+                for (int col = 0; col < cache.numCols; col++) {
+                    int pixIdx = (row * cache.numCols + col) * 4;
+                    ImU32 c = IM_COL32(cache.pixels[pixIdx + 0],
+                                       cache.pixels[pixIdx + 1],
+                                       cache.pixels[pixIdx + 2], 255);
+                    if (c == IM_COL32(0,0,0,255)) continue; // skip black for perf
+                    float x0 = specMin.x + col * colW;
+                    float y0 = specMin.y + row * rowH;
+                    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + colW + 0.5f, y0 + rowH + 0.5f), c);
+                }
+            }
+        }
+        dl->AddRect(specMin, specMax, kColPanelBorder, 0.f, 0, 1.f);
+        curY += specH + 4.f * z;
+
+        // ---------- history-length combobox ----------
+        {
+            float btnH2 = 18.f * z;
+            float btnX  = px + 4.f * z;
+            float btnW  = pw - 8.f * z;
+            ImVec2 btnMin(btnX, curY);
+            ImVec2 btnMax(btnX + btnW, curY + btnH2);
+            bool hov = mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
+                       mousePos.y >= btnMin.y && mousePos.y <= btnMax.y;
+            dl->AddRectFilled(btnMin, btnMax, hov ? IM_COL32(60,60,70,255) : IM_COL32(40,40,48,255));
+            dl->AddRect(btnMin, btnMax, IM_COL32(120,120,130,255), 0.f, 0, 1.f);
+            if (fontSize >= 6.f)
+            {
+                char label[64];
+                snprintf(label, sizeof(label), "History: %s", kHistLabels[histIdx]);
+                float lfsz = fontSize * 0.9f;
+                dl->AddText(pickFont(lfsz), lfsz,
+                            ImVec2(btnX + 4.f*z, curY + (btnH2 - lfsz) * 0.5f),
+                            IM_COL32(220,220,230,255), label);
+            }
+            float arMidX = btnMax.x - 10.f*z, arMidY = curY + btnH2 * 0.5f, arH = 4.f*z;
+            dl->AddTriangleFilled(
+                ImVec2(arMidX - arH, arMidY - arH*0.5f),
+                ImVec2(arMidX + arH, arMidY - arH*0.5f),
+                ImVec2(arMidX,       arMidY + arH*0.5f),
+                IM_COL32(200,200,210,255));
+            char popupId[64];
+            snprintf(popupId, sizeof(popupId), "##spechist%d", nodeID);
+            if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hov)
+                ImGui::OpenPopup(popupId);
+            {
+                float itemH = fontSize * 1.35f;
+                float padY  = ImGui::GetStyle().WindowPadding.y * 2.f;
+                ImGui::SetNextWindowSizeConstraints(ImVec2(0,0), ImVec2(FLT_MAX, itemH * 9.f + padY));
+            }
+            ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y));
+            ImGui::PushFont(pickFont(fontSize));
+            if (ImGui::BeginPopup(popupId))
+            {
+                ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
+                for (int i = 0; i < kHistCount; i++)
+                {
+                    bool sel = (i == histIdx);
+                    if (ImGui::Selectable(kHistLabels[i], sel, 0, ImVec2(btnW, 0)))
+                        sc->setInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE,
+                                         (DWORD)(i << SIGNAL_VISUALIZER_HISTSHIFT),
+                                         (DWORD)SIGNAL_VISUALIZER_HISTMASK);
+                    if (sel) ImGui::SetItemDefaultFocus();
+                }
+                ImGui::EndPopup();
+            }
+            ImGui::PopFont();
+            curY += btnH2 + 4.f * z;
+        }
+
+        // ---------- spectrum-specific mode combos (FFT Window, Channel, FFT Size) ----------
+        // Read the conditional (showFor==SPECTRUM) groups directly from the config and render
+        // them in the same combo-box style used for the generic mode groups in NodeCanvas.
+        {
+            const NodeTypeDef* svTypeDef = NodeConfig::instance().getNodeType((int)SIGNAL_VISUALIZER_ID);
+            if (svTypeDef && SIGNAL_VISUALIZER_MODE < (int)svTypeDef->inputs.size())
+            {
+                const InputDef& modeDef = svTypeDef->inputs[SIGNAL_VISUALIZER_MODE];
+                int currentBits = vizMode;
+                int groupIdx = 0;
+                for (const auto& mg : modeDef.modeGroups)
+                {
+                    if (mg.showFor != (int)SIGNAL_VISUALIZER_SPECTRUM) { groupIdx++; continue; }
+
+                    int groupVal = (currentBits & (int)mg.mask) >> mg.shift;
+                    const char* activeName = "???";
+                    int activeIdx = 0;
+                    for (int j = 0; j < (int)mg.items.size(); j++)
+                    {
+                        if (mg.items[j].value == groupVal)
+                        {
+                            activeName = mg.items[j].name.c_str();
+                            activeIdx = j;
+                        }
+                    }
+
+                    float btnH2 = 18.f * z;
+                    float btnX  = px + 4.f * z;
+                    float btnW  = pw - 8.f * z;
+                    ImVec2 btnMin(btnX, curY);
+                    ImVec2 btnMax(btnX + btnW, curY + btnH2);
+                    bool hov = mousePos.x >= btnMin.x && mousePos.x <= btnMax.x &&
+                               mousePos.y >= btnMin.y && mousePos.y <= btnMax.y;
+                    dl->AddRectFilled(btnMin, btnMax, hov ? IM_COL32(60,60,70,255) : IM_COL32(40,40,48,255));
+                    dl->AddRect(btnMin, btnMax, IM_COL32(120,120,130,255), 0.f, 0, 1.f);
+                    if (fontSize >= 6.f)
+                    {
+                        char label[128];
+                        snprintf(label, sizeof(label), "%s: %s", mg.name.c_str(), activeName);
+                        float lfsz = fontSize * 0.9f;
+                        dl->AddText(pickFont(lfsz), lfsz,
+                                    ImVec2(btnX + 4.f*z, curY + (btnH2 - lfsz) * 0.5f),
+                                    IM_COL32(220,220,230,255), label);
+                    }
+                    float arMidX = btnMax.x - 10.f*z, arMidY = curY + btnH2 * 0.5f, arH = 4.f*z;
+                    dl->AddTriangleFilled(
+                        ImVec2(arMidX - arH, arMidY - arH*0.5f),
+                        ImVec2(arMidX + arH, arMidY - arH*0.5f),
+                        ImVec2(arMidX,       arMidY + arH*0.5f),
+                        IM_COL32(200,200,210,255));
+
+                    char popupId[64];
+                    snprintf(popupId, sizeof(popupId), "##specmg%d_%d", nodeID, groupIdx);
+                    if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hov)
+                        ImGui::OpenPopup(popupId);
+                    {
+                        float itemH = fontSize * 1.35f;
+                        float padY  = ImGui::GetStyle().WindowPadding.y * 2.f;
+                        ImGui::SetNextWindowSizeConstraints(ImVec2(0,0), ImVec2(FLT_MAX, itemH * 8.f + padY));
+                    }
+                    ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y));
+                    ImGui::PushFont(pickFont(fontSize));
+                    if (ImGui::BeginPopup(popupId))
+                    {
+                        ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
+                        for (int j = 0; j < (int)mg.items.size(); j++)
+                        {
+                            bool sel = (j == activeIdx);
+                            if (ImGui::Selectable(mg.items[j].name.c_str(), sel, 0, ImVec2(btnW, 0)))
+                            {
+                                int newBits = (currentBits & ~(int)mg.mask) | (mg.items[j].value << mg.shift);
+                                sc->setInputMode((DWORD)nodeID, SIGNAL_VISUALIZER_MODE,
+                                                 (DWORD)newBits, (DWORD)mg.mask);
+                                currentBits = newBits;
+                            }
+                            if (sel) ImGui::SetItemDefaultFocus();
+                        }
+                        ImGui::EndPopup();
+                    }
+                    ImGui::PopFont();
+                    curY += btnH2 + 4.f * z;
+                    groupIdx++;
+                }
+            }
+        }
+        return;
+    }
     // Raw Signal mode: full-height bipolar bars
     if (vizDisp == (int)SIGNAL_VISUALIZER_RAW)
     {

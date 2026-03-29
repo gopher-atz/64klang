@@ -20,6 +20,7 @@ struct ModeGroup
     unsigned int mask = 0;
     int shift = 0;
     bool hideModeText = false;
+    int showFor = -1;  // if >= 0, only show this group when display mode (bits[3:0]) equals this value
     std::vector<ModeItem> items;
 };
 

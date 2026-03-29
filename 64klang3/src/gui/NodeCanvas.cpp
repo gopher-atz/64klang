@@ -202,6 +202,10 @@ bool NodeCanvas::nodeHasEditButton(int guiIndex) const
     if (nodeType == OSRAND_ID)
         return true;
 
+    // Scale has a float parameter at inputs[numMaxGUIInputs] beyond the signal inputs
+    if (nodeType == SCALE_ID)
+        return true;
+
     return hasParams || hasModes;
 }
 
@@ -253,6 +257,11 @@ std::string NodeCanvas::buildModeText(int guiIndex) const
         double l = sc->getInputValue((DWORD)nodeID, 1, 0);
         snprintf(buf, sizeof(buf), "%.2f", l);
         return buf;
+    }
+
+    if (nodeType == SIGNAL_VISUALIZER_ID)
+    {
+        return "Configuration";
     }
 
     // General mode text from mode input
@@ -1344,17 +1353,20 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
     int numParams = 0;
     for (int i = typeDef->numReqGUIInputs; i < typeDef->numMaxGUIInputs && i < (int)typeDef->inputs.size(); i++)
         numParams++;
-    if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || nodeType == OSRAND_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID))
+    if (nodeType == CONSTANT_ID || nodeType == MIDISIGNAL_ID || nodeType == OSRAND_ID || nodeType == SCALE_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID))
         numParams = 1;
 
     float flagsH = 0.f;
     if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
     {
         const InputDef& modeDef = typeDef->inputs[modeInputIdx];
-        if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
+        int numGenericGroups = 0;
+        for (const auto& mg : modeDef.modeGroups)
+            if (mg.showFor < 0) numGenericGroups++;
+        if (numGenericGroups > 0 || !modeDef.modeFlags.empty())
         {
             flagsH = kEditLabelH + kEditFlagH;
-            flagsH += (float)modeDef.modeGroups.size() * kEditFlagH;
+            flagsH += (float)numGenericGroups * kEditFlagH;
         }
     }
 
@@ -1384,6 +1396,8 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
         ph = kEditHeaderH + kEditLabelH + kEditFlagH; // 25 + 16 + 18 = 59
         if (svDisp == (int)SIGNAL_VISUALIZER_TIMELINE)
             ph += 4.f + 120.f + 4.f + 14.f + 4.f + 18.f + 4.f;
+        else if (svDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
+            ph += 4.f + 120.f + 4.f + 18.f + 4.f + 3.f * (18.f + 4.f);
         else
             ph += 4.f + 120.f + 4.f;
     }
@@ -1579,6 +1593,8 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         // so the regular loop skips it; inject one row to show the Scale knob.
         bool isVoiceInput = (nodeType == MIDISIGNAL_ID || nodeType == OSRAND_ID || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID));
         if (isVoiceInput) numParams = 1;
+        // Scale node: float parameter is at inputs[numMaxGUIInputs], beyond the signal input range.
+        if (nodeType == SCALE_ID) { paramStart = typeDef->numMaxGUIInputs; paramEnd = typeDef->numInputs; numParams = 1; }
         // Constant and voice params use -1..1 signal range; Midi CC keeps its -128..128 config range.
         bool isSignalRange = (isConstant || (nodeType > CONSTANT_ID && nodeType != (int)SIGNAL_VISUALIZER_ID));
         InputDef signalRangeDef;  // used for Constant and voice params
@@ -1619,6 +1635,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 flagsH += kEditFlagH;
                 for (const auto& mg : modeDef.modeGroups)
                 {
+                    if (mg.showFor >= 0) continue;
                     flagsH += kEditFlagH;
                     (void)mg;
                 }
@@ -1927,6 +1944,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                 int groupIdx = 0;
                 for (const auto& mg : modeDef.modeGroups)
                 {
+                    if (mg.showFor >= 0) { groupIdx++; continue; } // rendered by custom widget
                     int groupVal = (currentBits & (int)mg.mask) >> mg.shift;
                     const char* activeName = "???";
                     int activeIdx = 0;

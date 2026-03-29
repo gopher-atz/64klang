@@ -4997,6 +4997,7 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 		if (ring[ta * 2] <= 0.f && ring[tb * 2] > 0.f)
 			dw[7] = tb;
 	}
+
 }
 #endif // COMPILE_VSTI
 

@@ -340,12 +340,82 @@ sample_t SYNTHCALL s_log2(const sample_t& x)
 	r *= y;
 	// undo rescaling
 #if defined(K64_USE_NEON)
-	r += s_toSample(ilogb_x);
+r += s_toSample(ilogb_x);
 #else
-	r += s_toSample(ilogb_x.pi);
+r += s_toSample(ilogb_x.pi);
 #endif
 
-	return r;
+return r;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Cooley-Tukey FFT (in-place, breadth-first, decimation-in-frequency), x needs to be a 2^N array of complexsample_t
+void SYNTHCALL	c_fft(complexsample_t* x, int N)
+{
+	// DFT
+	int k = N;
+	sample_t thetaT = SC[S_PI] / sample_t((double)N);
+	// need real sin/cos here for precision
+	complexsample_t phiT = complexsample_t(cos(thetaT.d[1]), -sin(thetaT.d[0])), T;
+	while (k > 1)
+	{
+		int nk = k;
+		k >>= 1;
+		phiT = phiT * phiT;
+		T = complexsample_t(SC[S_1_0]);
+		for (int l = 0; l < k; l++)
+		{
+			for (int a = l; a < N; a += nk)
+			{
+				int b = a + k;
+				complexsample_t t = x[a] - x[b];
+				x[a] += x[b];
+				x[b] = t * T;
+			}
+			T *= phiT;
+		}
+	}
+	// Decimate
+	int bits = 1;
+	while ((N >> bits) > 1) bits++;
+	for (int a = 0; a < N; a++)
+	{
+		unsigned int b = a;
+		// Reverse bits
+		b = (((b & 0xaaaaaaaa) >> 1) | ((b & 0x55555555) << 1));
+		b = (((b & 0xcccccccc) >> 2) | ((b & 0x33333333) << 2));
+		b = (((b & 0xf0f0f0f0) >> 4) | ((b & 0x0f0f0f0f) << 4));
+		b = (((b & 0xff00ff00) >> 8) | ((b & 0x00ff00ff) << 8));
+		b = ((b >> 16) | (b << 16)) >> (32 - bits);
+		if (b > (unsigned int)a)
+		{
+			complexsample_t t = x[a];
+			x[a] = x[b];
+			x[b] = t;
+		}
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// IFFT in place, x needs to be a 2^N array of complexsample_t
+void SYNTHCALL	c_ifft(complexsample_t* x, int N)
+{
+	// conjugate
+	for (int i = 0; i < N; i++)
+	{
+		x[i].im = -x[i].im;
+	}
+	// forward fft
+	c_fft(x, N);
+	// conjugate and scale
+	sample_t iN = sample_t(1.0 / (double)N);
+	for (int i = 0; i < N; i++)
+	{
+		x[i].re *= iN;
+		x[i].im *= -iN;
+	}
 }
 
 #ifndef S_SKIP_UNUSED
@@ -423,76 +493,6 @@ sample_t s_sinh(const sample_t& x)
 sample_t s_tanh(const sample_t& x)
 {
 	return s_sinh(x) / s_cosh(x);
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// Cooley-Tukey FFT (in-place, breadth-first, decimation-in-frequency), x needs to be a 2^N array of complexsample_t
-void SYNTHCALL	c_fft(complexsample_t* x, int N)
-{
-	// DFT
-	int k = N;
-	sample_t thetaT = SC[S_PI] / sample_t((double)N);
-	// need real sin/cos here for precision
-	complexsample_t phiT = complexsample_t(cos(thetaT.d[1]), -sin(thetaT.d[0])), T;
-	while (k > 1)
-	{
-		int nk = k;
-		k >>= 1;
-		phiT = phiT * phiT;
-		T = complexsample_t(SC[S_1_0]);
-		for (int l = 0; l < k; l++)
-		{
-			for (int a = l; a < N; a += nk)
-			{
-				int b = a + k;
-				complexsample_t t = x[a] - x[b];
-				x[a] += x[b];
-				x[b] = t * T;
-			}
-			T *= phiT;
-		}
-	}
-	// Decimate
-	int bits = 1;
-	while ((N >> bits) > 1) bits++;
-	for (int a = 0; a < N; a++)
-	{
-		unsigned int b = a;
-		// Reverse bits
-		b = (((b & 0xaaaaaaaa) >> 1) | ((b & 0x55555555) << 1));
-		b = (((b & 0xcccccccc) >> 2) | ((b & 0x33333333) << 2));
-		b = (((b & 0xf0f0f0f0) >> 4) | ((b & 0x0f0f0f0f) << 4));
-		b = (((b & 0xff00ff00) >> 8) | ((b & 0x00ff00ff) << 8));
-		b = ((b >> 16) | (b << 16)) >> (32 - bits);
-		if (b > (unsigned int)a)
-		{
-			complexsample_t t = x[a];
-			x[a] = x[b];
-			x[b] = t;
-		}
-	}
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// IFFT in place, x needs to be a 2^N array of complexsample_t
-void SYNTHCALL	c_ifft(complexsample_t* x, int N)
-{
-	// conjugate
-	for (int i = 0; i < N; i++)
-	{
-		x[i].im = -x[i].im;
-	}
-	// forward fft
-	c_fft(x, N);
-	// conjugate and scale
-	sample_t iN = sample_t(1.0 / (double)N);
-	for (int i = 0; i < N; i++)
-	{
-		x[i].re *= iN;
-		x[i].im *= -iN;
-	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

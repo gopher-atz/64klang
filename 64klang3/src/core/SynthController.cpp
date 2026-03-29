@@ -746,6 +746,12 @@ void SynthController::getNodeInputDefault(DWORD typeID, DWORD inputIdx, bool isG
 	case VOICE_AFTERTOUCH_ID:
 		DEFCONST(VOICEPARAM_SCALE, 1.0);
 		break;
+#ifdef COMPILE_VSTI
+	case SIGNAL_VISUALIZER_ID:
+		// Timeline with preapplied settings for Blackman-Harris window (3<<8), L+R channel mix (0<<10), 2048 FFT size (3<<12)
+		DEFMODE(SIGNAL_VISUALIZER_MODE, 0x3301);
+		break;
+#endif
 	default: break;
 	}
 
@@ -768,7 +774,7 @@ void SynthController::resetNodeToDefaults(DWORD nodeID, DWORD typeID, bool isGlo
 	if (typeID == SCALE_ID     ||
 	    typeID == MIDISIGNAL_ID ||
 	    typeID == OSRAND_ID    ||
-	    typeID > CONSTANT_ID)
+	    (typeID > CONSTANT_ID && typeID != (DWORD)SIGNAL_VISUALIZER_ID))
 		maxguisignals++;
 
 	// Reset parameter constant inputs to factory defaults

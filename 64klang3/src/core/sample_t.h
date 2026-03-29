@@ -337,14 +337,6 @@ inline sample_t		s_cerp	(const sample_t& x, const sample_t& y, const sample_t& f
 inline sample_t		s_equalp(const sample_t& x, const sample_t& y, const sample_t& f)	{ return x*s_sin(SC[S_PI2] + SC[S_PI2] * f) + y*s_sin(SC[S_PI2] * f); }
 inline sample_t		s_db2lin(const sample_t& x)											{ return s_exp2(x / SC[S_6_0]); }
 inline sample_t		s_lin2db(const sample_t& x)											{ return s_log2(s_abs(x) + SC[CHANNELROOT_EFT]) * SC[S_6_0]; }
-
-#ifndef S_SKIP_UNUSED
-extern sample_t		s_atan	(const sample_t& x);
-extern sample_t		s_tan(const sample_t& x);
-extern sample_t		s_cosh(const sample_t& x);
-extern sample_t		s_sinh(const sample_t& x);
-extern sample_t		s_tanh(const sample_t& x);
-
 K64_ALIGN16 union complexsample_t
 {
 	double  d[4];
@@ -388,6 +380,14 @@ inline complexsample_t		c_exp(const complexsample_t& x) { sample_t er = s_exp(x.
 
 extern void	SYNTHCALL		c_fft(complexsample_t* x, int N);
 extern void	SYNTHCALL		c_ifft(complexsample_t* x, int N);
+
+#ifndef S_SKIP_UNUSED
+extern sample_t		s_atan	(const sample_t& x);
+extern sample_t		s_tan(const sample_t& x);
+extern sample_t		s_cosh(const sample_t& x);
+extern sample_t		s_sinh(const sample_t& x);
+extern sample_t		s_tanh(const sample_t& x);
+
 #endif
 
 #endif
