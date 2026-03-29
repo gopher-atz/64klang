@@ -48,6 +48,8 @@ private:
 
     // Selection
     std::unordered_set<int> selectedNodeIDs;
+    // Shadow of the last state pushed to the core; used by syncSelectionToCore to diff.
+    std::unordered_set<int> prevSyncedSelection;
 
     // Drag
     bool   isDragging = false;
@@ -83,9 +85,12 @@ private:
     std::vector<int> openEditPanels;
     bool   mouseOverEditPanel = false;  // set per-frame, blocks canvas interaction
 
-    // Node Z-order: nodeIDs in back-to-front paint / event order (back = frontmost).
-    // Kept in sync on every interaction and structural change.
+    // Z-order: nodeIDs back-to-front. Kept in sync on every structural change.
     std::vector<int> nodeZOrder;
+
+    // Per-frame nodeID→guiIndex map: rebuilt once at the start of render().
+    // Avoids O(N²) findGuiIndex calls in drawWires and the main draw loop.
+    std::unordered_map<int,int> frameIdToGi;
 
     // Per-parameter sync state: key = (uint64_t)nodeID<<32 | paramIdx
     // Initialised lazily when a panel opens (from L==R equality).
@@ -207,11 +212,13 @@ private:
 
     // Z-order management
     void bringToFront(int nodeID);
+    void bringMultipleToFront(const std::unordered_set<int>& ids);
 
     int  hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) const;
     int  findGuiIndex(int nodeID) const;
     bool nodeOverlapsRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax, const ImVec2& canvasOrigin) const;
-    void recursiveSelect(int nodeID, std::unordered_set<int>& visited);
+    void recursiveSelect(int nodeID, std::unordered_set<int>& visited,
+                          const std::unordered_map<int,int>& idToGi);
     void syncSelectionToCore();
     void deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly);
 

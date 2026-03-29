@@ -748,8 +748,8 @@ void SynthController::getNodeInputDefault(DWORD typeID, DWORD inputIdx, bool isG
 		break;
 #ifdef COMPILE_VSTI
 	case SIGNAL_VISUALIZER_ID:
-		// Timeline with preapplied settings for Blackman-Harris window (3<<8), L+R channel mix (0<<10), 2048 FFT size (3<<12)
-		DEFMODE(SIGNAL_VISUALIZER_MODE, 0x3301);
+		// Timeline with preapplied settings for Blackman-Harris window (3<<8), L+R channel mix (0<<10), 4096 FFT size (4<<12)
+		DEFMODE(SIGNAL_VISUALIZER_MODE, 0x4301);
 		break;
 #endif
 	default: break;

@@ -97,11 +97,15 @@ void NodeCanvas::jumpToChannel(int channel)
         }
         else
         {
+            // Build O(1) nodeID→guiIndex map once to avoid O(N) scan per node visited.
+            std::unordered_map<int,int> idToGi;
+            idToGi.reserve(n);
+            for (int j = 0; j < n; j++)
+                if (sc->gnIsVisible(j)) idToGi[sc->gnID(j)] = j;
             std::unordered_set<int> visited;
-            recursiveSelect(nodeID, visited);
+            recursiveSelect(nodeID, visited, idToGi);
         }
-        for (int nid : selectedNodeIDs)
-            bringToFront(nid);
+        bringMultipleToFront(selectedNodeIDs);
         syncSelectionToCore();
         return;
     }
@@ -344,6 +348,15 @@ void NodeCanvas::rebuildZOrder()
     }
 }
 
+void NodeCanvas::bringMultipleToFront(const std::unordered_set<int>& ids)
+{
+    // Single stable_partition pass: O(N) instead of O(S×N) individual bringToFront calls.
+    std::stable_partition(nodeZOrder.begin(), nodeZOrder.end(),
+                          [&](int nid) { return !ids.count(nid); });
+    std::stable_partition(openEditPanels.begin(), openEditPanels.end(),
+                          [&](int nid) { return !ids.count(nid); });
+}
+
 void NodeCanvas::bringToFront(int nodeID)
 {
     auto it = std::find(nodeZOrder.begin(), nodeZOrder.end(), nodeID);
@@ -353,6 +366,13 @@ void NodeCanvas::bringToFront(int nodeID)
     {
         nodeZOrder.erase(it);
         nodeZOrder.push_back(nodeID);
+    }
+    // Keep openEditPanels in sync so panel hit-testing matches visual z-order.
+    auto pit = std::find(openEditPanels.begin(), openEditPanels.end(), nodeID);
+    if (pit != openEditPanels.end() && std::next(pit) != openEditPanels.end())
+    {
+        openEditPanels.erase(pit);
+        openEditPanels.push_back(nodeID);
     }
 }
 
@@ -368,9 +388,10 @@ int NodeCanvas::hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) 
     // Iterate in Z-order (back = frontmost); last match = topmost node.
     for (int nid : nodeZOrder)
     {
-        int i = findGuiIndex(nid);
-        if (i < 0 || !sc->gnIsVisible(i))
-            continue;
+        auto fit = frameIdToGi.find(nid);
+        if (fit == frameIdToGi.end()) continue;
+        int i = fit->second;
+        if (!sc->gnIsVisible(i)) continue;
         double nx = sc->gnX(i);
         double ny = sc->gnY(i);
         int numSignals = effectiveInputCount(i);
@@ -434,7 +455,8 @@ bool NodeCanvas::nodeOverlapsRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax,
            pos.y < rMaxY && pos.y + h > rMinY;
 }
 
-void NodeCanvas::recursiveSelect(int nodeID, std::unordered_set<int>& visited)
+void NodeCanvas::recursiveSelect(int nodeID, std::unordered_set<int>& visited,
+                                  const std::unordered_map<int,int>& idToGi)
 {
     if (visited.count(nodeID))
         return;
@@ -444,15 +466,16 @@ void NodeCanvas::recursiveSelect(int nodeID, std::unordered_set<int>& visited)
     SynthController* sc = SynthController::instance();
     if (!sc) return;
 
-    int gi = findGuiIndex(nodeID);
-    if (gi < 0) return;
+    auto it = idToGi.find(nodeID);
+    if (it == idToGi.end()) return;
+    int gi = it->second;
 
     int numSignals = effectiveInputCount(gi);
     for (int pin = 0; pin < numSignals; pin++)
     {
         int srcID = sc->gnInput(gi, pin);
         if (isRealConnection(srcID, sc))
-            recursiveSelect(srcID, visited);
+            recursiveSelect(srcID, visited, idToGi);
     }
 }
 
@@ -461,9 +484,16 @@ void NodeCanvas::syncSelectionToCore()
     SynthController* sc = SynthController::instance();
     if (!sc) return;
 
-    sc->clearSelection();
+    // Diff-based: only update nodes whose selected state changed.
+    // Avoids clearSelection() which iterates ALL internal nodes (including hidden
+    // ModAdders/constants) through a cache-unfriendly std::map.
+    for (int id : prevSyncedSelection)
+        if (!selectedNodeIDs.count(id))
+            sc->setSelected((DWORD)id, 0);
     for (int id : selectedNodeIDs)
-        sc->setSelected((DWORD)id, 1);
+        if (!prevSyncedSelection.count(id))
+            sc->setSelected((DWORD)id, 1);
+    prevSyncedSelection = selectedNodeIDs;
 }
 
 void NodeCanvas::deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly)
@@ -520,9 +550,10 @@ int NodeCanvas::hitTestOutputPin(const ImVec2& mousePos, const ImVec2& canvasOri
 
     for (int nid : nodeZOrder)
     {
-        int i = findGuiIndex(nid);
-        if (i < 0 || !sc->gnIsVisible(i))
-            continue;
+        auto fit = frameIdToGi.find(nid);
+        if (fit == frameIdToGi.end()) continue;
+        int i = fit->second;
+        if (!sc->gnIsVisible(i)) continue;
         ImVec2 pos = nodeScreenPos(sc->gnX(i), sc->gnY(i), canvasOrigin);
         ImVec2 pin = outputPinPos(pos);
 
@@ -544,9 +575,10 @@ NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImV
 
     for (int nid : nodeZOrder)
     {
-        int i = findGuiIndex(nid);
-        if (i < 0 || !sc->gnIsVisible(i))
-            continue;
+        auto fit = frameIdToGi.find(nid);
+        if (fit == frameIdToGi.end()) continue;
+        int i = fit->second;
+        if (!sc->gnIsVisible(i)) continue;
         int numSignals = effectiveInputCount(i);
         int nodeTypeHT = sc->gnType(i);
         bool hasEditBtnHT = nodeHasEditButton(i);
@@ -953,10 +985,17 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                         // Shift+click: recursive upstream select
                         if (!ctrl)
                             selectedNodeIDs.clear();
-                        std::unordered_set<int> visited;
-                        recursiveSelect(hitID, visited);
-                        for (int nid : selectedNodeIDs)
-                            bringToFront(nid);
+                        // Build O(1) nodeID→guiIndex map once to avoid O(N²) traversal.
+                        {
+                            int nn = sc->numGUINodes();
+                            std::unordered_map<int,int> idToGi;
+                            idToGi.reserve(nn);
+                            for (int j = 0; j < nn; j++)
+                                if (sc->gnIsVisible(j)) idToGi[sc->gnID(j)] = j;
+                            std::unordered_set<int> visited;
+                            recursiveSelect(hitID, visited, idToGi);
+                        }
+                        bringMultipleToFront(selectedNodeIDs);
                     }
                     else if (ctrl)
                     {
@@ -1026,12 +1065,12 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
 
                 for (int id : selectedNodeIDs)
                 {
-                    int gi = findGuiIndex(id);
-                    if (gi >= 0)
-                    {
-                        sc->setX((DWORD)id, sc->gnX(gi) + dxNode);
-                        sc->setY((DWORD)id, sc->gnY(gi) + dyNode);
-                    }
+                    // Use frameIdToGi for O(1) lookup instead of O(N) findGuiIndex.
+                    auto fit = frameIdToGi.find(id);
+                    if (fit == frameIdToGi.end()) continue;
+                    int gi = fit->second;
+                    sc->setX((DWORD)id, sc->gnX(gi) + dxNode);
+                    sc->setY((DWORD)id, sc->gnY(gi) + dyNode);
                 }
 
                 // Reset for incremental delta
@@ -1056,9 +1095,10 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                 {
                     int nid = sc->gnID(i);
                     selectedNodeIDs.insert(nid);
-                    bringToFront(nid);
                 }
             }
+            // Single O(N) pass to bring all selected nodes to front.
+            bringMultipleToFront(selectedNodeIDs);
             syncSelectionToCore();
         }
     }
@@ -2007,6 +2047,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, maxH));
                     }
                     ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y));
+                    ImGui::PushFont(pickFont(fontSize));
                     if (ImGui::BeginPopup(popupID))
                     {
                         ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
@@ -2024,6 +2065,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         }
                         ImGui::EndPopup();
                     }
+                    ImGui::PopFont();
 
                     curY += kEditFlagH * z;
                     groupIdx++;
@@ -2522,7 +2564,8 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
 
             // Click handling
             ImGuiIO& io = ImGui::GetIO();
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered)
+            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !isWireDragging && !mouseOverEditPanel && canvasHovered
+                && hitTestNode(io.MousePos, canvasOrigin) == nodeID)
             {
                 ImVec2 mpos = io.MousePos;
                 if (mpos.x >= btnMin.x && mpos.x <= btnMax.x &&
@@ -2654,17 +2697,11 @@ void NodeCanvas::drawWires(ImDrawList* dl, const ImVec2& canvasOrigin)
             if (!isRealConnection(srcID, sc))
                 continue;
 
-            // Find the source node's GUI index
-            int fromIdx = -1;
-            for (int j = 0; j < numNodes; j++)
-            {
-                if (sc->gnID(j) == srcID)
-                {
-                    fromIdx = j;
-                    break;
-                }
-            }
-            if (fromIdx < 0 || !sc->gnIsVisible(fromIdx))
+            // Find the source node's GUI index using the per-frame O(1) map.
+            auto fit = frameIdToGi.find(srcID);
+            if (fit == frameIdToGi.end()) continue;
+            int fromIdx = fit->second;
+            if (!sc->gnIsVisible(fromIdx))
                 continue;
 
             double fromNX = sc->gnX(fromIdx);
@@ -2765,6 +2802,18 @@ void NodeCanvas::render()
     }
 
     updateMouseOverEditPanel(canvasPos);
+
+    // Build per-frame nodeID→guiIndex map before interaction and drawing.
+    // Both handleNodeInteraction (drag loop) and the draw pass use it for O(1) lookups.
+    if (sc && sc->isInitialized())
+    {
+        int nFrame = sc->numGUINodes();
+        frameIdToGi.clear();
+        frameIdToGi.reserve(nFrame);
+        for (int i = 0; i < nFrame; i++)
+            if (sc->gnIsVisible(i)) frameIdToGi[sc->gnID(i)] = i;
+    }
+
     handlePanZoom(canvasPos, canvasSize);
     handleNodeInteraction(canvasPos, canvasSize);
 
@@ -2839,9 +2888,10 @@ void NodeCanvas::render()
         // Draw nodes in Z-order (back-to-front, back = first drawn = behind)
         for (int zid : nodeZOrder)
         {
-            int i = findGuiIndex(zid);
-            if (i < 0 || !sc->gnIsVisible(i))
-                continue;
+            auto fit = frameIdToGi.find(zid);
+            if (fit == frameIdToGi.end()) continue;
+            int i = fit->second;
+            if (!sc->gnIsVisible(i)) continue;
             if (drawNode(dl, i, canvasPos))
                 break;
         }
