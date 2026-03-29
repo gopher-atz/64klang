@@ -4947,8 +4947,7 @@ void SYNTHCALL VOICEPARAM_tick(SynthNode* n)
 #ifdef COMPILE_VSTI
 void SYNTHCALL SIGNAL_VISUALIZER_init(SynthNode* n)
 {
-	DWORD total = SIGVIZ_HEADER_DW + SIGVIZ_BUF_SIZE * 2;
-	n->customMem = (DWORD*)SynthMalloc(total * sizeof(float));
+	n->customMem = (DWORD*)SynthMalloc(SIGVIZ_TOTAL_DW * sizeof(float));
 }
 
 void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
@@ -4996,6 +4995,100 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 		DWORD tb = (wp - 512    ) & (SIGVIZ_BUF_SIZE - 1);
 		if (ring[ta * 2] <= 0.f && ring[tb * 2] > 0.f)
 			dw[7] = tb;
+	}
+
+	// Spectrum pre-computation: runs on the audio thread every 'step' samples.
+	// Stores one FFT magnitude frame in customMem so the GUI can read a tiny result
+	// section (~8 KB) instead of doing FFT itself or copying the 512 KB ring buffer.
+	// Safe to use static work buffers because the audio tick is single-threaded.
+	if (n->input[SIGNAL_VISUALIZER_MODE])
+	{
+		int vizMode = n->input[SIGNAL_VISUALIZER_MODE]->i[0];
+		if ((vizMode & SIGNAL_VISUALIZER_DISPLAYMASK) == (int)SIGNAL_VISUALIZER_SPECTRUM)
+		{
+			DWORD*  specBase  = n->customMem + SIGVIZ_SPEC_BASE;
+			DWORD&  colCtr    = specBase[0];
+			DWORD&  stepCtr   = specBase[1];
+			DWORD&  modeBits  = specBase[2];
+			DWORD&  specHalf  = specBase[3];
+			float*  specMags  = (float*)(specBase + SIGVIZ_SPEC_HDR_DW);
+
+			if (modeBits != (DWORD)vizMode) { stepCtr = 0; modeBits = (DWORD)vizMode; }
+
+			static const int   kFFTSizes[]    = { 256, 512, 1024, 2048, 4096 };
+			static const DWORD kHistLengths[] = { 65536, 32768, 16384, 8192, 4096, 2048, 1024, 512, 256 };
+			int fftSel  = (vizMode & SIGNAL_VISUALIZER_FFTMASK)  >> SIGNAL_VISUALIZER_FFTSHIFT;
+			int histIdx = (vizMode & SIGNAL_VISUALIZER_HISTMASK) >> SIGNAL_VISUALIZER_HISTSHIFT;
+			if (fftSel  < 0 || fftSel  >= 5) fftSel  = 3;
+			if (histIdx < 0 || histIdx >= 9) histIdx  = 0;
+			int   fftSize    = kFFTSizes[fftSel];
+			int   fftHalfV   = fftSize / 2;
+			DWORD windowSize = kHistLengths[histIdx];
+			int   step       = (int)windowSize / 512; if (step < 1) step = 1;
+
+			if (++stepCtr >= (DWORD)step)
+			{
+				stepCtr = 0;
+				int winSel  = (vizMode & SIGNAL_VISUALIZER_WINMASK)  >> SIGNAL_VISUALIZER_WINSHIFT;
+				int chanSel = (vizMode & SIGNAL_VISUALIZER_CHANMASK) >> SIGNAL_VISUALIZER_CHANSHIFT;
+
+				// Static work buffers: safe because audio tick is single-threaded
+				static float           s_winCoeff[4096];
+				static DWORD           s_lastWinKey = ~0u;
+				static complexsample_t s_fftBuf[4096];
+
+				// Recompute window coefficients only when window type or fft size changed
+				DWORD winKey = (DWORD)(winSel | (fftSel << 8));
+				if (winKey != s_lastWinKey)
+				{
+					s_lastWinKey = winKey;
+					float sumW = 0.f;
+					for (int i = 0; i < fftSize; i++)
+					{
+						float a = 2.f * 3.14159265358979f * i / (fftSize - 1);
+						float w;
+						switch (winSel) {
+							case 1:  w = 0.54f - 0.46f * cosf(a); break;                               // Hamming
+							case 2:  w = 0.42f - 0.5f * cosf(a) + 0.08f * cosf(2.f * a); break;       // Blackman
+							case 3:  w = 0.35875f - 0.48829f * cosf(a) + 0.14128f * cosf(2.f * a)
+							              - 0.01168f * cosf(3.f * a); break;                           // Blackman-Harris
+							default: w = 1.f; break;                                                   // Rectangular
+						}
+						s_winCoeff[i] = w;
+						sumW += w;
+					}
+					float scaleInv = (sumW > 0.f) ? (1.f / sumW) : 1.f;
+					for (int i = 0; i < fftSize; i++) s_winCoeff[i] *= scaleInv;
+				}
+
+				// Fill FFT input from ring buffer: window = [dw[0]-fftSize .. dw[0]-1]
+				for (int i = 0; i < fftSize; i++)
+				{
+					DWORD pos = (dw[0] - fftSize + i) & (SIGVIZ_BUF_SIZE - 1);
+					float sL = ring[pos * 2];
+					float sR = ring[pos * 2 + 1];
+					float s;
+					switch (chanSel) {
+						case 1:  s = sL; break;
+						case 2:  s = sR; break;
+						default: s = sL + sR; break;
+					}
+					s_fftBuf[i] = complexsample_t((double)(s * s_winCoeff[i]));
+				}
+
+				c_fft(s_fftBuf, fftSize);
+
+				// Store magnitude spectrum
+				for (int bin = 0; bin < fftHalfV; bin++)
+				{
+					double re = s_fftBuf[bin].re.d[0];
+					double im = s_fftBuf[bin].im.d[0];
+					specMags[bin] = (float)sqrt(re * re + im * im);
+				}
+				specHalf = (DWORD)fftHalfV;
+				colCtr++;
+			}
+		}
 	}
 
 }

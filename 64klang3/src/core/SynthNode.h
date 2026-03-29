@@ -1378,6 +1378,16 @@ void SYNTHCALL VOICEPARAM_tick(SynthNode* n);
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define SIGVIZ_BUF_SIZE  65536   // 44100 Hz * ~1.49 s; must be power-of-2
 #define SIGVIZ_HEADER_DW 8
+// Spectrum results section (follows ring buffer in customMem):
+//   [SIGVIZ_SPEC_BASE + 0] = colCtr   (DWORD) monotonically incremented each FFT frame by tick
+//   [SIGVIZ_SPEC_BASE + 1] = stepCtr  (DWORD) samples until next FFT frame
+//   [SIGVIZ_SPEC_BASE + 2] = modeBits (DWORD) mode word used for last FFT (detects settings change)
+//   [SIGVIZ_SPEC_BASE + 3] = fftHalf  (DWORD) half-size of stored magnitude array
+//   [SIGVIZ_SPEC_BASE + 4 .. +4+SIGVIZ_SPEC_BINS-1] = magnitude array (float)
+#define SIGVIZ_SPEC_BASE    (SIGVIZ_HEADER_DW + SIGVIZ_BUF_SIZE * 2)
+#define SIGVIZ_SPEC_HDR_DW  4
+#define SIGVIZ_SPEC_BINS    2048  // max fftSize/2 (at fftSize=4096)
+#define SIGVIZ_TOTAL_DW     (SIGVIZ_SPEC_BASE + SIGVIZ_SPEC_HDR_DW + SIGVIZ_SPEC_BINS)
 
 enum SIGNAL_VISUALIZER_INPUT
 {
