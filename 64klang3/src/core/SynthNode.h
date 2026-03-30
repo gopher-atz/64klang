@@ -155,6 +155,7 @@ enum NodeIDs
 	FORMANT_ID,
 	EQ3_ID,
 	OSCSYNC_ID,
+	FOURIOZA_ID,
 	// reserved slots from here to 63 for future nodes
 	RESERVED_ID,
 
@@ -1344,6 +1345,45 @@ enum OSCSYNC_INPUT
 	OSCSYNC_MAX_GUI_SIGNALS = OSCSYNC_MAX
 };
 void SYNTHCALL OSCSYNC_tick(SynthNode* n);
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// FOURIOZA node — Paulstretch time-stretcher using overlap-add FFT phase randomisation
+//
+// customMem layout (flat DWORD array, interpreted as follows):
+//   [0]         = winSize (int)            current window size (power of 2, e.g. 4096)
+//   [1]         = outGrainPos (int)        sample counter inside the current output OLA grain
+//   [2..3]      = inPos (double, 8 bytes)  floating-point input read position (in source sample_t units)
+//   [4..3+W]    = hann window (W doubles)  precomputed Hann coefficients
+//   [4+W..3+2W] = grainL (W doubles)       OLA accumulated output grain, left channel
+//   [4+2W..3+3W]= grainR (W doubles)       OLA accumulated output grain, right channel
+//   [4+3W..]    = fftBuf (W complexsample_t) scratch FFT buffer
+// where W = winSize.  The total allocation is computed in FOURIOZA_init.
+//
+// Input buffer interface (identical to SAMPLER / WTFOSC):
+//   v[10] = sample_t holding source buffer length (in sample_t units) as double in d[0]
+enum FOURIOZA_INPUT
+{
+	FOURIOZA_IN,           // 0: audio input (any signal)
+	FOURIOZA_ACTIVATE,     // 1: activate gate (>0.5 = effect on, else bypass)
+	FOURIOZA_STRETCH,      // 2: time-stretch factor, engine 0..1 → 1x..128x
+	FOURIOZA_PHASESMOOTH,  // 3: phase smoothness, engine 0..1 → 0=original, 1=random
+	FOURIOZA_MODE,         // 4: mode (window size in bits [2:0])
+	FOURIOZA_MAX,
+	FOURIOZA_REQ_GUI_SIGNALS = 1,
+	FOURIOZA_MAX_GUI_SIGNALS = FOURIOZA_MODE
+};
+void SYNTHCALL FOURIOZA_tick(SynthNode* n);
+void SYNTHCALL FOURIOZA_init(SynthNode* n);
+enum FOURIOZA_MODE
+{
+	FOURIOZA_WINMASK  = 0x00000007,  // bits [2:0]: window size index 0..5 → 512..16384
+	FOURIOZA_WIN_512  = 0,
+	FOURIOZA_WIN_1024 = 1,
+	FOURIOZA_WIN_2048 = 2,
+	FOURIOZA_WIN_4096 = 3,
+	FOURIOZA_WIN_8192 = 4,
+	FOURIOZA_WIN_16384 = 5,
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

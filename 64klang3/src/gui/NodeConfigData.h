@@ -1554,6 +1554,23 @@ R"xml(
       <NodeInput name="Event Node"/>
       <NodeInput name="Sync Osc/LFO"/>
     </Node>
+
+    <Node typeid="60" name="Fourioza" numInputs="5" numReqGUIInputs="1" numMaxGUIInputs="4" allowSignalInsertion="1">
+      <NodeInput name="In"/>
+      <NodeInput name="Activate" minValue="0" maxValue="1" range="1" singleInput="1"/>
+      <NodeInput name="Stretch" minValue="0" maxValue="128" mapping="15"/>
+      <NodeInput name="PhaseSmooth" minValue="0" maxValue="128" mapping="13"/>
+      <NodeInput name="Mode">
+        <ModeGroup name="Window Size" mask="7" shift="0">
+          <ModeItem name="512"   value="0"/>
+          <ModeItem name="1024"  value="1"/>
+          <ModeItem name="2048"  value="2"/>
+          <ModeItem name="4096"  value="3"/>
+          <ModeItem name="8192"  value="4"/>
+          <ModeItem name="16384" value="5"/>
+        </ModeGroup>
+      </NodeInput>
+    </Node>
     
     <Node typeid="64" name="Constant" numInputs="0" numReqGUIInputs="0" numMaxGUIInputs="0">
 		</Node>	
@@ -1593,6 +1610,8 @@ R"xml(
 					<ModeItem name="1024" value="2"/>
 					<ModeItem name="2048" value="3"/>
 					<ModeItem name="4096" value="4"/>
+					<ModeItem name="8192" value="5"/>
+					<ModeItem name="16384" value="6"/>
 				</ModeGroup>
 				<ModeGroup name="FFT Window" mask="768" shift="8" showFor="3">
 					<ModeItem name="Rectangular"     value="0"/>
@@ -1617,6 +1636,8 @@ R"xml(
 					<ModeItem name="1024" value="2"/>
 					<ModeItem name="2048" value="3"/>
 					<ModeItem name="4096" value="4"/>
+					<ModeItem name="8192" value="5"/>
+					<ModeItem name="16384" value="6"/>
 				</ModeGroup>
 				<ModeGroup name="FFT Window" mask="768" shift="8" showFor="5">
 					<ModeItem name="Rectangular"     value="0"/>
@@ -1688,6 +1709,7 @@ R"xml(
 			<MenuItem id="36" />
 			<MenuItem id="38" />
 			<MenuItem id="49" />
+			<MenuItem id="60" />
 		</MenuItem>
 		
 		<MenuItem Header="Ops">

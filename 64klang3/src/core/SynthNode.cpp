@@ -336,8 +336,13 @@ SynthFunction NodeTickFunctions[MAXIMUM_ID] =
 #else
 	0,
 #endif
+#ifndef FOURIOZA_SKIP
+	FOURIOZA_tick,
+#else
+	0,
+#endif
 	// reserved slots
-	0, 0, 0, 0,
+	0, 0, 0,
 	CONTSTANT_TICK,	
 
 	VOICEPARAM_tick, //VOICE_FREQUENCY_ID,
@@ -452,8 +457,13 @@ SynthFunction NodeInitFunctions[MAXIMUM_ID] =
 	0,	//FORMANT_tick
 	0,	//EQ3_tick
 	0,	//OSCSYNC_tick
+#ifndef FOURIOZA_SKIP
+	FOURIOZA_init,	//FOURIOZA_tick
+#else
+	0,
+#endif
 	// reserved slots
-	0, 0, 0, 0,
+	0, 0, 0,
 
 	0,	//CONSTANT_tick,
 
@@ -4916,6 +4926,248 @@ void SYNTHCALL OSCSYNC_tick(SynthNode* n)
 	n->out = INP(OSCSYNC_OSC);  // s_ifthen(in->e != sample_t::zero(), SC[S_1_0], sample_t::zero());
 }
 #endif
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// FOURIOZA — Paulstretch time-stretcher (effect mode)
+//
+// Ring buffer behaviour (matches Glitch tapestop/retrigger pattern):
+//   - The ring buffer is written CONTINUOUSLY in a circular fashion, even when inactive.
+//     This provides an always-fresh audio history for global effect use.
+//   - When Activate ≤ 0.5: bypass (passthrough), n->e = zero.
+//   - On activation (n->e transitions 0→nonzero): record activationPos = current wp,
+//     reset fillCount = 1, reset OLA state. No history is discarded.
+//   - While active and fillCount < RINGLEN: count each new sample written.
+//     Once fillCount == RINGLEN the snapshot is frozen (stop advancing the write head).
+//   - OLA reads circularly: srcBuf[(activationPos + offset) % RINGLEN].
+//   - L and R are fully independent (separate stretch/inPos per channel).
+//   - n->e = nonzero while active (used to detect re-activation).
+//
+// State in v[] work variables (one scalar per slot):
+//   v[0].i[0] = winSize        v[1].i[0] = outGrainPos
+//   v[2].i[0] = ringWritePos   v[3].i[0] = fillCount (samples written since activation; 0 = never activated)
+//   v[4]      = inPos (sample_t: d[0]=L, d[1]=R)   v[5].i[0] = activationPos
+//
+// customMem flat layout (no header, winSize-dependent region then fixed ring):
+//   double hann[winSize], double grainL[winSize], double grainR[winSize]
+//   complexsample_t fftBuf[winSize]
+//   sample_t ringBuf[SYNTH_SAMPLERATE * 8]
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Ring buffer length (samples) – same as Glitch
+#define FOZA_MAXWIN   16384  // maximum window size; customMem always allocated for this
+#define FOZA_RINGLEN  524288 // about 12 seconds at 44.1kHz as a nice power of 2
+
+#define FOZA_WINSIZE(n)    ((n)->v[0].i[0])   // int: current FFT window size
+#define FOZA_GRAINPOS(n)   ((n)->v[1].i[0])   // int: current output grain cursor
+#define FOZA_WPOS(n)       ((n)->v[2])         // sample_t: d[0]=wpL, d[1]=wpR absolute ring write positions
+#define FOZA_READPOS(n)    ((n)->v[4])         // sample_t: d[0]=rpL, d[1]=rpR absolute ring read positions
+#define FOZA_HANN(n)       ((sample_t*)((n)->customMem))
+#define FOZA_GRAIN(n)      ((sample_t*)((n)->customMem) + FOZA_MAXWIN)
+#define FOZA_FFTBUF(n)     ((complexsample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t)))
+#define FOZA_RINGBUF(n)    ((sample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t)))
+
+#ifndef FOURIOZA_SKIP
+void SYNTHCALL FOURIOZA_init(SynthNode* n)
+{
+	// Always allocate for FOZA_MAXWIN so ring buffer is at a fixed offset regardless of active winSize
+	n->customMem = (DWORD*)SynthMalloc(
+		FOZA_MAXWIN * sizeof(sample_t) +        // Hann weights
+		FOZA_MAXWIN * sizeof(sample_t) +        // stereo OLA accumulator (d[0]=L, d[1]=R)
+		FOZA_MAXWIN * sizeof(complexsample_t) + // fft buffer
+		FOZA_RINGLEN * sizeof(sample_t)         // ring buffer
+		);
+}
+
+void SYNTHCALL FOURIOZA_tick(SynthNode* n)
+{
+	NODE_STATEFUL_PROLOG;
+
+	NODE_CALL_INPUT(FOURIOZA_IN);
+	NODE_CALL_INPUT(FOURIOZA_ACTIVATE);
+	NODE_CALL_INPUT(FOURIOZA_STRETCH);
+	NODE_CALL_INPUT(FOURIOZA_PHASESMOOTH);
+	// NODE_CALL_INPUT(FOURIOZA_MODE);
+#ifdef COMPILE_VSTI
+	int mode = n->input[FOURIOZA_MODE]->i[0];
+#else
+	int mode = *(n->modePointer);
+#endif
+
+	NODE_UPDATE_BEGIN
+
+		int newWin = 512 << (mode & FOURIOZA_WINMASK);
+		if (newWin != FOZA_WINSIZE(n))
+		{
+			FOZA_WINSIZE(n) = newWin;
+			sample_t* hann = FOZA_HANN(n);
+			for (int i = 0; i < newWin; i++)
+				hann[i] = (SC[S_1_0] - s_cos(SC[S_2PI] * sample_t((double)i/(double)(newWin-1)))) * SC[S_0_5];
+		}
+
+	NODE_UPDATE_END
+
+	sample_t input = INP(FOURIOZA_IN);
+
+	// ── Write to ring ──
+	// Inactive: always write both channels.
+	// Active:   each channel independently skips its write when its own wp is about to lap its own read head.
+	{
+		sample_t* ring = FOZA_RINGBUF(n);
+		sample_t wposV = FOZA_WPOS(n);
+		int wpL = (int)wposV.d[0];
+		int wpR = (int)wposV.d[1];
+		bool doWriteL, doWriteR;
+		if (s_testz_si128(n->e, n->e))
+		{
+			doWriteL = doWriteR = true;   // inactive — always write
+		}
+		else
+		{
+			sample_t readPosV = FOZA_READPOS(n);
+			int ws = FOZA_WINSIZE(n);
+			int deltaL = (wpL - (int)readPosV.d[0] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+			int deltaR = (wpR - (int)readPosV.d[1] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+			doWriteL = (deltaL < FOZA_RINGLEN - ws);
+			doWriteR = (deltaR < FOZA_RINGLEN - ws);
+		}
+		if (doWriteL)
+		{
+			ring[wpL].d[0] = input.d[0];
+			wpL = (wpL + 1) & (FOZA_RINGLEN - 1);
+		}
+		if (doWriteR)
+		{
+			ring[wpR].d[1] = input.d[1];
+			wpR = (wpR + 1) & (FOZA_RINGLEN - 1);
+		}
+		FOZA_WPOS(n) = sample_t((double)wpL, (double)wpR);
+	}
+
+	// ── Bypass when Activate ≤ 0.5; reset armed state so re-activation gets a fresh snapshot ──
+	if (s_testz_si128((INP(FOURIOZA_ACTIVATE) > SC[S_0_5]), (INP(FOURIOZA_ACTIVATE) > SC[S_0_5])))
+	{
+		n->e   = sample_t::zero();  // disarm
+		n->out = input;
+		return;
+	}
+
+	// ── Just became active? (n->e was zero — same pattern as Glitch tapestop/retrigger) ──
+	if (s_testz_si128(n->e, n->e))
+	{
+		n->e = SC[S_1_0];
+		// Absolute read heads set winSize behind each channel's wp — first grain fires immediately
+		int ws = FOZA_WINSIZE(n);
+		sample_t wposV = FOZA_WPOS(n);
+		double rpL = (double)((((int)wposV.d[0]) - ws + FOZA_RINGLEN) & (FOZA_RINGLEN - 1));
+		double rpR = (double)((((int)wposV.d[1]) - ws + FOZA_RINGLEN) & (FOZA_RINGLEN - 1));
+		FOZA_READPOS(n)  = sample_t(rpL, rpR);
+		FOZA_GRAINPOS(n) = 0;
+		// Clear stereo grain accumulator so OLA starts cleanly
+		sample_t* grainc = FOZA_GRAIN(n);
+		for (int i = 0; i < ws; i++)
+			grainc[i] = sample_t::zero();
+	}
+
+	// ── Per-sample Paulstretch OLA ──
+	int     winSize  = FOZA_WINSIZE(n);
+	int     outHop   = winSize >> 2;    // 75% overlap (COLA with Hann)
+	int&    grainPos = FOZA_GRAINPOS(n);
+	sample_t* hann     = FOZA_HANN(n);
+	sample_t* grain    = FOZA_GRAIN(n);
+
+	// Every outHop samples: compute a new grain and OLA-add it into the buffer.
+	if ((grainPos % outHop) == 0)
+	{
+		// srcLen = live per-channel delta between each write head and its read head
+		sample_t wposV = FOZA_WPOS(n);
+		int wpL = (int)wposV.d[0];
+		int wpR = (int)wposV.d[1];
+		sample_t readPosV = FOZA_READPOS(n);
+		int iReadPosL  = (int)readPosV.d[0];
+		int iReadPosR  = (int)readPosV.d[1];
+		int srcLenL    = (wpL - iReadPosL + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+		int srcLenR    = (wpR - iReadPosR + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+		sample_t* srcBuf = FOZA_RINGBUF(n);
+		if (srcLenL >= winSize && srcLenR >= winSize)
+		{
+			complexsample_t* fftBuf = FOZA_FFTBUF(n);
+
+			sample_t stretchParam = s_clamp(INP(FOURIOZA_STRETCH), SC[S_1_0], sample_t::zero());
+			sample_t stretch = SC[S_1_0] + stretchParam * (SC[S_128_0]);
+
+			sample_t phaseSmoothness = s_clamp(INP(FOURIOZA_PHASESMOOTH), SC[S_1_0], sample_t::zero());
+
+			// Build windowed FFT input from absolute ring positions
+			for (int i = 0; i < winSize; i++)
+			{
+				int rL = (iReadPosL + i) & (FOZA_RINGLEN - 1);
+				int rR = (iReadPosR + i) & (FOZA_RINGLEN - 1);
+				sample_t s(srcBuf[rL].d[0], srcBuf[rR].d[1]);
+				fftBuf[i] = complexsample_t(s * hann[i], sample_t::zero());
+			}
+
+			// Forward FFT (in-place) — computes L and R spectra in parallel via complexsample_t SIMD
+			c_fft(fftBuf, winSize);
+
+			// Phase randomisation with per-channel smoothness blend.
+			for (int i = 0; i < winSize; i++)
+			{
+				sample_t re = fftBuf[i].re;  // d[0]=reL, d[1]=reR
+				sample_t im = fftBuf[i].im;  // d[0]=imL, d[1]=imR
+				sample_t magSqV = re*re + im*im;
+				sample_t magV = s_sqrt(magSqV);
+				sample_t origPhaseV = s_ifthen(magV > sample_t(1e-30), s_atan2(im, re), sample_t::zero());
+				sample_t phaseV = s_lerp(origPhaseV, s_rand() * SC[S_2PI], phaseSmoothness);
+				fftBuf[i].re = magV * s_cos(phaseV);
+				fftBuf[i].im = magV * s_sin(phaseV);
+			}
+
+			// Inverse FFT (in-place, normalises by 1/N internally)
+			c_ifft(fftBuf, winSize);
+
+			// OLA: window the grain and add into the stereo accumulator starting at grainPos
+			for (int i = 0; i < winSize; i++)
+			{
+				int outIdx = (grainPos + i) % winSize;
+				grain[outIdx] += fftBuf[i].re * hann[i];
+			}
+
+			// Advance absolute read positions by inHop = outHop / stretch
+			sample_t hop = sample_t((double)outHop) / stretch;
+			sample_t newReadPos = readPosV + hop;
+			sample_t ringLenV = sample_t((double)FOZA_RINGLEN);
+			newReadPos = s_ifthen(newReadPos >= ringLenV, newReadPos - ringLenV, newReadPos);
+			FOZA_READPOS(n) = newReadPos;
+
+			// Clear ring slots both read heads have fully passed.
+			// If clearCount is suspiciously large (option B wrap-around), skip to avoid mass erase.
+			int newReadPosLi = (int)newReadPos.d[0];
+			int newReadPosRi = (int)newReadPos.d[1];
+			int clearCountL = (newReadPosLi - iReadPosL + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+			int clearCountR = (newReadPosRi - iReadPosR + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+			if (clearCountL <= outHop * 2)
+			{
+				for (int k = 0; k < clearCountL; k++)
+					srcBuf[(iReadPosL + k) & (FOZA_RINGLEN - 1)].d[0] = 0.0;
+			}
+			if (clearCountR <= outHop * 2)
+			{
+				for (int k = 0; k < clearCountR; k++)
+					srcBuf[(iReadPosR + k) & (FOZA_RINGLEN - 1)].d[1] = 0.0;
+			}
+		}
+	}
+
+	// Output the current sample from the OLA grain buffer (d[0]=L, d[1]=R)
+	n->out = grain[grainPos];
+	// Clear the slot we just consumed so it's ready for the next accumulation
+	grain[grainPos] = sample_t::zero();
+
+	// Advance and wrap grain position
+	if (++grainPos >= winSize)
+		grainPos = 0;
+}
+#endif // FOURIOZA_SKIP
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

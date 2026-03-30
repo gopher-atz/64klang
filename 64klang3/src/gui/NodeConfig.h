@@ -36,7 +36,7 @@ struct InputDef
     std::string name;
     double minVal = 0.0;
     double maxVal = 1.0;
-    int displayMapping = 0;  // mapping attribute (0-14)
+    int displayMapping = 0;  // mapping attribute (0-15)
     bool singleInput = false;
     int range = 0;
 

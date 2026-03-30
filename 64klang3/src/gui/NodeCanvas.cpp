@@ -772,8 +772,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                     // Case 5: SampleRecorder → only SamplePlayer[0], WTFOsc[0], or EventSignal
                     if (valid && fromType == SAMPLEREC_ID)
                     {
-                        bool ok = (toType == SAMPLER_ID   && target.pinIndex == 0) ||
-                                  (toType == WTFOSC_ID    && target.pinIndex == 0) ||
+                        bool ok = (toType == SAMPLER_ID    && target.pinIndex == 0) ||
+                                  (toType == WTFOSC_ID     && target.pinIndex == 0) ||
                                   (toType == EVENTSIGNAL_ID);
                         if (!ok)
                         {
@@ -784,8 +784,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                     // Case 6: TextToSpeech → only SamplePlayer[0] or WTFOsc[0]
                     if (valid && fromType == SAPI_ID)
                     {
-                        bool ok = (toType == SAMPLER_ID && target.pinIndex == 0) ||
-                                  (toType == WTFOSC_ID  && target.pinIndex == 0);
+                        bool ok = (toType == SAMPLER_ID  && target.pinIndex == 0) ||
+                                  (toType == WTFOSC_ID   && target.pinIndex == 0);
                         if (!ok)
                         {
                             showToast("TextToSpeech can only be input for Sample Player or WTF Oscillator In input!");
@@ -795,8 +795,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                     // Case 7: GM.DLS → only SamplePlayer[0] or WTFOsc[0]
                     if (valid && fromType == GMDLS_ID)
                     {
-                        bool ok = (toType == SAMPLER_ID && target.pinIndex == 0) ||
-                                  (toType == WTFOSC_ID  && target.pinIndex == 0);
+                        bool ok = (toType == SAMPLER_ID  && target.pinIndex == 0) ||
+                                  (toType == WTFOSC_ID   && target.pinIndex == 0);
                         if (!ok)
                         {
                             showToast("GM.DLS can only be input for Sample Player or WTF Oscillator In input!");

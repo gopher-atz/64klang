@@ -200,7 +200,6 @@ enum
 	S_LOG2_2,
 	S_LOG2_3,
 	S_LOG2_4,
-#ifndef S_SKIP_UNUSED
 	S_ATAN_0,
 	S_ATAN_1,
 	S_ATAN_2,
@@ -209,7 +208,6 @@ enum
 	S_ATAN_5,
 	S_ATAN_6,
 	S_ATAN_7,
-#endif
 	S_PI,
 	S_2PI,
 	S_PI2,
@@ -329,6 +327,8 @@ extern sample_t	SYNTHCALL	s_rand();
 extern sample_t	SYNTHCALL	s_sin(const sample_t& x);
 extern sample_t	SYNTHCALL	s_exp2(const sample_t& x);
 extern sample_t	SYNTHCALL	s_log2(const sample_t& x);
+extern sample_t	SYNTHCALL	s_atan	(const sample_t& x);
+inline sample_t		s_atan2	(const sample_t& y, const sample_t& x)						{ sample_t z = x; return s_atan(y / z) + s_ifthen(z < sample_t::zero(), SC[S_PI] | (y & SC[S_SIGN_MASK]), sample_t::zero()); }
 inline sample_t		s_cos	(const sample_t& x)											{ return s_sin(x+SC[S_PI2]); }
 inline sample_t		s_exp	(const sample_t& x)											{ return s_exp2(x*SC[S_LOG2E]); }
 inline sample_t		s_exp10	(const sample_t& x)											{ return s_exp2(x*SC[S_LOG210]); }
@@ -381,8 +381,8 @@ inline complexsample_t		c_exp(const complexsample_t& x) { sample_t er = s_exp(x.
 extern void	SYNTHCALL		c_fft(complexsample_t* x, int N);
 extern void	SYNTHCALL		c_ifft(complexsample_t* x, int N);
 
+
 #ifndef S_SKIP_UNUSED
-extern sample_t		s_atan	(const sample_t& x);
 extern sample_t		s_tan(const sample_t& x);
 extern sample_t		s_cosh(const sample_t& x);
 extern sample_t		s_sinh(const sample_t& x);

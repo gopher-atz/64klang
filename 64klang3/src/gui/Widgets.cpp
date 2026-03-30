@@ -315,6 +315,15 @@ KnobLabel formatKnobValue(double normValue, double range, int mapping, int curre
         return { buf, "" };
     }
 
+    case 15: // FouriozaStretch: engine formula 1 + norm*127 → display 1x..128x
+    {
+        double stretch = 1.0 + norm * 127.0;
+        stretch = std::floor(stretch * 100.0) / 100.0;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.2f", stretch);
+        return { buf, "x" };
+    }
+
     case 14: // SNH_Frequency
     {
         if ((currentMode & 16) != 0) // Trigger
@@ -800,8 +809,8 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         int slopeSel = (vizMode & SIGNAL_VISUALIZER_SLOPEMASK) >> SIGNAL_VISUALIZER_SLOPESHIFT;
         static const float kSlopeDbOct[] = { 0.f, 1.5f, 3.f, 4.5f };
         float slopeDbPerOct = kSlopeDbOct[slopeSel & 3];
-        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096 };
-        if (fftSel < 0 || fftSel >= 5) fftSel = 3;
+        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096, 8192, 16384 };
+        if (fftSel < 0 || fftSel >= 7) fftSel = 3;
         int fftHalf = kFFTSizes[fftSel] / 2;
 
         // ---------- read core pre-computed spectrum section ----------
@@ -1216,8 +1225,8 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         int slopeSel = (vizMode & SIGNAL_VISUALIZER_SLOPEMASK) >> SIGNAL_VISUALIZER_SLOPESHIFT;
         static const float kSlopeDbOctB[] = { 0.f, 1.5f, 3.f, 4.5f };
         float slopeDbPerOct = kSlopeDbOctB[slopeSel & 3];
-        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096 };
-        if (fftSel < 0 || fftSel >= 5) fftSel = 3;
+        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096, 8192, 16384 };
+        if (fftSel < 0 || fftSel >= 7) fftSel = 3;
         int fftHalf = kFFTSizes[fftSel] / 2;
 
         // ---------- read core pre-computed spectrum section ----------

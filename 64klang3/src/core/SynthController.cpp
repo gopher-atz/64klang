@@ -89,8 +89,9 @@ DWORD NodeInputs[MAXIMUM_ID] =
 	FORMANT_MAX,
 	EQ3_MAX,
 	OSCSYNC_MAX,
+	FOURIOZA_MAX,
 	// reserved slots
-	0, 0, 0, 0,
+	0, 0, 0,
 
 	0, // CONSTANT_MAX
 
@@ -170,8 +171,9 @@ DWORD NodeReqGUISignals[MAXIMUM_ID] =
 	FORMANT_REQ_GUI_SIGNALS,
 	EQ3_REQ_GUI_SIGNALS,
 	OSCSYNC_REQ_GUI_SIGNALS,
+	FOURIOZA_REQ_GUI_SIGNALS,
 	// reserved slots
-	0, 0, 0, 0,
+	0, 0, 0,
 
 	0, // CONSTANT_REQ_GUI_SIGNALS
 
@@ -251,8 +253,9 @@ DWORD NodeMaxGUISignals[MAXIMUM_ID] =
 	FORMANT_MAX_GUI_SIGNALS,
 	EQ3_MAX_GUI_SIGNALS,
 	OSCSYNC_MAX_GUI_SIGNALS,
+	FOURIOZA_MAX_GUI_SIGNALS,
 	// reserved slots
-	0, 0, 0, 0,
+	0, 0, 0,
 
 	0, // CONSTANT_MAX_GUI_SIGNALS
 
@@ -332,8 +335,9 @@ char* NodeNames[MAXIMUM_ID] =
 	"FORMANT",
 	"EQ3",
 	"OSCSYNC",
+	"FOURIOZA",
 	// reserved slots
-	"R0", "R1", "R2", "R3",
+	"R0", "R1", "R2",
 
 	"CONSTANT", // CONSTANT_MAX
 
@@ -737,6 +741,16 @@ void SynthController::getNodeInputDefault(DWORD typeID, DWORD inputIdx, bool isG
 		DEFCONST(EQ3_LGAIN, 0.75);
 		DEFCONST(EQ3_MGAIN, 0.75);
 		DEFCONST(EQ3_HGAIN, 0.75);
+		break;
+	case FOURIOZA_ID:
+		// FOURIOZA_ACTIVATE:    0.0 = bypassed by default
+		// FOURIOZA_STRETCH:     0.5 ≈ 10× stretch
+		// FOURIOZA_PHASESMOOTH: 1.0 = fully random phase (classic Paulstretch)
+		// FOURIOZA_MODE:        FOURIOZA_WIN_4096 = 4096-sample window by default
+		DEFCONST(FOURIOZA_ACTIVATE,    0.0);
+		DEFCONST(FOURIOZA_STRETCH,     0.5);
+		DEFCONST(FOURIOZA_PHASESMOOTH, 1.0);
+		DEFMODE (FOURIOZA_MODE,        FOURIOZA_WIN_4096);
 		break;
 	case VOICE_FREQUENCY_ID:
 	case VOICE_NOTE_ID:
