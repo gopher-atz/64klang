@@ -178,7 +178,8 @@ bool NodeCanvas::nodeHasEditButton(int guiIndex) const
         return true;
 
     // These nodes have custom editors that replace or supplement the generic panel
-    if (nodeType == TRIGGERSEQ_ID || nodeType == SAPI_ID || nodeType == FORMULA_ID)
+    if (nodeType == TRIGGERSEQ_ID || nodeType == SAPI_ID || nodeType == FORMULA_ID ||
+        nodeType == SAMPLEREC_ID)
         return true;
 
     const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
@@ -1426,6 +1427,8 @@ NodeCanvas::EditPanelSize NodeCanvas::calcEditPanelSize(int nodeID, int nodeType
     }
     if (nodeType == SAPI_ID || nodeType == FORMULA_ID)
         ph += 4.f + 72.f + 4.f + 20.f + 8.f;
+    if (nodeType == SAMPLEREC_ID)
+        ph += kEditKnobDiam;
     if (nodeType == (int)SIGNAL_VISUALIZER_ID)
     {
         // Override ph entirely: avoid the over-allocated kEditFlagH for the (absent) inline
@@ -2150,6 +2153,79 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         {
             Widgets::EditPanelCtx ctx{ dl, nodeID, px, pw, z, fontSize, mousePos, canClick };
             Widgets::drawSAPIPanel(ctx, curY, sc, textEditBuffers);
+        }
+
+        // ── Sample Recorder: single "Record Time" knob (value in mode bits [31:12]) ──
+        if (nodeType == SAMPLEREC_ID)
+        {
+            float normRec = (float)((unsigned)currentMode >> 12) / 524288.f;
+            normRec = std::min(1.f, std::max(0.f, normRec));
+
+            float rowH       = kEditKnobDiam * z;
+            float knobR      = kEditKnobDiam * 0.5f * z;
+            float bodyR      = knobR * (17.f / 25.f);
+            float needleTipR = knobR * 0.82f;
+            float cx = px + pw * 0.5f;
+            float cy = curY + rowH * 0.5f;
+
+            dl->AddLine(ImVec2(px, curY), ImVec2(px + pw, curY), kColPanelBorder, 0.5f);
+            if (fontSize >= 6.f)
+                dl->AddText(pickFont(fontSize), fontSize,
+                            ImVec2(px + 6.f * z, curY + 2.f * z), kColPanelText, "Record Time");
+
+            Widgets::drawKnob(dl, ImVec2(cx, cy), bodyR, knobR, needleTipR, normRec, 0.f, false, 255, z);
+
+            if (fontSize >= 6.f)
+            {
+                Widgets::KnobLabel vlbl = Widgets::formatKnobValue(normRec * 128.0, 128.0, 11, 0, SAMPLEREC_ID);
+                float valFontSz = fontSize * 0.85f;
+                float valX = cx + knobR + 3.f * z;
+                if (vlbl.line2.empty())
+                    dl->AddText(pickFont(valFontSz), valFontSz,
+                                ImVec2(valX, cy - valFontSz * 0.5f), kColPanelDimText, vlbl.line1.c_str());
+                else
+                {
+                    dl->AddText(pickFont(valFontSz), valFontSz,
+                                ImVec2(valX, cy - valFontSz),       kColPanelDimText, vlbl.line1.c_str());
+                    dl->AddText(pickFont(valFontSz), valFontSz,
+                                ImVec2(valX, cy),                   kColPanelDimText, vlbl.line2.c_str());
+                }
+            }
+
+            // Hit-test: click to start drag, double-click to reset to default
+            float dxm = mousePos.x - cx, dym = mousePos.y - cy;
+            if (canClick && dxm*dxm + dym*dym <= knobR*knobR)
+            {
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                {
+                    DWORD defSamples = (DWORD)(0.125f * 524288.f); // ≈1.5 s default
+                    sc->setInputMode((DWORD)nodeID, SAMPLEREC_MODE, defSamples << 12, 0xFFFFF000);
+                    knobDragNodeID = -1; knobDragParam = -1;
+                }
+                else if (ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
+                    knobDragNodeID = nodeID; knobDragParam = SAMPLEREC_MODE;
+                    knobDragIsRight = false; knobDragAccum = 0.f;
+                }
+            }
+            if (knobDragNodeID == nodeID && knobDragParam == SAMPLEREC_MODE && !knobDragIsRight &&
+                ImGui::IsMouseDragging(ImGuiMouseButton_Left))
+            {
+                float delta = -io.MouseDelta.y * 0.5f;
+                float quantStep = ctrlHeld ? (1.f / 128.f) : 1.f;
+                if (ctrlHeld) delta /= 128.f;
+                knobDragAccum += delta;
+                int stepCount = (int)(knobDragAccum / quantStep);
+                if (stepCount != 0)
+                {
+                    float applied  = (float)stepCount * quantStep;
+                    knobDragAccum -= applied;
+                    float newValL = std::min(128.f, std::max(0.f, normRec * 128.f + applied));
+                    DWORD newSamples = (DWORD)(newValL / 128.f * 524288.f);
+                    sc->setInputMode((DWORD)nodeID, SAMPLEREC_MODE, newSamples << 12, 0xFFFFF000);
+                }
+            }
+            curY += rowH;
         }
 
         // ── Signal Visualizer: VU meter or oscilloscope ──
