@@ -4983,6 +4983,29 @@ void SYNTHCALL FOURIOZA_init(SynthNode* n)
 		);
 }
 
+// Resample src magnitudes by pitchMultV into dst (both length winSize).
+// Linear interpolation within the positive-frequency half [0..winSize/2];
+// out-of-range source reads return 0. Mirror pass restores conjugate symmetry.
+// src and dst must not alias.
+static inline void FOZA_PitchResample(const sample_t* src, sample_t* dst, int winSize, const sample_t& pitchMultV)
+{
+	for (int k = 0; k < winSize; k++)
+	{
+		sample_t srcV = sample_t((double)k) / pitchMultV;
+		int idxL0 = (int)srcV.d[0]; double fracL = srcV.d[0] - idxL0; int idxL1 = idxL0 + 1;
+		int idxR0 = (int)srcV.d[1]; double fracR = srcV.d[1] - idxR0; int idxR1 = idxR0 + 1;
+		double mL = 0.0, mR = 0.0;
+		if (idxL0 >= 0 && idxL0 <= winSize/2) mL  = src[idxL0].d[0] * (1.0 - fracL);
+		if (idxL1 >= 0 && idxL1 <= winSize/2) mL += src[idxL1].d[0] * fracL;
+		if (idxR0 >= 0 && idxR0 <= winSize/2) mR  = src[idxR0].d[1] * (1.0 - fracR);
+		if (idxR1 >= 0 && idxR1 <= winSize/2) mR += src[idxR1].d[1] * fracR;
+		dst[k] = sample_t(mL, mR);
+	}
+	// Restore conjugate symmetry: mirror positive-freq half to negative-freq half
+	for (int k = 1; k < winSize/2; k++)
+		dst[winSize - k] = dst[k];
+}
+
 void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 {
 	NODE_STATEFUL_PROLOG;
@@ -4991,10 +5014,14 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 	NODE_CALL_INPUT(FOURIOZA_ACTIVATE);
 	NODE_CALL_INPUT(FOURIOZA_STRETCH);
 	NODE_CALL_INPUT(FOURIOZA_PHASESMOOTH);
-	NODE_CALL_INPUT(FOURIOZA_HARMONIC);
+	NODE_CALL_INPUT(FOURIOZA_HARMONICSMOOTH);
 	NODE_CALL_INPUT(FOURIOZA_LOWCUT);
 	NODE_CALL_INPUT(FOURIOZA_HIGHCUT);
-	NODE_CALL_INPUT(FOURIOZA_PITCHSHIFT);
+	NODE_CALL_INPUT(FOURIOZA_BASEPITCH);
+	NODE_CALL_INPUT(FOURIOZA_LAYER1PITCH);
+	NODE_CALL_INPUT(FOURIOZA_LAYER2PITCH);
+	NODE_CALL_INPUT(FOURIOZA_LAYER1MIX);
+	NODE_CALL_INPUT(FOURIOZA_LAYER2MIX);
 	// NODE_CALL_INPUT(FOURIOZA_MODE);
 #ifdef COMPILE_VSTI
 	int mode = n->input[FOURIOZA_MODE]->i[0];
@@ -5142,7 +5169,7 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 			//   0   → raw (normal Paulstretch, full energy, skip split)
 			//  +1   → only harmonic peaks (tonal character, noise floor suppressed)
 			//  -1   → only noise floor (broadband/transient character, tonal peaks suppressed)
-			sample_t harmRatio = s_clamp(INP(FOURIOZA_HARMONIC), SC[S_1_0], sample_t(-1.0));
+			sample_t harmRatio = s_clamp(INP(FOURIOZA_HARMONICSMOOTH), SC[S_1_0], sample_t(-1.0));
 			bool doHarmonicSplit = !s_testz_si128((harmRatio != sample_t::zero()), (harmRatio != sample_t::zero()));
 			if (doHarmonicSplit)
 			{
@@ -5189,50 +5216,58 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 				}
 			}
 
-			// ── Pitch shift: resample magnitudes only, keep destination-bin phases ──
-			// INP(FOURIOZA_PITCHSHIFT) follows the same value/range convention as Oscillator Transpose:
-			// signal = semitones / 128, so pitchMult = s_exp2(INP * 128 * (1/12)).
-			// GUI minValue="-24" maxValue="24", no range attr → range=128 → signal in [-0.1875, 0.1875].
-			sample_t pitchRawV = INP(FOURIOZA_PITCHSHIFT);
+			// ── Pitch shift via FOZA_PitchResample, energy-normalized ──
+			// Signal = semitones/128 (same convention as Oscillator Transpose).
+			sample_t pitchRawV = INP(FOURIOZA_BASEPITCH);
 			bool doPitchShift = !s_testz_si128((pitchRawV != sample_t::zero()), (pitchRawV != sample_t::zero()));
 			if (doPitchShift)
 			{
-				// Identical to Oscillator: s_exp2(INP * 128 * (1/12))
-				sample_t pitchMultV = s_exp2(pitchRawV * SC[S_128_0] * SC[S_1_O_12]);
+				sample_t pitchMultV  = s_exp2(pitchRawV * SC[S_128_0] * SC[S_1_O_12]);
 				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH(n);
 
-				// Measure pre-shift magnitude energy (both channels simultaneously)
 				sample_t sumB = sample_t::zero();
 				for (int k = 0; k < winSize; k++)
 					sumB += magBuf[k] * magBuf[k];
 
-				// Resample magnitudes: output bin k reads from source bin k/pitchMult
-				for (int k = 0; k < winSize; k++)
-				{
-					// Both channels' source positions computed as a sample_t
-					sample_t srcV = sample_t((double)k) / pitchMultV;
-					int idxL0 = (int)srcV.d[0]; double fracL = srcV.d[0] - idxL0; int idxL1 = idxL0 + 1;
-					int idxR0 = (int)srcV.d[1]; double fracR = srcV.d[1] - idxR0; int idxR1 = idxR0 + 1;
-					double mL = 0.0, mR = 0.0;
-					// Only read from positive-frequency half [0..winSize/2]
-					if (idxL0 >= 0 && idxL0 <= winSize/2) mL  = magBuf[idxL0].d[0] * (1.0 - fracL);
-					if (idxL1 >= 0 && idxL1 <= winSize/2) mL += magBuf[idxL1].d[0] * fracL;
-					if (idxR0 >= 0 && idxR0 <= winSize/2) mR  = magBuf[idxR0].d[1] * (1.0 - fracR);
-					if (idxR1 >= 0 && idxR1 <= winSize/2) mR += magBuf[idxR1].d[1] * fracR;
-					magScratch[k] = sample_t(mL, mR);
-				}
+				FOZA_PitchResample(magBuf, magScratch, winSize, pitchMultV);
 
-				// Restore conjugate symmetry: mirror positive-freq magnitudes to negative-freq half.
-				for (int k = 1; k < winSize/2; k++)
-					magScratch[winSize - k] = magScratch[k];
-
-				// Energy-preserving normalization: scale = sqrt(sumB / sumA), both channels at once
 				sample_t sumA = sample_t::zero();
 				for (int k = 0; k < winSize; k++)
 					sumA += magScratch[k] * magScratch[k];
 				sample_t scale = s_ifthen(sumA > sample_t(1e-30), s_sqrt(sumB / sumA), SC[S_1_0]);
 				for (int k = 0; k < winSize; k++)
 					magBuf[k] = magScratch[k] * scale;
+			}
+
+			// ── Spectral layers: add pitch-shifted copies of magBuf at user-defined pitches ──
+			// Both layers read from a frozen snapshot of the current magBuf (rawBuf is free here)
+			// so they blend against the same pre-layer spectrum regardless of order.
+			// Pitch convention identical to PitchShift: signal = semitones/128.
+			// No energy normalization: gain (0..1) directly controls layer level.
+			sample_t layer1Gain = s_clamp(INP(FOURIOZA_LAYER1MIX), SC[S_1_0], sample_t::zero());
+			sample_t layer2Gain = s_clamp(INP(FOURIOZA_LAYER2MIX), SC[S_1_0], sample_t::zero());
+			bool doLayer1 = !s_testz_si128((layer1Gain > sample_t::zero()), (layer1Gain > sample_t::zero()));
+			bool doLayer2 = !s_testz_si128((layer2Gain > sample_t::zero()), (layer2Gain > sample_t::zero()));
+			if (doLayer1 || doLayer2)
+			{
+				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH(n);
+				// Snapshot current magBuf into rawBuf (rawBuf is not used after the filter step)
+				for (int k = 0; k < winSize; k++)
+					rawBuf[k] = magBuf[k];
+				if (doLayer1)
+				{
+					sample_t layer1Mult = s_exp2(INP(FOURIOZA_LAYER1PITCH) * SC[S_128_0] * SC[S_1_O_12]);
+					FOZA_PitchResample(rawBuf, magScratch, winSize, layer1Mult);
+					for (int k = 0; k < winSize; k++)
+						magBuf[k] += magScratch[k] * layer1Gain;
+				}
+				if (doLayer2)
+				{
+					sample_t layer2Mult = s_exp2(INP(FOURIOZA_LAYER2PITCH) * SC[S_128_0] * SC[S_1_O_12]);
+					FOZA_PitchResample(rawBuf, magScratch, winSize, layer2Mult);
+					for (int k = 0; k < winSize; k++)
+						magBuf[k] += magScratch[k] * layer2Gain;
+				}
 			}
 
 			// ── Phase randomisation: destination-bin phases from fftBuf, shifted magnitudes from magBuf ──

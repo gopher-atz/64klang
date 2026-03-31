@@ -1367,11 +1367,15 @@ enum FOURIOZA_INPUT
 	FOURIOZA_ACTIVATE,     // 1: activate gate (>0.5 = effect on, else bypass)
 	FOURIOZA_STRETCH,      // 2: time-stretch factor, engine 0..1 → 1x..128x
 	FOURIOZA_PHASESMOOTH,  // 3: phase smoothness, engine 0..1 → 0=original, 1=random
-	FOURIOZA_HARMONIC,     // 4: harmonic/noise split, -1..+1 (-1=noise, 0=raw, +1=harmonic)
+	FOURIOZA_HARMONICSMOOTH,// 4: harmonic/noise split, -1..+1 (-1=noise, 0=raw, +1=harmonic)
 	FOURIOZA_LOWCUT,       // 5: spectral high-pass (low cut), BQF freq mapping (0..1 → 43..22050 Hz)
 	FOURIOZA_HIGHCUT,      // 6: spectral low-pass (high cut), BQF freq mapping (0..1 → 43..22050 Hz)
-	FOURIOZA_PITCHSHIFT,   // 7: pitch shift in semitones, stored directly (-24..+24, 0=no shift)
-	FOURIOZA_MODE,         // 8: mode (window size in bits [2:0])
+	FOURIOZA_BASEPITCH,    // 7: base pitch shift in semitones, stored directly (-24..+24, 0=no shift)
+	FOURIOZA_LAYER1PITCH,  // 8: layer 1 pitch offset in semitones (same convention as PitchShift)
+	FOURIOZA_LAYER2PITCH,  // 9: layer 2 pitch offset in semitones
+	FOURIOZA_LAYER1MIX,    // 10: layer 1 blend gain 0..1 (mixes pitch-shifted copy into output)
+	FOURIOZA_LAYER2MIX,    // 11: layer 2 blend gain 0..1
+	FOURIOZA_MODE,         // 12: mode (window size in bits [2:0])
 	FOURIOZA_MAX,
 	FOURIOZA_REQ_GUI_SIGNALS = 1,
 	FOURIOZA_MAX_GUI_SIGNALS = FOURIOZA_MODE
