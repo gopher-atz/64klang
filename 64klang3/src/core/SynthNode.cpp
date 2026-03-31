@@ -4957,17 +4957,43 @@ void SYNTHCALL OSCSYNC_tick(SynthNode* n)
 #define FOZA_MAXWIN   16384  // maximum window size; customMem always allocated for this
 #define FOZA_RINGLEN  524288 // about 12 seconds at 44.1kHz as a nice power of 2
 
-#define FOZA_WINSIZE(n)    ((n)->v[0].i[0])   // int: current FFT window size
-#define FOZA_GRAINPOS(n)   ((n)->v[1].i[0])   // int: current output grain cursor
-#define FOZA_WPOS(n)       ((n)->v[2])         // sample_t: d[0]=wpL, d[1]=wpR absolute ring write positions
-#define FOZA_READPOS(n)    ((n)->v[4])         // sample_t: d[0]=rpL, d[1]=rpR absolute ring read positions
-#define FOZA_HANN(n)       ((sample_t*)((n)->customMem))
-#define FOZA_GRAIN(n)      ((sample_t*)((n)->customMem) + FOZA_MAXWIN)
-#define FOZA_FFTBUF(n)     ((complexsample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t)))
-#define FOZA_RINGBUF(n)    ((sample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t)))
+#define FOZA_WINSIZE       (n->v[0].i[0])   // int: current FFT window size
+#define FOZA_GRAINPOS      (n->v[1].i[0])   // int: current output grain cursor
+#define FOZA_WPOS          (n->v[2])         // sample_t: d[0]=wpL, d[1]=wpR absolute ring write positions
+#define FOZA_READPOS       (n->v[4])         // sample_t: d[0]=rpL, d[1]=rpR absolute ring read positions
+#define FOZA_HANN          ((sample_t*)(n->customMem))
+#define FOZA_GRAIN         ((sample_t*)(n->customMem) + FOZA_MAXWIN)
+#define FOZA_FFTBUF        ((complexsample_t*)(((char*)(n->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t)))
+#define FOZA_RINGBUF       ((sample_t*)(((char*)(n->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t)))
 // FOZA_RAWBUF: single-frame raw magnitude scratch for frequency-axis harmonic split
-#define FOZA_RAWBUF(n)     ((sample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t) + FOZA_RINGLEN*sizeof(sample_t)))
-#define FOZA_PITCHSCRATCH(n) ((complexsample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t) + FOZA_RINGLEN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(sample_t)))
+#define FOZA_RAWBUF        ((sample_t*)(((char*)(n->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t) + FOZA_RINGLEN*sizeof(sample_t)))
+#define FOZA_PITCHSCRATCH  ((complexsample_t*)(((char*)(n->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t) + FOZA_RINGLEN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(sample_t)))
+
+// Cached transformed-parameter slots (updated once by NODE_UPDATE_BEGIN, read every grain):
+// v[3]       = inHop per channel: sample_t((double)(winSize>>2)) / stretch
+// v[5]       = phaseSmoothness: s_clamp(PHASESMOOTH, 1, 0)
+// v[6]       = harmRatio:       s_clamp(HARMONICSMOOTH, 1, -1)
+// v[7]       = |harmRatio|      (sign-mask also encoded as compare result in d[])
+// v[8]       = cutLoV:          BQF-mapped low-cut  × (winSize/2)
+// v[9]       = cutHiV:          BQF-mapped high-cut × (winSize/2)
+// v[10]      = pitchMultV:      s_exp2(BASEPITCH  * 128/12)
+// v[11]      = layer1Mult:      s_exp2(LAYER1PITCH * 128/12)
+// v[12]      = layer2Mult:      s_exp2(LAYER2PITCH * 128/12)
+// v[13]      = layer1Gain:      s_clamp(LAYER1MIX, 1, 0)
+// v[14]      = layer2Gain:      s_clamp(LAYER2MIX, 1, 0)
+// v[15].i[0] = K:               boxcar half-width = max(winSize/512, 2)
+#define FOZA_HOP       (n->v[3])
+#define FOZA_PHASESM   (n->v[5])
+#define FOZA_HARMRATIO (n->v[6])
+#define FOZA_ABSHARM   (n->v[7])
+#define FOZA_CUTLOV    (n->v[8])
+#define FOZA_CUTHIV    (n->v[9])
+#define FOZA_PITCHMULT (n->v[10])
+#define FOZA_L1MULT    (n->v[11])
+#define FOZA_L2MULT    (n->v[12])
+#define FOZA_L1GAIN    (n->v[13])
+#define FOZA_L2GAIN    (n->v[14])
+#define FOZA_BOXK      (n->v[15].i[0])
 
 #ifndef FOURIOZA_SKIP
 void SYNTHCALL FOURIOZA_init(SynthNode* n)
@@ -5031,14 +5057,46 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 
 	NODE_UPDATE_BEGIN
 
+		// ── Window size recomputation ──
 		int newWin = 512 << (mode & FOURIOZA_WINMASK);
-		if (newWin != FOZA_WINSIZE(n))
+		if (newWin != FOZA_WINSIZE)
 		{
-			FOZA_WINSIZE(n) = newWin;
-			sample_t* hann = FOZA_HANN(n);
+			FOZA_WINSIZE = newWin;
+			sample_t* hann = FOZA_HANN;
 			for (int i = 0; i < newWin; i++)
 				hann[i] = (SC[S_1_0] - s_cos(SC[S_2PI] * sample_t((double)i/(double)(newWin-1)))) * SC[S_0_5];
 		}
+
+		// inHop = outHop / stretch  (outHop = FOZA_WINSIZE/4, stretch = 1..128)
+		sample_t stretchParam = s_clamp(INP(FOURIOZA_STRETCH), SC[S_1_0], sample_t::zero());
+		FOZA_HOP = sample_t((double)(FOZA_WINSIZE >> 2)) / (SC[S_1_0] + stretchParam * (SC[S_128_0] - SC[S_1_0]));
+
+		// Phase smoothness [0..1]
+		FOZA_PHASESM = s_clamp(INP(FOURIOZA_PHASESMOOTH), SC[S_1_0], sample_t::zero());
+
+		// Harmonic/noise ratio [-1..+1] and its absolute value
+		sample_t harmR = s_clamp(INP(FOURIOZA_HARMONICSMOOTH), SC[S_1_0], sample_t(-1.0));
+		FOZA_HARMRATIO = harmR;
+		FOZA_ABSHARM   = s_ifthen(harmR >= sample_t::zero(), harmR, -harmR);
+
+		// Spectral cut thresholds in bin units (BQF log mapping × winSize/2)
+		sample_t halfWin = sample_t((double)(FOZA_WINSIZE >> 1));
+		sample_t loIn = s_clamp(INP(FOURIOZA_LOWCUT),  SC[S_1_0], sample_t::zero());
+		sample_t hiIn = s_clamp(INP(FOURIOZA_HIGHCUT), SC[S_1_0], sample_t::zero());
+		FOZA_CUTLOV = s_min(SC[S_1_0] / s_exp2((SC[S_1_0] - loIn) * SC[S_10_0]), SC[NOISEGEN_B0]) * halfWin;
+		FOZA_CUTHIV = s_min(SC[S_1_0] / s_exp2((SC[S_1_0] - hiIn) * SC[S_10_0]), SC[NOISEGEN_B0]) * halfWin;
+
+		// Pitch multipliers (semitones/128 → frequency ratio via s_exp2)
+		FOZA_PITCHMULT = s_exp2(INP(FOURIOZA_BASEPITCH)  * SC[S_128_0] * SC[S_1_O_12]);
+		FOZA_L1MULT    = s_exp2(INP(FOURIOZA_LAYER1PITCH) * SC[S_128_0] * SC[S_1_O_12]);
+		FOZA_L2MULT    = s_exp2(INP(FOURIOZA_LAYER2PITCH) * SC[S_128_0] * SC[S_1_O_12]);
+
+		// Layer blend gains [0..1]
+		FOZA_L1GAIN = s_clamp(INP(FOURIOZA_LAYER1MIX), SC[S_1_0], sample_t::zero());
+		FOZA_L2GAIN = s_clamp(INP(FOURIOZA_LAYER2MIX), SC[S_1_0], sample_t::zero());
+
+		// Boxcar half-width for harmonic split floor estimator
+		FOZA_BOXK = (FOZA_WINSIZE / 512 < 2) ? 2 : (FOZA_WINSIZE / 512);
 
 	NODE_UPDATE_END
 
@@ -5048,10 +5106,9 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 	// Inactive: always write both channels.
 	// Active:   each channel independently skips its write when its own wp is about to lap its own read head.
 	{
-		sample_t* ring = FOZA_RINGBUF(n);
-		sample_t wposV = FOZA_WPOS(n);
-		int wpL = (int)wposV.d[0];
-		int wpR = (int)wposV.d[1];
+		sample_t* ring = FOZA_RINGBUF;
+		int wpL = (int)FOZA_WPOS.d[0];
+		int wpR = (int)FOZA_WPOS.d[1];
 		bool doWriteL, doWriteR;
 		if (s_testz_si128(n->e, n->e))
 		{
@@ -5059,12 +5116,10 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 		}
 		else
 		{
-			sample_t readPosV = FOZA_READPOS(n);
-			int ws = FOZA_WINSIZE(n);
-			int deltaL = (wpL - (int)readPosV.d[0] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
-			int deltaR = (wpR - (int)readPosV.d[1] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
-			doWriteL = (deltaL < FOZA_RINGLEN - ws);
-			doWriteR = (deltaR < FOZA_RINGLEN - ws);
+			int deltaL = (wpL - (int)FOZA_READPOS.d[0] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+			int deltaR = (wpR - (int)FOZA_READPOS.d[1] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+			doWriteL = (deltaL < FOZA_RINGLEN - FOZA_WINSIZE);
+			doWriteR = (deltaR < FOZA_RINGLEN - FOZA_WINSIZE);
 		}
 		if (doWriteL)
 		{
@@ -5076,7 +5131,7 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 			ring[wpR].d[1] = input.d[1];
 			wpR = (wpR + 1) & (FOZA_RINGLEN - 1);
 		}
-		FOZA_WPOS(n) = sample_t((double)wpL, (double)wpR);
+		FOZA_WPOS = sample_t((double)wpL, (double)wpR);
 	}
 
 	// ── Bypass when Activate ≤ 0.5; reset armed state so re-activation gets a fresh snapshot ──
@@ -5092,240 +5147,190 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 	{
 		n->e = SC[S_1_0];
 		// Absolute read heads set winSize behind each channel's wp — first grain fires immediately
-		int ws = FOZA_WINSIZE(n);
-		sample_t wposV = FOZA_WPOS(n);
-		double rpL = (double)((((int)wposV.d[0]) - ws + FOZA_RINGLEN) & (FOZA_RINGLEN - 1));
-		double rpR = (double)((((int)wposV.d[1]) - ws + FOZA_RINGLEN) & (FOZA_RINGLEN - 1));
-		FOZA_READPOS(n)  = sample_t(rpL, rpR);
-		FOZA_GRAINPOS(n) = 0;
+		double rpL = (double)((((int)FOZA_WPOS.d[0]) - FOZA_WINSIZE + FOZA_RINGLEN) & (FOZA_RINGLEN - 1));
+		double rpR = (double)((((int)FOZA_WPOS.d[1]) - FOZA_WINSIZE + FOZA_RINGLEN) & (FOZA_RINGLEN - 1));
+		FOZA_READPOS  = sample_t(rpL, rpR);
+		FOZA_GRAINPOS = 0;
 		// Clear stereo grain accumulator so OLA starts cleanly
-		sample_t* grainc = FOZA_GRAIN(n);
-		for (int i = 0; i < ws; i++)
+		sample_t* grainc = FOZA_GRAIN;
+		for (int i = 0; i < FOZA_WINSIZE; i++)
 			grainc[i] = sample_t::zero();
 	}
 
 	// ── Per-sample Paulstretch OLA ──
-	int     winSize  = FOZA_WINSIZE(n);
-	int     outHop   = winSize >> 2;    // 75% overlap (COLA with Hann)
-	int&    grainPos = FOZA_GRAINPOS(n);
-	sample_t* hann     = FOZA_HANN(n);
-	sample_t* grain    = FOZA_GRAIN(n);
+	int     outHop   = FOZA_WINSIZE >> 2;    // 75% overlap (COLA with Hann)
+	sample_t* hann     = FOZA_HANN;
+	sample_t* grain    = FOZA_GRAIN;
 
 	// Every outHop samples: compute a new grain and OLA-add it into the buffer.
-	if ((grainPos % outHop) == 0)
+	if ((FOZA_GRAINPOS % outHop) == 0)
 	{
 		// srcLen = live per-channel delta between each write head and its read head
-		sample_t wposV = FOZA_WPOS(n);
-		int wpL = (int)wposV.d[0];
-		int wpR = (int)wposV.d[1];
-		sample_t readPosV = FOZA_READPOS(n);
-		int iReadPosL  = (int)readPosV.d[0];
-		int iReadPosR  = (int)readPosV.d[1];
-		int srcLenL    = (wpL - iReadPosL + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
-		int srcLenR    = (wpR - iReadPosR + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
-		sample_t* srcBuf = FOZA_RINGBUF(n);
-		if (srcLenL >= winSize && srcLenR >= winSize)
+		sample_t wp = s_toInt(FOZA_WPOS);
+		sample_t iReadPos = s_toInt(FOZA_READPOS);
+		int srcLenL    = (wp.i[0] - iReadPos.i[0] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+		int srcLenR    = (wp.i[1] - iReadPos.i[1] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+		sample_t* srcBuf = FOZA_RINGBUF;
+		if (srcLenL >= FOZA_WINSIZE && srcLenR >= FOZA_WINSIZE)
 		{
-			complexsample_t* fftBuf = FOZA_FFTBUF(n);
-
-			sample_t stretchParam = s_clamp(INP(FOURIOZA_STRETCH), SC[S_1_0], sample_t::zero());
-			sample_t stretch = SC[S_1_0] + stretchParam * (SC[S_128_0] - SC[S_1_0]);
-
-			sample_t phaseSmoothness = s_clamp(INP(FOURIOZA_PHASESMOOTH), SC[S_1_0], sample_t::zero());
+			complexsample_t* fftBuf = FOZA_FFTBUF;
 
 			// Build windowed FFT input from absolute ring positions
-			for (int i = 0; i < winSize; i++)
+			for (int i = 0; i < FOZA_WINSIZE; i++)
 			{
-				int rL = (iReadPosL + i) & (FOZA_RINGLEN - 1);
-				int rR = (iReadPosR + i) & (FOZA_RINGLEN - 1);
+				int rL = (iReadPos.i[0] + i) & (FOZA_RINGLEN - 1);
+				int rR = (iReadPos.i[1] + i) & (FOZA_RINGLEN - 1);
 				sample_t s(srcBuf[rL].d[0], srcBuf[rR].d[1]);
 				fftBuf[i] = complexsample_t(s * hann[i], sample_t::zero());
 			}
 
 			// Forward FFT (in-place) — computes L and R spectra in parallel via complexsample_t SIMD
-			c_fft(fftBuf, winSize);
+			c_fft(fftBuf, FOZA_WINSIZE);
 
 			// ── Compute per-bin magnitudes from the UNFILTERED spectrum ──
 			// rawBuf and magBuf are populated before the filter so the harmonic split's floor
-			// estimator sees a smooth continuous spectrum. If filter ran first it would create
-			// hard zero boundaries, biasing the local floor estimate downward near the cutoff
-			// and inflating harmonicPeak for boundary bins → cracking when HarmSmooth > 0.
-			sample_t* rawBuf  = FOZA_RAWBUF(n);
-			sample_t* magBuf  = (sample_t*)FOZA_PITCHSCRATCH(n) + FOZA_MAXWIN;
-			for (int i = 0; i < winSize; i++)
-			{
-				sample_t re  = fftBuf[i].re;
-				sample_t im  = fftBuf[i].im;
-				sample_t mag = s_sqrt(re*re + im*im);
-				rawBuf[i] = mag;
-				magBuf[i] = mag;
-			}
+			// estimator sees a smooth continuous spectrum.
+			sample_t* rawBuf = FOZA_RAWBUF;
+			sample_t* magBuf = (sample_t*)FOZA_PITCHSCRATCH + FOZA_MAXWIN;
+			for (int i = 0; i < FOZA_WINSIZE; i++)
+				magBuf[i] = rawBuf[i] = s_sqrt(fftBuf[i].re*fftBuf[i].re + fftBuf[i].im*fftBuf[i].im);
 
-			// ── Harmonic/noise split via frequency-axis smoothing ──
-			// A boxcar mean across K neighbouring bins estimates the local spectral noise floor.
-			// The spectrum is partitioned: harmonicPeak = max(raw - floor, 0), noiseMag = raw - harmonicPeak.
-			//
-			// HarmSmooth signal is in [-1, +1]:
-			//   0   → raw (normal Paulstretch, full energy, skip split)
-			//  +1   → only harmonic peaks (tonal character, noise floor suppressed)
-			//  -1   → only noise floor (broadband/transient character, tonal peaks suppressed)
-			sample_t harmRatio = s_clamp(INP(FOURIOZA_HARMONICSMOOTH), SC[S_1_0], sample_t(-1.0));
-			bool doHarmonicSplit = !s_testz_si128((harmRatio != sample_t::zero()), (harmRatio != sample_t::zero()));
+			// ── Harmonic/noise split via frequency-axis boxcar floor estimator ──
+			bool doHarmonicSplit = !s_testz_si128((FOZA_HARMRATIO != sample_t::zero()), (FOZA_HARMRATIO != sample_t::zero()));
 			if (doHarmonicSplit)
 			{
-				int K = winSize / 512;
-				if (K < 2) K = 2;
+				int K = FOZA_BOXK;
+				// Hoist the per-grain sign comparison out of the per-bin inner loop
+				sample_t harmSign = FOZA_HARMRATIO >= sample_t::zero();
 
 				sample_t runSum = sample_t::zero();
 				int curLo = 0, curHi = -1;
-				for (int k = 0, end = (K < winSize ? K : winSize - 1); k <= end; k++)
+				for (int k = 0, end = (K < FOZA_WINSIZE ? K : FOZA_WINSIZE - 1); k <= end; k++)
 					{ runSum += rawBuf[k]; curHi = k; }
 
-				sample_t absRatio = s_ifthen(harmRatio >= sample_t::zero(), harmRatio, -harmRatio);
-				for (int i = 0; i < winSize; i++)
+				for (int i = 0; i < FOZA_WINSIZE; i++)
 				{
-					int targetHi = (i + K < winSize) ? (i + K) : (winSize - 1);
+					int targetHi = (i + K < FOZA_WINSIZE) ? (i + K) : (FOZA_WINSIZE - 1);
 					int targetLo = (i > K)           ? (i - K) : 0;
 					while (curHi < targetHi) { curHi++; runSum += rawBuf[curHi]; }
 					while (curLo < targetLo) { runSum -= rawBuf[curLo]; curLo++; }
 					sample_t floorMag     = runSum / sample_t((double)(curHi - curLo + 1));
 					sample_t harmonicPeak = s_max(rawBuf[i] - floorMag, sample_t::zero());
 					sample_t noiseMag     = rawBuf[i] - harmonicPeak;
-					sample_t target       = s_ifthen(harmRatio >= sample_t::zero(), harmonicPeak, noiseMag);
-					magBuf[i] = s_lerp(rawBuf[i], target, absRatio);
+					magBuf[i] = s_lerp(rawBuf[i], s_ifthen(harmSign, harmonicPeak, noiseMag), FOZA_ABSHARM);
 				}
 			}
 
 			// ── Spectral low-cut / high-cut — hard binary mask applied to magBuf ──
-			// Applied AFTER harmonic split so the floor estimator sees a continuous spectrum.
-			// BQF log mapping: bin = min(1 / 2^((1-in)*10), Nyquist_guard) * winSize/2.
-			// Fold k into [0..winSize/2] for conjugate symmetry. Stereo independent via sample_t.
-			// fftBuf is left unmodified; filtered bins have magV=0 in the phase step → fftBuf
-			// is written as 0 there anyway (0 * cos/sin = 0).
+			// FOZA_CUTLOV / FOZA_CUTHIV are pre-scaled bin thresholds from NODE_UPDATE_BEGIN.
 			{
-				sample_t loIn = s_clamp(INP(FOURIOZA_LOWCUT),  SC[S_1_0], sample_t::zero());
-				sample_t hiIn = s_clamp(INP(FOURIOZA_HIGHCUT), SC[S_1_0], sample_t::zero());
-				sample_t cutLoV = s_min(SC[S_1_0] / s_exp2((SC[S_1_0] - loIn) * SC[S_10_0]), SC[NOISEGEN_B0]) * sample_t((double)(winSize / 2));
-				sample_t cutHiV = s_min(SC[S_1_0] / s_exp2((SC[S_1_0] - hiIn) * SC[S_10_0]), SC[NOISEGEN_B0]) * sample_t((double)(winSize / 2));
-				for (int k = 0; k < winSize; k++)
+				for (int k = 0; k < FOZA_WINSIZE; k++)
 				{
-					int kPos = (k <= winSize / 2) ? k : winSize - k;
-					sample_t kV   = sample_t((double)kPos);
-					sample_t pass = s_ifthen((kV >= cutLoV) & (kV <= cutHiV), SC[S_1_0], sample_t::zero());
-					magBuf[k] *= pass;
+					int kPos = (k <= FOZA_WINSIZE / 2) ? k : FOZA_WINSIZE - k;
+					sample_t kV = sample_t((double)kPos);
+					magBuf[k] *= s_ifthen((kV >= FOZA_CUTLOV) & (kV <= FOZA_CUTHIV), SC[S_1_0], sample_t::zero());
 				}
 			}
 
-			// ── Pitch shift via FOZA_PitchResample, energy-normalized ──
-			// Signal = semitones/128 (same convention as Oscillator Transpose).
-			sample_t pitchRawV = INP(FOURIOZA_BASEPITCH);
-			bool doPitchShift = !s_testz_si128((pitchRawV != sample_t::zero()), (pitchRawV != sample_t::zero()));
+			// ── Base pitch shift — energy-normalized spectral resampling ──
+			// FOZA_PITCHMULT = 1.0 when BASEPITCH = 0; skip entirely in that case.
+			bool doPitchShift = !s_testz_si128((FOZA_PITCHMULT != SC[S_1_0]), (FOZA_PITCHMULT != SC[S_1_0]));
 			if (doPitchShift)
 			{
-				sample_t pitchMultV  = s_exp2(pitchRawV * SC[S_128_0] * SC[S_1_O_12]);
-				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH(n);
+				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH;
 
 				sample_t sumB = sample_t::zero();
-				for (int k = 0; k < winSize; k++)
+				for (int k = 0; k < FOZA_WINSIZE; k++)
 					sumB += magBuf[k] * magBuf[k];
 
-				FOZA_PitchResample(magBuf, magScratch, winSize, pitchMultV);
+				FOZA_PitchResample(magBuf, magScratch, FOZA_WINSIZE, FOZA_PITCHMULT);
 
 				sample_t sumA = sample_t::zero();
-				for (int k = 0; k < winSize; k++)
+				for (int k = 0; k < FOZA_WINSIZE; k++)
 					sumA += magScratch[k] * magScratch[k];
 				sample_t scale = s_ifthen(sumA > sample_t(1e-30), s_sqrt(sumB / sumA), SC[S_1_0]);
-				for (int k = 0; k < winSize; k++)
+				for (int k = 0; k < FOZA_WINSIZE; k++)
 					magBuf[k] = magScratch[k] * scale;
 			}
 
-			// ── Spectral layers: add pitch-shifted copies of magBuf at user-defined pitches ──
-			// Both layers read from a frozen snapshot of the current magBuf (rawBuf is free here)
-			// so they blend against the same pre-layer spectrum regardless of order.
-			// Pitch convention identical to PitchShift: signal = semitones/128.
-			// No energy normalization: gain (0..1) directly controls layer level.
-			sample_t layer1Gain = s_clamp(INP(FOURIOZA_LAYER1MIX), SC[S_1_0], sample_t::zero());
-			sample_t layer2Gain = s_clamp(INP(FOURIOZA_LAYER2MIX), SC[S_1_0], sample_t::zero());
-			bool doLayer1 = !s_testz_si128((layer1Gain > sample_t::zero()), (layer1Gain > sample_t::zero()));
-			bool doLayer2 = !s_testz_si128((layer2Gain > sample_t::zero()), (layer2Gain > sample_t::zero()));
+			// ── Spectral layers — mix in pitch-shifted copies from frozen rawBuf snapshot ──
+			bool doLayer1 = !s_testz_si128((FOZA_L1GAIN > sample_t::zero()), (FOZA_L1GAIN > sample_t::zero()));
+			bool doLayer2 = !s_testz_si128((FOZA_L2GAIN > sample_t::zero()), (FOZA_L2GAIN > sample_t::zero()));
 			if (doLayer1 || doLayer2)
 			{
-				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH(n);
-				// Snapshot current magBuf into rawBuf (rawBuf is not used after the filter step)
-				for (int k = 0; k < winSize; k++)
+				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH;
+				for (int k = 0; k < FOZA_WINSIZE; k++)
 					rawBuf[k] = magBuf[k];
 				if (doLayer1)
 				{
-					sample_t layer1Mult = s_exp2(INP(FOURIOZA_LAYER1PITCH) * SC[S_128_0] * SC[S_1_O_12]);
-					FOZA_PitchResample(rawBuf, magScratch, winSize, layer1Mult);
-					for (int k = 0; k < winSize; k++)
-						magBuf[k] += magScratch[k] * layer1Gain;
+					FOZA_PitchResample(rawBuf, magScratch, FOZA_WINSIZE, FOZA_L1MULT);
+					for (int k = 0; k < FOZA_WINSIZE; k++)
+						magBuf[k] += magScratch[k] * FOZA_L1GAIN;
 				}
 				if (doLayer2)
 				{
-					sample_t layer2Mult = s_exp2(INP(FOURIOZA_LAYER2PITCH) * SC[S_128_0] * SC[S_1_O_12]);
-					FOZA_PitchResample(rawBuf, magScratch, winSize, layer2Mult);
-					for (int k = 0; k < winSize; k++)
-						magBuf[k] += magScratch[k] * layer2Gain;
+					FOZA_PitchResample(rawBuf, magScratch, FOZA_WINSIZE, FOZA_L2MULT);
+					for (int k = 0; k < FOZA_WINSIZE; k++)
+						magBuf[k] += magScratch[k] * FOZA_L2GAIN;
 				}
 			}
 
-			// ── Phase randomisation: destination-bin phases from fftBuf, shifted magnitudes from magBuf ──
-			for (int i = 0; i < winSize; i++)
+			// ── Phase randomisation ──
+			for (int i = 0; i < FOZA_WINSIZE; i++)
 			{
-				sample_t re = fftBuf[i].re;
-				sample_t im = fftBuf[i].im;
-				sample_t magV = magBuf[i];
-				sample_t origPhaseV = s_ifthen(magV > sample_t(1e-30), s_atan2(im, re), sample_t::zero());
-				sample_t phaseV = s_lerp(origPhaseV, s_rand() * SC[S_2PI], phaseSmoothness);
+				sample_t magV       = magBuf[i];
+				sample_t origPhaseV = s_ifthen(magV > sample_t(1e-30), s_atan2(fftBuf[i].im, fftBuf[i].re), sample_t::zero());
+				sample_t phaseV     = s_lerp(origPhaseV, s_rand() * SC[S_2PI], FOZA_PHASESM);
 				fftBuf[i].re = magV * s_cos(phaseV);
 				fftBuf[i].im = magV * s_sin(phaseV);
 			}
 
-			// Inverse FFT (in-place, normalises by 1/N internally)
-			c_ifft(fftBuf, winSize);
+			// Inverse FFT
+			c_ifft(fftBuf, FOZA_WINSIZE);
 
-			// OLA: window the grain and add into the stereo accumulator starting at grainPos
-			for (int i = 0; i < winSize; i++)
+			// OLA: accumulate windowed grain — two linear passes eliminate the per-sample modulo.
+			// FOZA_GRAINPOS is always a multiple of outHop (FOZA_WINSIZE/4), so the split is always exact.
 			{
-				int outIdx = (grainPos + i) % winSize;
-				grain[outIdx] += fftBuf[i].re * hann[i];
+				int remainLen = FOZA_WINSIZE - FOZA_GRAINPOS;
+				for (int i = 0; i < remainLen; i++)
+					grain[FOZA_GRAINPOS + i] += fftBuf[i].re * hann[i];
+				for (int i = 0; i < FOZA_GRAINPOS; i++)
+					grain[i] += fftBuf[remainLen + i].re * hann[remainLen + i];
 			}
 
-			// Advance absolute read positions by inHop = outHop / stretch
-			sample_t hop = sample_t((double)outHop) / stretch;
-			sample_t newReadPos = readPosV + hop;
-			sample_t ringLenV = sample_t((double)FOZA_RINGLEN);
+			// Advance read positions by cached inHop
+			sample_t newReadPos = FOZA_READPOS + FOZA_HOP;
+			sample_t ringLenV   = sample_t((double)FOZA_RINGLEN);
 			newReadPos = s_ifthen(newReadPos >= ringLenV, newReadPos - ringLenV, newReadPos);
-			FOZA_READPOS(n) = newReadPos;
+			FOZA_READPOS = newReadPos;
 
 			// Clear ring slots both read heads have fully passed.
 			// If clearCount is suspiciously large (option B wrap-around), skip to avoid mass erase.
 			int newReadPosLi = (int)newReadPos.d[0];
 			int newReadPosRi = (int)newReadPos.d[1];
-			int clearCountL = (newReadPosLi - iReadPosL + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
-			int clearCountR = (newReadPosRi - iReadPosR + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+			int clearCountL = (newReadPosLi - iReadPos.i[0] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
+			int clearCountR = (newReadPosRi - iReadPos.i[1] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
 			if (clearCountL <= outHop * 2)
 			{
 				for (int k = 0; k < clearCountL; k++)
-					srcBuf[(iReadPosL + k) & (FOZA_RINGLEN - 1)].d[0] = 0.0;
+					srcBuf[(iReadPos.i[0] + k) & (FOZA_RINGLEN - 1)].d[0] = 0.0;
 			}
 			if (clearCountR <= outHop * 2)
 			{
 				for (int k = 0; k < clearCountR; k++)
-					srcBuf[(iReadPosR + k) & (FOZA_RINGLEN - 1)].d[1] = 0.0;
+					srcBuf[(iReadPos.i[1] + k) & (FOZA_RINGLEN - 1)].d[1] = 0.0;
 			}
 		}
 	}
 
 	// Output the current sample from the OLA grain buffer (d[0]=L, d[1]=R)
-	n->out = grain[grainPos];
+	n->out = grain[FOZA_GRAINPOS];
 	// Clear the slot we just consumed so it's ready for the next accumulation
-	grain[grainPos] = sample_t::zero();
+	grain[FOZA_GRAINPOS] = sample_t::zero();
 
 	// Advance and wrap grain position
-	if (++grainPos >= winSize)
-		grainPos = 0;
+	if (++FOZA_GRAINPOS >= FOZA_WINSIZE)
+		FOZA_GRAINPOS = 0;
 }
 #endif // FOURIOZA_SKIP
 
