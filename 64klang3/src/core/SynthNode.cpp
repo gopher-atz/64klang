@@ -4991,8 +4991,10 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 	NODE_CALL_INPUT(FOURIOZA_ACTIVATE);
 	NODE_CALL_INPUT(FOURIOZA_STRETCH);
 	NODE_CALL_INPUT(FOURIOZA_PHASESMOOTH);
-	NODE_CALL_INPUT(FOURIOZA_PITCHSHIFT);
 	NODE_CALL_INPUT(FOURIOZA_HARMONIC);
+	NODE_CALL_INPUT(FOURIOZA_LOWCUT);
+	NODE_CALL_INPUT(FOURIOZA_HIGHCUT);
+	NODE_CALL_INPUT(FOURIOZA_PITCHSHIFT);
 	// NODE_CALL_INPUT(FOURIOZA_MODE);
 #ifdef COMPILE_VSTI
 	int mode = n->input[FOURIOZA_MODE]->i[0];
@@ -5116,10 +5118,11 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 			// Forward FFT (in-place) — computes L and R spectra in parallel via complexsample_t SIMD
 			c_fft(fftBuf, winSize);
 
-			// ── Compute per-bin magnitudes ──
-			// rawBuf: read-only source for harmonic split (must not be overwritten mid-pass).
-			// magBuf: working copy in upper half of pitch scratch; receives blended/shifted result.
-			// magScratch (lower half of pitch scratch) is used by pitch shift resampling — disjoint.
+			// ── Compute per-bin magnitudes from the UNFILTERED spectrum ──
+			// rawBuf and magBuf are populated before the filter so the harmonic split's floor
+			// estimator sees a smooth continuous spectrum. If filter ran first it would create
+			// hard zero boundaries, biasing the local floor estimate downward near the cutoff
+			// and inflating harmonicPeak for boundary bins → cracking when HarmSmooth > 0.
 			sample_t* rawBuf  = FOZA_RAWBUF(n);
 			sample_t* magBuf  = (sample_t*)FOZA_PITCHSCRATCH(n) + FOZA_MAXWIN;
 			for (int i = 0; i < winSize; i++)
@@ -5127,8 +5130,8 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 				sample_t re  = fftBuf[i].re;
 				sample_t im  = fftBuf[i].im;
 				sample_t mag = s_sqrt(re*re + im*im);
-				rawBuf[i] = mag;   // read-only reference for harmonic split
-				magBuf[i] = mag;   // working copy
+				rawBuf[i] = mag;
+				magBuf[i] = mag;
 			}
 
 			// ── Harmonic/noise split via frequency-axis smoothing ──
@@ -5136,26 +5139,22 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 			// The spectrum is partitioned: harmonicPeak = max(raw - floor, 0), noiseMag = raw - harmonicPeak.
 			//
 			// HarmSmooth signal is in [-1, +1]:
-			//   0   → raw (normal Paulstretch, full energy, skip median)
+			//   0   → raw (normal Paulstretch, full energy, skip split)
 			//  +1   → only harmonic peaks (tonal character, noise floor suppressed)
 			//  -1   → only noise floor (broadband/transient character, tonal peaks suppressed)
 			sample_t harmRatio = s_clamp(INP(FOURIOZA_HARMONIC), SC[S_1_0], sample_t(-1.0));
 			bool doHarmonicSplit = !s_testz_si128((harmRatio != sample_t::zero()), (harmRatio != sample_t::zero()));
 			if (doHarmonicSplit)
 			{
-				// K = half-width of the noise-floor estimation window in bins.
-				// winSize/512 ≈ ±86 Hz half-width for 4096-sample window @ 44100 Hz —
-				// wide enough to span the noise between harmonics without including adjacent partials.
 				int K = winSize / 512;
 				if (K < 2) K = 2;
 
-				// Sliding window sum — O(N), single pass across the spectrum.
 				sample_t runSum = sample_t::zero();
 				int curLo = 0, curHi = -1;
-				// Pre-fill window centred on bin 0: push bins [0..K]
 				for (int k = 0, end = (K < winSize ? K : winSize - 1); k <= end; k++)
 					{ runSum += rawBuf[k]; curHi = k; }
 
+				sample_t absRatio = s_ifthen(harmRatio >= sample_t::zero(), harmRatio, -harmRatio);
 				for (int i = 0; i < winSize; i++)
 				{
 					int targetHi = (i + K < winSize) ? (i + K) : (winSize - 1);
@@ -5164,11 +5163,29 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 					while (curLo < targetLo) { runSum -= rawBuf[curLo]; curLo++; }
 					sample_t floorMag     = runSum / sample_t((double)(curHi - curLo + 1));
 					sample_t harmonicPeak = s_max(rawBuf[i] - floorMag, sample_t::zero());
-					sample_t noiseMag     = rawBuf[i] - harmonicPeak;  // == min(raw, floor)
-					// Pick target based on sign of ratio; blend toward it by |ratio|.
-					sample_t absRatio = s_ifthen(harmRatio >= sample_t::zero(), harmRatio, -harmRatio);
-					sample_t target   = s_ifthen(harmRatio >= sample_t::zero(), harmonicPeak, noiseMag);
+					sample_t noiseMag     = rawBuf[i] - harmonicPeak;
+					sample_t target       = s_ifthen(harmRatio >= sample_t::zero(), harmonicPeak, noiseMag);
 					magBuf[i] = s_lerp(rawBuf[i], target, absRatio);
+				}
+			}
+
+			// ── Spectral low-cut / high-cut — hard binary mask applied to magBuf ──
+			// Applied AFTER harmonic split so the floor estimator sees a continuous spectrum.
+			// BQF log mapping: bin = min(1 / 2^((1-in)*10), Nyquist_guard) * winSize/2.
+			// Fold k into [0..winSize/2] for conjugate symmetry. Stereo independent via sample_t.
+			// fftBuf is left unmodified; filtered bins have magV=0 in the phase step → fftBuf
+			// is written as 0 there anyway (0 * cos/sin = 0).
+			{
+				sample_t loIn = s_clamp(INP(FOURIOZA_LOWCUT),  SC[S_1_0], sample_t::zero());
+				sample_t hiIn = s_clamp(INP(FOURIOZA_HIGHCUT), SC[S_1_0], sample_t::zero());
+				sample_t cutLoV = s_min(SC[S_1_0] / s_exp2((SC[S_1_0] - loIn) * SC[S_10_0]), SC[NOISEGEN_B0]) * sample_t((double)(winSize / 2));
+				sample_t cutHiV = s_min(SC[S_1_0] / s_exp2((SC[S_1_0] - hiIn) * SC[S_10_0]), SC[NOISEGEN_B0]) * sample_t((double)(winSize / 2));
+				for (int k = 0; k < winSize; k++)
+				{
+					int kPos = (k <= winSize / 2) ? k : winSize - k;
+					sample_t kV   = sample_t((double)kPos);
+					sample_t pass = s_ifthen((kV >= cutLoV) & (kV <= cutHiV), SC[S_1_0], sample_t::zero());
+					magBuf[k] *= pass;
 				}
 			}
 
