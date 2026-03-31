@@ -1555,11 +1555,13 @@ R"xml(
       <NodeInput name="Sync Osc/LFO"/>
     </Node>
 
-    <Node typeid="60" name="Fourioza" numInputs="5" numReqGUIInputs="1" numMaxGUIInputs="4" allowSignalInsertion="1">
+    <Node typeid="60" name="Fourioza" numInputs="7" numReqGUIInputs="1" numMaxGUIInputs="6" allowSignalInsertion="1">
       <NodeInput name="In"/>
       <NodeInput name="Activate" minValue="0" maxValue="1" range="1" singleInput="1"/>
       <NodeInput name="Stretch" minValue="0" maxValue="128" mapping="15"/>
       <NodeInput name="PhaseSmooth" minValue="0" maxValue="128" mapping="13"/>
+      <NodeInput name="PitchShift" minValue="-64" maxValue="64"/>
+      <NodeInput name="HarmSmooth" minValue="-128" maxValue="128"/>
       <NodeInput name="Mode">
         <ModeGroup name="Window Size" mask="7" shift="0">
           <ModeItem name="512"   value="0"/>

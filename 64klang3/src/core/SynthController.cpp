@@ -746,10 +746,14 @@ void SynthController::getNodeInputDefault(DWORD typeID, DWORD inputIdx, bool isG
 		// FOURIOZA_ACTIVATE:    0.0 = bypassed by default
 		// FOURIOZA_STRETCH:     0.5 ≈ 10× stretch
 		// FOURIOZA_PHASESMOOTH: 1.0 = fully random phase (classic Paulstretch)
+		// FOURIOZA_PITCHSHIFT:  0.0 = no pitch shift (semitones, like Transpose)
+		// FOURIOZA_HARMONIC:    0.0 = raw magnitudes (normal Paulstretch), 1.0 = harmonic-smoothed only
 		// FOURIOZA_MODE:        FOURIOZA_WIN_4096 = 4096-sample window by default
 		DEFCONST(FOURIOZA_ACTIVATE,    0.0);
 		DEFCONST(FOURIOZA_STRETCH,     0.5);
 		DEFCONST(FOURIOZA_PHASESMOOTH, 1.0);
+		DEFCONST(FOURIOZA_PITCHSHIFT,  0.0);
+		DEFCONST(FOURIOZA_HARMONIC,    0.0);
 		DEFMODE (FOURIOZA_MODE,        FOURIOZA_WIN_4096);
 		break;
 	case VOICE_FREQUENCY_ID:

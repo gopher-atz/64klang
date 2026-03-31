@@ -1367,7 +1367,9 @@ enum FOURIOZA_INPUT
 	FOURIOZA_ACTIVATE,     // 1: activate gate (>0.5 = effect on, else bypass)
 	FOURIOZA_STRETCH,      // 2: time-stretch factor, engine 0..1 → 1x..128x
 	FOURIOZA_PHASESMOOTH,  // 3: phase smoothness, engine 0..1 → 0=original, 1=random
-	FOURIOZA_MODE,         // 4: mode (window size in bits [2:0])
+	FOURIOZA_PITCHSHIFT,   // 4: pitch shift in semitones, stored directly (-24..+24, 0=no shift)
+	FOURIOZA_HARMONIC,     // 5: harmonic/noise ratio, 0..1 → 0=all noise, 1=all harmonic
+	FOURIOZA_MODE,         // 6: mode (window size in bits [2:0])
 	FOURIOZA_MAX,
 	FOURIOZA_REQ_GUI_SIGNALS = 1,
 	FOURIOZA_MAX_GUI_SIGNALS = FOURIOZA_MODE

@@ -4965,16 +4965,21 @@ void SYNTHCALL OSCSYNC_tick(SynthNode* n)
 #define FOZA_GRAIN(n)      ((sample_t*)((n)->customMem) + FOZA_MAXWIN)
 #define FOZA_FFTBUF(n)     ((complexsample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t)))
 #define FOZA_RINGBUF(n)    ((sample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t)))
+// FOZA_RAWBUF: single-frame raw magnitude scratch for frequency-axis harmonic split
+#define FOZA_RAWBUF(n)     ((sample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t) + FOZA_RINGLEN*sizeof(sample_t)))
+#define FOZA_PITCHSCRATCH(n) ((complexsample_t*)(((char*)((n)->customMem)) + 2*FOZA_MAXWIN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(complexsample_t) + FOZA_RINGLEN*sizeof(sample_t) + FOZA_MAXWIN*sizeof(sample_t)))
 
 #ifndef FOURIOZA_SKIP
 void SYNTHCALL FOURIOZA_init(SynthNode* n)
 {
 	// Always allocate for FOZA_MAXWIN so ring buffer is at a fixed offset regardless of active winSize
 	n->customMem = (DWORD*)SynthMalloc(
-		FOZA_MAXWIN * sizeof(sample_t) +        // Hann weights
-		FOZA_MAXWIN * sizeof(sample_t) +        // stereo OLA accumulator (d[0]=L, d[1]=R)
-		FOZA_MAXWIN * sizeof(complexsample_t) + // fft buffer
-		FOZA_RINGLEN * sizeof(sample_t)         // ring buffer
+		FOZA_MAXWIN * sizeof(sample_t) +           // Hann weights
+		FOZA_MAXWIN * sizeof(sample_t) +           // stereo OLA accumulator (d[0]=L, d[1]=R)
+		FOZA_MAXWIN * sizeof(complexsample_t) +    // fft buffer
+		FOZA_RINGLEN * sizeof(sample_t) +          // ring buffer
+		FOZA_MAXWIN * sizeof(sample_t) +           // raw magnitude scratch (freq-axis harmonic split)
+		FOZA_MAXWIN * sizeof(complexsample_t)      // pitch shift scratch buffer (lower=resampled, upper=working magBuf)
 		);
 }
 
@@ -4986,6 +4991,8 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 	NODE_CALL_INPUT(FOURIOZA_ACTIVATE);
 	NODE_CALL_INPUT(FOURIOZA_STRETCH);
 	NODE_CALL_INPUT(FOURIOZA_PHASESMOOTH);
+	NODE_CALL_INPUT(FOURIOZA_PITCHSHIFT);
+	NODE_CALL_INPUT(FOURIOZA_HARMONIC);
 	// NODE_CALL_INPUT(FOURIOZA_MODE);
 #ifdef COMPILE_VSTI
 	int mode = n->input[FOURIOZA_MODE]->i[0];
@@ -5093,7 +5100,7 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 			complexsample_t* fftBuf = FOZA_FFTBUF(n);
 
 			sample_t stretchParam = s_clamp(INP(FOURIOZA_STRETCH), SC[S_1_0], sample_t::zero());
-			sample_t stretch = SC[S_1_0] + stretchParam * (SC[S_128_0]);
+			sample_t stretch = SC[S_1_0] + stretchParam * (SC[S_128_0] - SC[S_1_0]);
 
 			sample_t phaseSmoothness = s_clamp(INP(FOURIOZA_PHASESMOOTH), SC[S_1_0], sample_t::zero());
 
@@ -5109,13 +5116,114 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 			// Forward FFT (in-place) — computes L and R spectra in parallel via complexsample_t SIMD
 			c_fft(fftBuf, winSize);
 
-			// Phase randomisation with per-channel smoothness blend.
+			// ── Compute per-bin magnitudes ──
+			// rawBuf: read-only source for harmonic split (must not be overwritten mid-pass).
+			// magBuf: working copy in upper half of pitch scratch; receives blended/shifted result.
+			// magScratch (lower half of pitch scratch) is used by pitch shift resampling — disjoint.
+			sample_t* rawBuf  = FOZA_RAWBUF(n);
+			sample_t* magBuf  = (sample_t*)FOZA_PITCHSCRATCH(n) + FOZA_MAXWIN;
 			for (int i = 0; i < winSize; i++)
 			{
-				sample_t re = fftBuf[i].re;  // d[0]=reL, d[1]=reR
-				sample_t im = fftBuf[i].im;  // d[0]=imL, d[1]=imR
-				sample_t magSqV = re*re + im*im;
-				sample_t magV = s_sqrt(magSqV);
+				sample_t re  = fftBuf[i].re;
+				sample_t im  = fftBuf[i].im;
+				sample_t mag = s_sqrt(re*re + im*im);
+				rawBuf[i] = mag;   // read-only reference for harmonic split
+				magBuf[i] = mag;   // working copy
+			}
+
+			// ── Harmonic/noise split via frequency-axis smoothing ──
+			// A boxcar mean across K neighbouring bins estimates the local spectral noise floor.
+			// The spectrum is partitioned: harmonicPeak = max(raw - floor, 0), noiseMag = raw - harmonicPeak.
+			//
+			// HarmSmooth signal is in [-1, +1]:
+			//   0   → raw (normal Paulstretch, full energy, skip median)
+			//  +1   → only harmonic peaks (tonal character, noise floor suppressed)
+			//  -1   → only noise floor (broadband/transient character, tonal peaks suppressed)
+			sample_t harmRatio = s_clamp(INP(FOURIOZA_HARMONIC), SC[S_1_0], sample_t(-1.0));
+			bool doHarmonicSplit = !s_testz_si128((harmRatio != sample_t::zero()), (harmRatio != sample_t::zero()));
+			if (doHarmonicSplit)
+			{
+				// K = half-width of the noise-floor estimation window in bins.
+				// winSize/512 ≈ ±86 Hz half-width for 4096-sample window @ 44100 Hz —
+				// wide enough to span the noise between harmonics without including adjacent partials.
+				int K = winSize / 512;
+				if (K < 2) K = 2;
+
+				// Sliding window sum — O(N), single pass across the spectrum.
+				sample_t runSum = sample_t::zero();
+				int curLo = 0, curHi = -1;
+				// Pre-fill window centred on bin 0: push bins [0..K]
+				for (int k = 0, end = (K < winSize ? K : winSize - 1); k <= end; k++)
+					{ runSum += rawBuf[k]; curHi = k; }
+
+				for (int i = 0; i < winSize; i++)
+				{
+					int targetHi = (i + K < winSize) ? (i + K) : (winSize - 1);
+					int targetLo = (i > K)           ? (i - K) : 0;
+					while (curHi < targetHi) { curHi++; runSum += rawBuf[curHi]; }
+					while (curLo < targetLo) { runSum -= rawBuf[curLo]; curLo++; }
+					sample_t floorMag     = runSum / sample_t((double)(curHi - curLo + 1));
+					sample_t harmonicPeak = s_max(rawBuf[i] - floorMag, sample_t::zero());
+					sample_t noiseMag     = rawBuf[i] - harmonicPeak;  // == min(raw, floor)
+					// Pick target based on sign of ratio; blend toward it by |ratio|.
+					sample_t absRatio = s_ifthen(harmRatio >= sample_t::zero(), harmRatio, -harmRatio);
+					sample_t target   = s_ifthen(harmRatio >= sample_t::zero(), harmonicPeak, noiseMag);
+					magBuf[i] = s_lerp(rawBuf[i], target, absRatio);
+				}
+			}
+
+			// ── Pitch shift: resample magnitudes only, keep destination-bin phases ──
+			// INP(FOURIOZA_PITCHSHIFT) follows the same value/range convention as Oscillator Transpose:
+			// signal = semitones / 128, so pitchMult = s_exp2(INP * 128 * (1/12)).
+			// GUI minValue="-24" maxValue="24", no range attr → range=128 → signal in [-0.1875, 0.1875].
+			sample_t pitchRawV = INP(FOURIOZA_PITCHSHIFT);
+			bool doPitchShift = !s_testz_si128((pitchRawV != sample_t::zero()), (pitchRawV != sample_t::zero()));
+			if (doPitchShift)
+			{
+				// Identical to Oscillator: s_exp2(INP * 128 * (1/12))
+				sample_t pitchMultV = s_exp2(pitchRawV * SC[S_128_0] * SC[S_1_O_12]);
+				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH(n);
+
+				// Measure pre-shift magnitude energy (both channels simultaneously)
+				sample_t sumB = sample_t::zero();
+				for (int k = 0; k < winSize; k++)
+					sumB += magBuf[k] * magBuf[k];
+
+				// Resample magnitudes: output bin k reads from source bin k/pitchMult
+				for (int k = 0; k < winSize; k++)
+				{
+					// Both channels' source positions computed as a sample_t
+					sample_t srcV = sample_t((double)k) / pitchMultV;
+					int idxL0 = (int)srcV.d[0]; double fracL = srcV.d[0] - idxL0; int idxL1 = idxL0 + 1;
+					int idxR0 = (int)srcV.d[1]; double fracR = srcV.d[1] - idxR0; int idxR1 = idxR0 + 1;
+					double mL = 0.0, mR = 0.0;
+					// Only read from positive-frequency half [0..winSize/2]
+					if (idxL0 >= 0 && idxL0 <= winSize/2) mL  = magBuf[idxL0].d[0] * (1.0 - fracL);
+					if (idxL1 >= 0 && idxL1 <= winSize/2) mL += magBuf[idxL1].d[0] * fracL;
+					if (idxR0 >= 0 && idxR0 <= winSize/2) mR  = magBuf[idxR0].d[1] * (1.0 - fracR);
+					if (idxR1 >= 0 && idxR1 <= winSize/2) mR += magBuf[idxR1].d[1] * fracR;
+					magScratch[k] = sample_t(mL, mR);
+				}
+
+				// Restore conjugate symmetry: mirror positive-freq magnitudes to negative-freq half.
+				for (int k = 1; k < winSize/2; k++)
+					magScratch[winSize - k] = magScratch[k];
+
+				// Energy-preserving normalization: scale = sqrt(sumB / sumA), both channels at once
+				sample_t sumA = sample_t::zero();
+				for (int k = 0; k < winSize; k++)
+					sumA += magScratch[k] * magScratch[k];
+				sample_t scale = s_ifthen(sumA > sample_t(1e-30), s_sqrt(sumB / sumA), SC[S_1_0]);
+				for (int k = 0; k < winSize; k++)
+					magBuf[k] = magScratch[k] * scale;
+			}
+
+			// ── Phase randomisation: destination-bin phases from fftBuf, shifted magnitudes from magBuf ──
+			for (int i = 0; i < winSize; i++)
+			{
+				sample_t re = fftBuf[i].re;
+				sample_t im = fftBuf[i].im;
+				sample_t magV = magBuf[i];
 				sample_t origPhaseV = s_ifthen(magV > sample_t(1e-30), s_atan2(im, re), sample_t::zero());
 				sample_t phaseV = s_lerp(origPhaseV, s_rand() * SC[S_2PI], phaseSmoothness);
 				fftBuf[i].re = magV * s_cos(phaseV);
