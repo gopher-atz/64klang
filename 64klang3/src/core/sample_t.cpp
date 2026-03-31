@@ -419,7 +419,7 @@ void SYNTHCALL	c_ifft(complexsample_t* x, int N)
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define ACOEFFICIENTS 6
-sample_t s_atan(const sample_t& x)
+sample_t SYNTHCALL s_atan(const sample_t& x)
 {
 	sample_t q1 = x;
 	sample_t s = s_abs(x);
