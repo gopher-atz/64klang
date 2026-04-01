@@ -507,6 +507,11 @@ SynthNode* SynthController::createGUINode(DWORD id, DWORD channel, DWORD isGloba
 	for (DWORD i = NodeReqGUISignals[id]; i < NodeMaxGUISignals[id]; i++)
 	{
 		SynthNode* constant = createNode(CONSTANT_ID, -2, 1);
+		// Float value constants must have numInputs=2 so GetConstantValueString
+		// (used by exportPatch) can distinguish them from mode constants (numInputs=0).
+		// createNode sets numInputs=NodeInputs[CONSTANT_ID]=0, so fix it here.
+		constant->numInputs = 2;
+		SynthGlobalState.NodeValues[constant->valueOffset] = INFO(CONSTANT_ID, 2, 1);
 		// connect to the node input
 		node->input[i] = (sample_t*)constant;
 		SynthGlobalState.NodeValues[node->valueOffset+1+i] = constant->valueOffset;
@@ -2301,6 +2306,14 @@ void SynthController::loadNode(TiXmlElement* child, std::map<int, SynthNode*>& i
 				inputs->QueryDoubleAttribute("value2", &v2);
 				node->input[i]->d[0] = v1;
 				node->input[i]->d[1] = v2;
+				// Ensure the constant is marked as a float value constant (numInputs=2)
+				// so exportPatch's GetConstantValueString doesn't mistake it for a mode constant.
+				SynthNode* cn = (SynthNode*)(node->input[i]);
+				if (cn->numInputs == 0)
+				{
+					cn->numInputs = 2;
+					SynthGlobalState.NodeValues[cn->valueOffset] = INFO(CONSTANT_ID, 2, 1);
+				}
 				// modulation input?
 				int inputid = 0;
 				if (inputs->QueryIntAttribute("input", &inputid) == TIXML_SUCCESS)
@@ -5712,9 +5725,25 @@ void SynthController::setBPM(float bpm)
 
 void SynthController::tick(float* left, float* right, int samples)
 {
-	Recorder.AddSamples(samples);
-	_64klang_Tick(left, right, samples);
-	DeferredSynthFree();
+	// During stream recording: skip the synth engine entirely (too expensive to
+	// run alongside the recorder) and output a quiet sawtooth keep-alive signal
+	// so the host never thinks the plugin is silent and suspends it.
+	if (isRecording())
+	{
+		Recorder.AddSamples(samples);
+		for (int i = 0; i < samples; i++)
+		{
+			float signal = 0.03125f * ((float)(i & 255) / 128.0f - 1.0f);
+			*left++  = signal;
+			*right++ = signal;
+		}
+	}
+	else
+	{
+		Recorder.AddSamples(samples);
+		_64klang_Tick(left, right, samples);
+		DeferredSynthFree();
+	}
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

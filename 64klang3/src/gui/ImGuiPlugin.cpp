@@ -272,13 +272,38 @@ static void renderToolbar()
     // Default index 3 = 64 samples.
     static const int        kQuantValues[] = { 16,32,48,64,80,96,112,128,144,160,176,192,208,224,240,256 };
     static const char* kQuantLabels[]      = {"16","32","48","64","80","96","112","128","144","160","176","192","208","224","240","256"};
-    if (ImGui::Button("Export Song"))
+    // Toggle button: first click starts recording, second click stops and opens save dialog.
+    // Pre-size to the wider of the two labels so the toolbar layout never shifts.
+    bool isRecording = sc && sc->isRecording();
     {
-        char buf[512] = {"64k2Song.h"};
-        if (openFileDialog(buf, 512,
-                "64klang2 Song Header\0*.h\0All Files\0*.*\0",
-                "h", true) && sc)
-            sc->exportSong(std::string(buf), kQuantValues[s_exportQuantIdx]);
+        const float fp    = ImGui::GetStyle().FramePadding.x;
+        const float recBtnW = std::max(
+            ImGui::CalcTextSize("Export Song").x,
+            ImGui::CalcTextSize("Recording ...").x) + fp * 2.f;
+        if (isRecording)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Button,        ImVec4(0.7f, 0.1f, 0.1f, 1.f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.9f, 0.2f, 0.2f, 1.f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive,  ImVec4(0.6f, 0.0f, 0.0f, 1.f));
+        }
+        if (ImGui::Button(isRecording ? "Recording ..." : "Export Song", ImVec2(recBtnW, 0.f)))
+        {
+            if (!isRecording)
+            {
+                if (sc) sc->startRecording();
+            }
+            else
+            {
+                if (sc) sc->stopRecording();
+                char buf[512] = {"64k2Song.h"};
+                if (openFileDialog(buf, 512,
+                        "64klang2 Song Header\0*.h\0All Files\0*.*\0",
+                        "h", true) && sc)
+                    sc->exportSong(std::string(buf), kQuantValues[s_exportQuantIdx]);
+            }
+        }
+        if (isRecording)
+            ImGui::PopStyleColor(3);
     }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(44.f);
@@ -371,7 +396,10 @@ void render()
     if (!s_initialized || !s_canvas)
         return;
 
-    ImGuiIO& io = ImGui::GetIO();
+    ImGuiIO& io    = ImGui::GetIO();
+    SynthController* sc = SynthController::instance();
+    bool isRecording   = sc && sc->isRecording();
+
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,  ImVec2(0, 0));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
     ImGui::SetNextWindowPos(ImVec2(0, 0));
@@ -388,9 +416,43 @@ void render()
     ImGui::PopStyleVar(2);
 
     renderToolbar();
+
+    // Record the top-left corner of the canvas area (directly below toolbar).
+    ImVec2 canvasMin = ImGui::GetCursorScreenPos();
+
     s_canvas->render();
 
     ImGui::End();
+
+    // ── Recording overlay ─────────────────────────────────────────────────
+    // Drawn after the main window so it sits on top (higher ImGui z-order).
+    if (isRecording)
+    {
+        ImVec2 canvasMax = io.DisplaySize;
+
+        // Transparent red tint via the foreground draw list — always on top.
+        ImGui::GetForegroundDrawList()->AddRectFilled(
+            canvasMin, canvasMax, IM_COL32(180, 0, 0, 40));
+
+        // Topmost transparent window that eats all mouse events over the canvas.
+        ImGui::SetNextWindowPos(canvasMin);
+        ImGui::SetNextWindowSize(ImVec2(canvasMax.x - canvasMin.x,
+                                        canvasMax.y - canvasMin.y));
+        ImGui::SetNextWindowBgAlpha(0.f);
+        ImGui::Begin("##recordBlock", nullptr,
+                     ImGuiWindowFlags_NoTitleBar      |
+                     ImGuiWindowFlags_NoResize        |
+                     ImGuiWindowFlags_NoMove          |
+                     ImGuiWindowFlags_NoScrollbar     |
+                     ImGuiWindowFlags_NoScrollWithMouse |
+                     ImGuiWindowFlags_NoSavedSettings |
+                     ImGuiWindowFlags_NoNav);
+        // Single invisible button spanning the whole canvas absorbs all clicks.
+        ImGui::InvisibleButton("##recordBlockInput",
+                               ImVec2(canvasMax.x - canvasMin.x,
+                                      canvasMax.y - canvasMin.y));
+        ImGui::End();
+    }
 }
 
 } // namespace K64GUI
