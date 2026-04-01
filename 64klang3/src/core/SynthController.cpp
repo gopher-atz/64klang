@@ -1890,6 +1890,16 @@ double SynthController::getNodeSignal(DWORD nodeid, int left, int inp)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+bool SynthController::getChannelActive(DWORD nodeid)
+{
+	SynthNode* n = SynthGlobalState.GlobalNodes[nodeid];
+	if (!n) return false;
+	// n->v[0] is the per-lane bitmask set by CHANNELROOT_tick: non-zero in any int word = channel is active
+	return (n->v[0].i[0] | n->v[0].i[1] | n->v[0].i[2] | n->v[0].i[3]) != 0;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 void SynthController::killVoices()
 {
 	if (!_massDataUpdate)

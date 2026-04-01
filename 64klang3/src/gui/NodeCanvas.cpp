@@ -2362,6 +2362,20 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
         }
     }
 
+    // ChannelRoot: same pulsating greenish frame when the channel has sound activity (n->v[0] != 0)
+    if (nodeType == CHANNELROOT_ID)
+    {
+        auto it = liveDataCache.find(nodeID);
+        if (it != liveDataCache.end() && it->second.channelActive)
+        {
+            float t = (float)ImGui::GetTime();
+            float pulse = 0.4f + 0.6f * (0.5f + 0.5f * sinf(t * 10.f));
+            int g = (int)(128 + 127 * pulse);
+            ImU32 pulseCol = IM_COL32(64, g, 64, 255);
+            dl->AddRect(pos, ImVec2(pos.x + w, pos.y + h), pulseCol, 2.f * zoom, 0, 5.f);
+        }
+    }
+
     // Red X delete button (top-left corner)
     // Only SynthRoot/ChannelRoot/NoteController are protected; Voice Manager is deletable.
     bool isStructural = (nodeType >= 0 && nodeType <= (int)NOTECONTROLLER_ID);
@@ -2933,6 +2947,8 @@ void NodeCanvas::render()
                 float newR = (float)std::abs(sc->getNodeSignal((DWORD)nid, 1, -2));
                 ld.vuL = std::max(ld.vuL * 0.95f, newL);
                 ld.vuR = std::max(ld.vuR * 0.95f, newR);
+                if (nodeType == CHANNELROOT_ID)
+                    ld.channelActive = sc->getChannelActive((DWORD)nid);
             }
             else if (nodeType == VOICEMANAGER_ID)
             {

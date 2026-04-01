@@ -543,9 +543,10 @@ K64_CODE_SECTION(".sn01")
 #endif
 void SYNTHCALL CHANNELROOT_tick(SynthNode* n)
 {
-	// check if at least one channel still above signal threshold
+	// check if voices active or at least one channel still above signal threshold
 	if (!s_testz_si128(n->v[0], n->v[0]))
 	{
+		n->e = sample_t::zero(); // clear the voice activity so the VoiceManagers can properly signal their state
 		MUL_tick(n);
 
 		// envelope follower
@@ -556,8 +557,8 @@ void SYNTHCALL CHANNELROOT_tick(SynthNode* n)
 		n->v[1] = (SC[CHANNELROOT_EFC] * (n->v[1] - v)) + v;
 #endif
 
-		// set active bitmask according to threshold in both channels
-		n->v[0] = n->v[1] > SC[CHANNELROOT_EFT];
+		// set active bitmask according to voices active or above threshold in both channels
+		n->v[0] = (n->v[1] > SC[CHANNELROOT_EFT]) | n->e;
 	}
 
 #ifdef COMPILE_VSTI
@@ -568,7 +569,7 @@ void SYNTHCALL CHANNELROOT_tick(SynthNode* n)
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-// same as multiadd, combined event not really needed
+// same as multiadd
 #ifdef CODE_SECTIONS
 K64_CODE_SECTION(".sn02")
 #endif
@@ -581,13 +582,11 @@ void SYNTHCALL NOTECONTROLLER_tick(SynthNode* n)
 		NODE_CALL_INPUT(i);
 
 	// process
-	//n->e = 
 	n->out = sample_t::zero();
 	i = n->numInputs;
 	while (i--)
 	{
 		n->out += n->input[i];
-		//n->e |= ((SynthNode*)(n->input[i]))->e;
 	}
 }
 
@@ -1137,12 +1136,18 @@ VoiceManager_CreateVoice:
 #endif
 		}
 	}
-	// set event to active when keys are active
-	if (W->NumKeys > 0)
+	// set event to active when voices are active (playing) or keys are held down
+	if (W->NumKeys > 0 || W->NumActiveVoices > 0)
 		n->e = SC[S_1_0];
 	else
 		n->e = sample_t::zero();
-
+	// also set event in the channel root so it can be used for the signal activity checks
+#ifdef COMPILE_VSTI
+	SynthNode* cr = SynthGlobalState.GlobalNodes[(1+n->v[23].i[0])*(NODE_MAX_INPUTS+1)];
+#else
+	SynthNode* cr = SynthGlobalState.GlobalNodes[(SYNTHROOT_MAX+1)+n->v[23].i[0]*(CHANNELROOT_MAX+1)];
+#endif
+	cr->e |= n->e;
 #ifdef COMPILE_VSTI
 	if (n->processingFlags & NODE_PROCESSING_MUTE)
 		n->out = sample_t::zero();
@@ -5303,23 +5308,6 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 			sample_t ringLenV   = sample_t((double)FOZA_RINGLEN);
 			newReadPos = s_ifthen(newReadPos >= ringLenV, newReadPos - ringLenV, newReadPos);
 			FOZA_READPOS = newReadPos;
-
-			// Clear ring slots both read heads have fully passed.
-			// If clearCount is suspiciously large (option B wrap-around), skip to avoid mass erase.
-			int newReadPosLi = (int)newReadPos.d[0];
-			int newReadPosRi = (int)newReadPos.d[1];
-			int clearCountL = (newReadPosLi - iReadPos.i[0] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
-			int clearCountR = (newReadPosRi - iReadPos.i[1] + FOZA_RINGLEN) & (FOZA_RINGLEN - 1);
-			if (clearCountL <= outHop * 2)
-			{
-				for (int k = 0; k < clearCountL; k++)
-					srcBuf[(iReadPos.i[0] + k) & (FOZA_RINGLEN - 1)].d[0] = 0.0;
-			}
-			if (clearCountR <= outHop * 2)
-			{
-				for (int k = 0; k < clearCountR; k++)
-					srcBuf[(iReadPos.i[1] + k) & (FOZA_RINGLEN - 1)].d[1] = 0.0;
-			}
 		}
 	}
 

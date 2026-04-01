@@ -116,6 +116,7 @@ private:
     struct LiveData {
         float vuL = 0.f, vuR = 0.f;
         int   voiceCount = 0;
+        bool  channelActive = false;
     };
     std::unordered_map<int, LiveData> liveDataCache;
 

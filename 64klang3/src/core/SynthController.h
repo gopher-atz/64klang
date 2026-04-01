@@ -145,6 +145,7 @@ public:
 	// misc
 	int		getNumActiveVoices();
 	int		getNumActiveVoices(DWORD node);
+	bool	getChannelActive(DWORD node);
 	void	killVoices();
 	void	panic();
 	// deferred synth node deletion
