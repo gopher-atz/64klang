@@ -14,6 +14,11 @@
 namespace Steinberg {
 namespace Vst {
 
+// Definition of the static render-owner pointer.
+std::atomic<K64Plugin*> K64Plugin::s_renderOwner{nullptr};
+// Definition of the live-instance counter.
+std::atomic<int> K64Plugin::s_instanceCount{0};
+
 K64Plugin::K64Plugin()
 {
     setControllerClass(FUID(0x64ABCDEF, 0x12340002, 0xAAAABBBB, 0xCCCCDDD2));
@@ -42,6 +47,13 @@ tresult PLUGIN_API K64Plugin::initialize(FUnknown* context)
     // window open/close cycles (attached/removed on the PluginView).
     K64GUI::createCanvas();
 
+    // The first instance to initialize becomes the render owner — the only one
+    // that will call sc->tick().  Subsequent instances (alias instruments) just
+    // forward MIDI and output silence.
+    K64Plugin* expected = nullptr;
+    s_renderOwner.compare_exchange_strong(expected, this);
+
+    ++s_instanceCount;
     synthInitialized = true;
 
     return kResultOk;
@@ -49,7 +61,18 @@ tresult PLUGIN_API K64Plugin::initialize(FUnknown* context)
 
 tresult PLUGIN_API K64Plugin::terminate()
 {
-    K64GUI::destroyCanvas();
+    // Relinquish render ownership so another instance can take over if present.
+    K64Plugin* me = this;
+    s_renderOwner.compare_exchange_strong(me, nullptr);
+
+    // Only destroy the canvas when the very last instance is gone.  On a
+    // plugin reload the new instance's initialize() runs before the old one's
+    // terminate(), so the canvas must survive until no instances are left.
+    if (--s_instanceCount <= 0)
+    {
+        s_instanceCount = 0;
+        K64GUI::destroyCanvas();
+    }
     return AudioEffect::terminate();
 }
 
@@ -217,12 +240,20 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
         _64klang_SetBPM((float)data.processContext->tempo);
     }
 
-    // Render audio — skipped (output silence) if mutex was not acquired in time
+    // Render audio — only the render owner advances the synth singleton.
+    // Alias instrument shells output silence to avoid double-advancing state.
+    // If the previous owner was destroyed (plugin reload) and we are the only
+    // surviving instance, lazily claim ownership here.
+    if (this != s_renderOwner.load(std::memory_order_relaxed))
+    {
+        K64Plugin* expected = nullptr;
+        s_renderOwner.compare_exchange_strong(expected, this);
+    }
     if (data.numOutputs > 0 && data.outputs[0].numChannels >= 2)
     {
         float* left  = data.outputs[0].channelBuffers32[0];
         float* right = data.outputs[0].channelBuffers32[1];
-        if (mutexAcquired)
+        if (mutexAcquired && this == s_renderOwner.load(std::memory_order_relaxed))
         {
             sc->tick(left, right, data.numSamples);
         }

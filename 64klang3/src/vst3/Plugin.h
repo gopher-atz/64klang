@@ -2,6 +2,7 @@
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include <unordered_map>
+#include <atomic>
 #include <cstdint>
 
 namespace Steinberg {
@@ -27,6 +28,16 @@ public:
     tresult PLUGIN_API process(ProcessData& data) override;
     tresult PLUGIN_API getState(IBStream* state) override;
     tresult PLUGIN_API setState(IBStream* state) override;
+
+    // The first K64Plugin instance to initialize() becomes the render owner —
+    // the sole instance permitted to call sc->tick() and advance the synth.
+    // All other instances (Renoise alias instruments, etc.) forward MIDI but
+    // output silence, keeping the singleton synth state coherent.
+    static std::atomic<K64Plugin*> s_renderOwner;
+
+    // Count of live K64Plugin instances.  The canvas is only destroyed when
+    // this reaches zero (last instance terminates).
+    static std::atomic<int> s_instanceCount;
 
 private:
     bool synthInitialized = false;

@@ -183,6 +183,22 @@ static int   s_savedWinH     = 0;
 static bool  s_pendingRestore = false;
 // Forward declaration — definition at the bottom of the WIN32 section
 static DWORD WINAPI renderThreadEntryWin(LPVOID arg);
+
+// ── Singleton rendering state ─────────────────────────────────────────────────
+// The ImGui context, GL context, and render thread are process-wide singletons.
+// Multiple K64PluginView instances (VST alias instruments) share this state so
+// there is always exactly one ImGui context and one render thread at a time.
+static ImGuiContext*  s_imguiCtx         = nullptr;
+static void*          s_winGLCtx         = nullptr;   // HGLRC
+static void*          s_winDC            = nullptr;   // HDC
+static void*          s_nativeHandle     = nullptr;   // HWND currently hosting GL
+static int            s_viewWidth        = K64PluginView::kDefaultWidth;
+static int            s_viewHeight       = K64PluginView::kDefaultHeight;
+static void*          s_winRenderThread  = nullptr;   // HANDLE
+static volatile bool  s_winRenderRunning = false;
+static std::mutex     s_renderMutex;
+static int            s_viewCount        = 0;  // # of live K64PluginView instances
+
 #elif !defined(__APPLE__)
 // Linux: forward declaration — definition is at the bottom of this file
 static void* renderThreadEntryLinux(void* arg);
@@ -192,10 +208,27 @@ K64PluginView::K64PluginView()
     : CPluginView(nullptr)
 {
     rect = { 0, 0, kDefaultWidth, kDefaultHeight };
+#ifdef _WIN32
+    ++s_viewCount;
+#endif
 }
 
 K64PluginView::~K64PluginView()
 {
+#ifdef _WIN32
+    // Destroy the singleton ImGui context when the very last view instance is
+    // released (i.e. the plugin processor itself is being unloaded).  Until
+    // then the context stays alive so canvas state survives window close/reopen.
+    if (--s_viewCount <= 0)
+    {
+        s_viewCount = 0;
+        if (s_imguiCtx)
+        {
+            ImGui::DestroyContext(s_imguiCtx);
+            s_imguiCtx = nullptr;
+        }
+    }
+#endif
 }
 
 tresult PLUGIN_API K64PluginView::isPlatformTypeSupported(FIDString type)
@@ -218,60 +251,93 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     nativeHandle = parent;
 
 #ifdef _WIN32
+    // ── Singleton migration ───────────────────────────────────────────────────
+    // If another view is currently rendering (e.g. a second alias editor just
+    // opened), stop that render and tear down its backends before re-initialising
+    // on the new HWND.  The ImGui context is kept alive to preserve canvas state.
+    if (s_imguiCtx && s_winRenderRunning)
+    {
+        s_winRenderRunning = false;
+        if (s_winRenderThread)
+        {
+            WaitForSingleObject((HANDLE)s_winRenderThread, 3000);
+            CloseHandle((HANDLE)s_winRenderThread);
+            s_winRenderThread = nullptr;
+        }
+        if (s_winDC && s_winGLCtx)
+            wglMakeCurrent((HDC)s_winDC, (HGLRC)s_winGLCtx);
+
+        if (g_originalWndProc && s_nativeHandle)
+        {
+            SetWindowLongPtr((HWND)s_nativeHandle, GWLP_WNDPROC, (LONG_PTR)g_originalWndProc);
+            g_originalWndProc = nullptr;
+        }
+        K64GUI::setWindowHandle(nullptr);
+        ImGui::SetCurrentContext(s_imguiCtx);
+        ImGui_ImplOpenGL3_Shutdown();
+        ImGui_ImplWin32_Shutdown();
+        destroyWGLContext();   // releases s_winDC, s_winGLCtx (uses s_nativeHandle)
+        s_nativeHandle = nullptr;
+    }
+
+    // ── Create WGL context for the new HWND ──────────────────────────────────
     if (!createWGLContext(parent))
         return kResultFalse;
 
-    // Init ImGui
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    s_nativeHandle = parent;
+
+    // ── Create or reuse the singleton ImGui context ───────────────────────────
+    if (!s_imguiCtx)
+    {
+        IMGUI_CHECKVERSION();
+        s_imguiCtx = ImGui::CreateContext();
+    }
+    ImGui::SetCurrentContext(s_imguiCtx);
+
+    // Reset style from scratch so ScaleAllSizes always starts from defaults.
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = nullptr; // no imgui.ini
+    io.IniFilename = nullptr;
 
     ImGui::StyleColorsDark();
     ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowRounding = 0.0f;
-    style.FrameRounding = 2.0f;
+    style.WindowRounding    = 0.0f;
+    style.FrameRounding     = 2.0f;
     style.ScrollbarRounding = 2.0f;
 
+    // ── Backends ─────────────────────────────────────────────────────────────
     ImGui_ImplWin32_Init((HWND)parent);
     ImGui_ImplOpenGL3_Init("#version 130");
 
-    // Query the DPI scale for the parent window so all UI elements are sharp on
-    // high-DPI monitors.  We do NOT call ImGui_ImplWin32_EnableDpiAwareness()
-    // because that is process-wide and would interfere with the host DAW.
+    // ── Fonts + DPI ───────────────────────────────────────────────────────────
+    // We do NOT call ImGui_ImplWin32_EnableDpiAwareness() — that is process-wide
+    // and would interfere with the host DAW.
     float dpiScale = ImGui_ImplWin32_GetDpiScaleForHwnd((HWND)parent);
     if (dpiScale <= 0.f) dpiScale = 1.f;
     g_initialDpiScale = dpiScale;
 
-    // Two font sizes: small for zoom ≤ 1.5x, large for zoom > 1.5x.
-    // ImGui renders text sharpest when the requested pixel size is close to
-    // the loaded size.  A single 32 px font looks blurry at the 12-15 px
-    // sizes used at normal (1×) zoom.
-    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 14.0f * dpiScale);  // Fonts[0] – default
-    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 32.0f * dpiScale);  // Fonts[1] – high zoom
+    // Rebuild font atlas for the new HWND's DPI (two sizes: default + high-zoom).
+    io.Fonts->Clear();
+    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 14.0f * dpiScale);
+    io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 32.0f * dpiScale);
     io.Fonts->Build();
 
-    // Scale all style sizes (padding, rounding, etc.) to match DPI.
     ImGui::GetStyle().ScaleAllSizes(dpiScale);
 
-    // Subclass the host window to receive input events
+    // ── Subclass host HWND for input events ──────────────────────────────────
     g_originalWndProc = (WNDPROC)SetWindowLongPtr((HWND)parent, GWLP_WNDPROC, (LONG_PTR)editorWndProc);
 
-    // Init the 64klang GUI layer and pass the HWND for file dialogs
+    // ── K64GUI ────────────────────────────────────────────────────────────────
     K64GUI::init();
     K64GUI::setWindowHandle(parent);
 
     // Release WGL context from this thread so the render thread can own it.
-    // (A WGL context can only be current on one thread at a time.)
     wglMakeCurrent(nullptr, nullptr);
 
-    // Start dedicated render thread (~60 fps, mirrors Linux)
-    winRenderRunning = true;
-    winRenderThread  = CreateThread(nullptr, 0, renderThreadEntryWin, this, 0, nullptr);
+    // ── Start render thread ───────────────────────────────────────────────────
+    s_winRenderRunning = true;
+    s_winRenderThread  = CreateThread(nullptr, 0, renderThreadEntryWin, this, 0, nullptr);
 
-    // Arm lazy restore — applied on the first rendered frame so the host has
-    // finished placing the window before we reposition/resize it.
     s_pendingRestore = true;
 
 #elif defined(__APPLE__)
@@ -405,45 +471,56 @@ tresult PLUGIN_API K64PluginView::removed()
 #ifdef _WIN32
     if (nativeHandle)
     {
-        // Save full HWND rect for session-static restore on next open.
-        // Use the total window size (not the VST3 ViewRect) so that
-        // SetWindowPos round-trips without shrinking host chrome each cycle.
-        RECT wr = {};
-        ::GetWindowRect((HWND)nativeHandle, &wr);
-        s_savedPos  = { wr.left, wr.top };
-        s_savedWinW = wr.right  - wr.left;
-        s_savedWinH = wr.bottom - wr.top;
-
-        // Signal the render thread to stop and wait for it to exit.
-        winRenderRunning = false;
-        if (winRenderThread)
+        // Only interact with the singleton render state if this view is the one
+        // currently driving it.  A non-active view (migrated away) just clears
+        // its instance pointers without touching the shared rendering stack.
+        if (nativeHandle == s_nativeHandle)
         {
-            WaitForSingleObject((HANDLE)winRenderThread, 3000);
-            CloseHandle((HANDLE)winRenderThread);
-            winRenderThread = nullptr;
+            // Save full HWND rect for session-static restore on next open.
+            RECT wr = {};
+            ::GetWindowRect((HWND)nativeHandle, &wr);
+            s_savedPos  = { wr.left, wr.top };
+            s_savedWinW = wr.right  - wr.left;
+            s_savedWinH = wr.bottom - wr.top;
+
+            // Signal the render thread to stop and wait for it to exit.
+            s_winRenderRunning = false;
+            if (s_winRenderThread)
+            {
+                WaitForSingleObject((HANDLE)s_winRenderThread, 3000);
+                CloseHandle((HANDLE)s_winRenderThread);
+                s_winRenderThread = nullptr;
+            }
+
+            // The render thread released the WGL context before exiting;
+            // re-acquire it here so we can call the ImGui/GL shutdown functions.
+            if (s_winDC && s_winGLCtx)
+                wglMakeCurrent((HDC)s_winDC, (HGLRC)s_winGLCtx);
+
+            // Restore original wndproc
+            if (g_originalWndProc)
+            {
+                SetWindowLongPtr((HWND)nativeHandle, GWLP_WNDPROC, (LONG_PTR)g_originalWndProc);
+                g_originalWndProc = nullptr;
+            }
+
+            K64GUI::setWindowHandle(nullptr);
+            K64GUI::shutdown();
+
+            // Shut down the backends; the ImGui context itself is kept alive so
+            // canvas state (zoom, pan, open panels) survives the window closing.
+            // It is destroyed in ~K64PluginView() when the last instance is gone.
+            if (s_imguiCtx)
+            {
+                ImGui::SetCurrentContext(s_imguiCtx);
+                ImGui_ImplOpenGL3_Shutdown();
+                ImGui_ImplWin32_Shutdown();
+            }
+
+            destroyWGLContext();
+            s_nativeHandle = nullptr;
         }
-
-        // The render thread released the WGL context before exiting;
-        // re-acquire it here so we can call the ImGui/GL shutdown functions.
-        if (winDC && winGLCtx)
-            wglMakeCurrent((HDC)winDC, (HGLRC)winGLCtx);
-
-        // Restore original wndproc
-        if (g_originalWndProc)
-        {
-            SetWindowLongPtr((HWND)nativeHandle, GWLP_WNDPROC, (LONG_PTR)g_originalWndProc);
-            g_originalWndProc = nullptr;
-        }
-
-        K64GUI::setWindowHandle(nullptr);
-        K64GUI::shutdown();
-
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui_ImplWin32_Shutdown();
-        ImGui::DestroyContext();
-
-        destroyWGLContext();
-    }
+    } // if (nativeHandle)
 
 #elif defined(__APPLE__)
 
@@ -493,18 +570,17 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
     int h = newSize->bottom - newSize->top;
 
 #ifdef _WIN32
-    if (winGLCtx && nativeHandle)
+    // Only resize the render surface when this view is the active renderer.
+    if (s_winGLCtx && nativeHandle && nativeHandle == s_nativeHandle)
     {
         // Use the actual HWND client rect; host may add chrome inside the same HWND.
         RECT hwndRect = {};
         ::GetClientRect((HWND)nativeHandle, &hwndRect);
         int hw = (hwndRect.right  > 0) ? (hwndRect.right  - hwndRect.left) : w;
         int hh = (hwndRect.bottom > 0) ? (hwndRect.bottom - hwndRect.top)  : h;
-        // viewWidth/viewHeight are read by the render thread each frame;
-        // plain volatile int stores are atomic on x86 for aligned 32-bit values.
-        std::lock_guard<std::mutex> lock(renderMutex);
-        viewWidth  = hw;
-        viewHeight = hh;
+        std::lock_guard<std::mutex> lock(s_renderMutex);
+        s_viewWidth  = hw;
+        s_viewHeight = hh;
     }
 
 #elif defined(__APPLE__)
@@ -568,8 +644,8 @@ static PFNWGLSWAPINTERVALEXTPROC wgl_SwapIntervalEXT = nullptr;
 
 bool K64PluginView::createWGLContext(void* hwnd)
 {
-    winDC = GetDC((HWND)hwnd);
-    if (!winDC)
+    s_winDC = GetDC((HWND)hwnd);
+    if (!s_winDC)
         return false;
 
     PIXELFORMATDESCRIPTOR pfd = {};
@@ -579,25 +655,25 @@ bool K64PluginView::createWGLContext(void* hwnd)
     pfd.iPixelType = PFD_TYPE_RGBA;
     pfd.cColorBits = 32;
 
-    int pf = ChoosePixelFormat((HDC)winDC, &pfd);
-    if (!pf || !SetPixelFormat((HDC)winDC, pf, &pfd))
+    int pf = ChoosePixelFormat((HDC)s_winDC, &pfd);
+    if (!pf || !SetPixelFormat((HDC)s_winDC, pf, &pfd))
     {
-        ReleaseDC((HWND)hwnd, (HDC)winDC);
-        winDC = nullptr;
+        ReleaseDC((HWND)hwnd, (HDC)s_winDC);
+        s_winDC = nullptr;
         return false;
     }
 
-    winGLCtx = wglCreateContext((HDC)winDC);
-    if (!winGLCtx)
+    s_winGLCtx = wglCreateContext((HDC)s_winDC);
+    if (!s_winGLCtx)
     {
-        ReleaseDC((HWND)hwnd, (HDC)winDC);
-        winDC = nullptr;
+        ReleaseDC((HWND)hwnd, (HDC)s_winDC);
+        s_winDC = nullptr;
         return false;
     }
 
     // Make current briefly on this (attach) thread so ImGui init functions work.
     // attached() releases the context before starting the render thread.
-    wglMakeCurrent((HDC)winDC, (HGLRC)winGLCtx);
+    wglMakeCurrent((HDC)s_winDC, (HGLRC)s_winGLCtx);
 
     // Enable vsync — the render thread uses Sleep(1) as a yield; SwapBuffers
     // with vsync provides natural ~60 fps pacing without busy-spinning.
@@ -609,8 +685,8 @@ bool K64PluginView::createWGLContext(void* hwnd)
     RECT cr = {};
     if (::GetClientRect((HWND)hwnd, &cr))
     {
-        viewWidth  = (cr.right  > 0) ? (cr.right  - cr.left) : kDefaultWidth;
-        viewHeight = (cr.bottom > 0) ? (cr.bottom - cr.top)  : kDefaultHeight;
+        s_viewWidth  = (cr.right  > 0) ? (cr.right  - cr.left) : kDefaultWidth;
+        s_viewHeight = (cr.bottom > 0) ? (cr.bottom - cr.top)  : kDefaultHeight;
     }
 
     return true;
@@ -618,16 +694,16 @@ bool K64PluginView::createWGLContext(void* hwnd)
 
 void K64PluginView::destroyWGLContext()
 {
-    if (winGLCtx)
+    if (s_winGLCtx)
     {
         wglMakeCurrent(nullptr, nullptr);
-        wglDeleteContext((HGLRC)winGLCtx);
-        winGLCtx = nullptr;
+        wglDeleteContext((HGLRC)s_winGLCtx);
+        s_winGLCtx = nullptr;
     }
-    if (winDC && nativeHandle)
+    if (s_winDC && s_nativeHandle)
     {
-        ReleaseDC((HWND)nativeHandle, (HDC)winDC);
-        winDC = nullptr;
+        ReleaseDC((HWND)s_nativeHandle, (HDC)s_winDC);
+        s_winDC = nullptr;
     }
 }
 
@@ -636,12 +712,12 @@ void K64PluginView::destroyWGLContext()
 void K64PluginView::renderFrameWin()
 {
     // Skip while minimised — no visible surface.
-    if (IsIconic((HWND)nativeHandle))
+    if (IsIconic((HWND)s_nativeHandle))
         return;
 
-    // Hold renderMutex for the whole frame so onSize() (host thread) can safely
-    // update viewWidth/viewHeight between frames.
-    std::lock_guard<std::mutex> lock(renderMutex);
+    // Hold s_renderMutex for the whole frame so onSize() (host thread) can safely
+    // update s_viewWidth/s_viewHeight between frames.
+    std::lock_guard<std::mutex> lock(s_renderMutex);
 
     // Lazy position + size restore: applied on the first frame after attach.
     // SetWindowPos sends WM_SIZE synchronously on the calling thread (here the
@@ -676,16 +752,16 @@ void K64PluginView::renderFrameWin()
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    SwapBuffers((HDC)winDC); // vsync via wglSwapIntervalEXT(1)
+    SwapBuffers((HDC)s_winDC); // vsync via wglSwapIntervalEXT(1)
 }
 
 // ─── runWinRenderLoop ─────────────────────────────────────────────────────────
 // Render thread entry: owns the WGL context for its lifetime.
 void K64PluginView::runWinRenderLoop()
 {
-    wglMakeCurrent((HDC)winDC, (HGLRC)winGLCtx);
+    wglMakeCurrent((HDC)s_winDC, (HGLRC)s_winGLCtx);
 
-    while (winRenderRunning)
+    while (s_winRenderRunning)
     {
         // Handle the pendingRestore case outside the frame lock so we can
         // call SetWindowPos without deadlocking on renderMutex.

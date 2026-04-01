@@ -59,25 +59,10 @@ private:
     bool guiInitialized = false;
 
 #ifdef _WIN32
-    // WGL/OpenGL resources (void* to avoid <windows.h> in this header; HGLRC/HDC in .cpp)
-    void*     winGLCtx   = nullptr;   // HGLRC
-    void*     winDC      = nullptr;   // HDC
-    int       viewWidth  = kDefaultWidth;
-    int       viewHeight = kDefaultHeight;
-
+    // WGL context helpers — operate on process-wide singleton GL state.
     bool createWGLContext(void* hwnd);
     void destroyWGLContext();
-
-    // Render thread (mirrors Linux pattern)
-    void*         winRenderThread  = nullptr;  // HANDLE
-    volatile bool winRenderRunning = false;
 #endif // _WIN32
-
-    // Protects D3D11/GL resources and ImGui state against concurrent access
-    // between the timer-driven render and host lifecycle calls (removed/onSize).
-    // renderFrame() uses try_lock (skip tick if busy); lifecycle methods use
-    // lock (block until any in-progress frame completes before modifying state).
-    std::mutex  renderMutex;
 
 #if defined(__linux__) && !defined(__APPLE__)
     Display*    linuxDisplay = nullptr;
