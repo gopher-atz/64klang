@@ -2529,6 +2529,13 @@ bool SynthController::loadPatch(const std::string& filename)
 
 void SynthController::savePatch(const std::string& filename)
 {
+	bool wasUpdating = _massDataUpdate;
+	if (!wasUpdating)
+	{
+		_massDataUpdate = true;
+		DataAccessMutex.lock();
+	}
+
 	TiXmlDocument doc( filename);
 
 	TiXmlDeclaration decl("1.0", "utf-8", "yes");
@@ -2590,6 +2597,13 @@ void SynthController::savePatch(const std::string& filename)
 	root.InsertEndChild(data);
 
 	doc.InsertEndChild(root);
+
+	if (!wasUpdating)
+	{
+		_massDataUpdate = false;
+		DataAccessMutex.unlock();
+	}
+
 	doc.SaveFile();
 }
 
@@ -2597,6 +2611,13 @@ void SynthController::savePatch(const std::string& filename)
 
 std::string SynthController::savePatchToString()
 {
+	bool wasUpdating = _massDataUpdate;
+	if (!wasUpdating)
+	{
+		_massDataUpdate = true;
+		DataAccessMutex.lock();
+	}
+
 	TiXmlDocument doc;
 
 	TiXmlDeclaration decl("1.0", "utf-8", "yes");
@@ -2629,6 +2650,13 @@ std::string SynthController::savePatchToString()
 
 	TiXmlPrinter printer;
 	doc.Accept(&printer);
+
+	if (!wasUpdating)
+	{
+		_massDataUpdate = false;
+		DataAccessMutex.unlock();
+	}
+
 	return printer.Str();
 }
 
@@ -2721,6 +2749,10 @@ void SynthController::resetPatch(bool createDefault, bool acquireMutex)
 		_massDataUpdate = true;
 		DataAccessMutex.lock();
 	}
+
+	// kill all active voices before tearing down the node graph so the audio
+	// thread never processes a half-destroyed voice tree
+	killVoices();
 
 	// delete nodes (except global 0)
 	for (DWORD i = 0; i < MAX_NODES; i++)

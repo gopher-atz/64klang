@@ -241,7 +241,6 @@ static void renderToolbar()
     {
         if (sc)
         {
-            sc->killVoices();
             sc->resetPatch(true, true);
             if (s_canvas)
                 s_canvas->rebuildZOrder();
