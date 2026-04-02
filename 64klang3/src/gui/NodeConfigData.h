@@ -1555,19 +1555,21 @@ R"xml(
       <NodeInput name="Sync Osc/LFO"/>
     </Node>
 
-    <Node typeid="60" name="Fourioza" numInputs="13" numReqGUIInputs="1" numMaxGUIInputs="12" allowSignalInsertion="1">
+	<Node typeid="60" name="Fourioza" numInputs="15" numReqGUIInputs="1" numMaxGUIInputs="14" allowSignalInsertion="1">
       <NodeInput name="In"/>
       <NodeInput name="Activate" minValue="0" maxValue="1" range="1" singleInput="1"/>
       <NodeInput name="Time Stretch" minValue="0" maxValue="128" mapping="15"/>
       <NodeInput name="Phase Smooth" minValue="0" maxValue="128" mapping="13"/>
       <NodeInput name="Harmonic Smooth" minValue="-128" maxValue="128"/>
+	<NodeInput name="Harmonics Base Freq" minValue="0" maxValue="128" mapping="16"/>
+      <NodeInput name="Harmonics Bandwidth" minValue="0" maxValue="128"/>
+      <NodeInput name="Num Harmonics" minValue="0" maxValue="128"/>
       <NodeInput name="Low Cut" minValue="0" maxValue="128" mapping="4"/>
       <NodeInput name="High Cut" minValue="0" maxValue="128" mapping="4"/>
       <NodeInput name="Base Pitch" minValue="-64" maxValue="64"/>
-      <NodeInput name="Layer1 Pitch" minValue="-64" maxValue="64"/>
-      <NodeInput name="Layer2 Pitch" minValue="-64" maxValue="64"/>
-      <NodeInput name="Layer1 Mix" minValue="0" maxValue="128" mapping="13"/>
-      <NodeInput name="Layer2 Mix" minValue="0" maxValue="128" mapping="13"/>
+      <NodeInput name="Frequency Shift" minValue="-128" maxValue="128"/>
+      <NodeInput name="Layer Pitch" minValue="-64" maxValue="64"/>
+      <NodeInput name="Layer Mix" minValue="0" maxValue="128" mapping="13"/>
       <NodeInput name="Mode">
         <ModeGroup name="Window Size" mask="7" shift="0">
           <ModeItem name="512"   value="0"/>

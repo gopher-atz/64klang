@@ -324,6 +324,12 @@ KnobLabel formatKnobValue(double normValue, double range, int mapping, int curre
         return { buf, "x" };
     }
 
+    case 16: // FouriozaHarmBaseFreq: engine formula 10 * pow(500, norm) → ~10..5000 Hz
+    {
+        double freq = 10.0 * std::pow(500.0, norm);
+        return truncatedHz(freq);
+    }
+
     case 14: // SNH_Frequency
     {
         if ((currentMode & 16) != 0) // Trigger

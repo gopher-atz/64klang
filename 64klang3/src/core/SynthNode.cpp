@@ -4981,12 +4981,14 @@ void SYNTHCALL OSCSYNC_tick(SynthNode* n)
 // v[7]       = |harmRatio|      (sign-mask also encoded as compare result in d[])
 // v[8]       = cutLoV:          BQF-mapped low-cut  × (winSize/2)
 // v[9]       = cutHiV:          BQF-mapped high-cut × (winSize/2)
-// v[10]      = pitchMultV:      s_exp2(BASEPITCH  * 128/12)
-// v[11]      = layer1Mult:      s_exp2(LAYER1PITCH * 128/12)
-// v[12]      = layer2Mult:      s_exp2(LAYER2PITCH * 128/12)
-// v[13]      = layer1Gain:      s_clamp(LAYER1MIX, 1, 0)
-// v[14]      = layer2Gain:      s_clamp(LAYER2MIX, 1, 0)
-// v[15].i[0] = K:               boxcar half-width = max(winSize/512, 2)
+// v[10]      = pitchMultV:      s_exp2(BASEPITCH * 128/12)
+// v[11]      = layerMult:       d[0]=L1mult, d[1]=L2mult from s_exp2(LAYERPITCH * 128/12)
+// v[12]      = layerGain:       d[0]=L1gain, d[1]=L2gain from s_clamp(LAYERMIX, 1, 0)
+// v[13]      = K:               int: boxcar half-width = max(winSize/512, 2)
+// v[14]      = harmBaseHz:      10 * pow(500, HARMONICSBASEFREQ) Hz (exponential mapping)
+// v[15]      = harmBwCents:     0.1 + HARMONICSBW * 199.9
+// v[16]      = freqShiftHz:     FREQSHIFT * 1000
+// v[17].i[0] = numHarmonics:    round(NUMHARMONICS * 100); 0 = disabled
 #define FOZA_HOP       (n->v[3])
 #define FOZA_PHASESM   (n->v[5])
 #define FOZA_HARMRATIO (n->v[6])
@@ -4994,11 +4996,13 @@ void SYNTHCALL OSCSYNC_tick(SynthNode* n)
 #define FOZA_CUTLOV    (n->v[8])
 #define FOZA_CUTHIV    (n->v[9])
 #define FOZA_PITCHMULT (n->v[10])
-#define FOZA_L1MULT    (n->v[11])
-#define FOZA_L2MULT    (n->v[12])
-#define FOZA_L1GAIN    (n->v[13])
-#define FOZA_L2GAIN    (n->v[14])
-#define FOZA_BOXK      (n->v[15].i[0])
+#define FOZA_LAYERMULT (n->v[11])
+#define FOZA_LAYERGAIN (n->v[12])
+#define FOZA_BOXK      (n->v[13].i[0])
+#define FOZA_HARMBASEHZ (n->v[14])
+#define FOZA_HARMBW     (n->v[15])
+#define FOZA_FREQSHIFTHZ (n->v[16])
+#define FOZA_NUMHARM    (n->v[17].i[0])
 
 #ifndef FOURIOZA_SKIP
 void SYNTHCALL FOURIOZA_init(SynthNode* n)
@@ -5014,27 +5018,39 @@ void SYNTHCALL FOURIOZA_init(SynthNode* n)
 		);
 }
 
-// Resample src magnitudes by pitchMultV into dst (both length winSize).
-// Linear interpolation within the positive-frequency half [0..winSize/2];
-// out-of-range source reads return 0. Mirror pass restores conjugate symmetry.
-// src and dst must not alias.
-static inline void FOZA_PitchResample(const sample_t* src, sample_t* dst, int winSize, const sample_t& pitchMultV)
+// Shared spectral remapping core used by both pitch-shift and frequency-shift.
+// For each output bin k the source position is:  srcV = k * srcScale - srcOffset
+// Linear interpolation within [0..winSize/2]; out-of-range reads return 0.
+// Mirror pass restores conjugate symmetry. src and dst must not alias.
+static inline void FOZA_SpectralResample(const sample_t* src, sample_t* dst, int winSize,
+                                          const sample_t& srcScale, const sample_t& srcOffset)
 {
-	for (int k = 0; k < winSize; k++)
+	int half = winSize >> 1;
+	for (int k = 0; k <= half; k++)
 	{
-		sample_t srcV = sample_t((double)k) / pitchMultV;
+		sample_t srcV = sample_t((double)k) * srcScale - srcOffset;
 		int idxL0 = (int)srcV.d[0]; double fracL = srcV.d[0] - idxL0; int idxL1 = idxL0 + 1;
 		int idxR0 = (int)srcV.d[1]; double fracR = srcV.d[1] - idxR0; int idxR1 = idxR0 + 1;
 		double mL = 0.0, mR = 0.0;
-		if (idxL0 >= 0 && idxL0 <= winSize/2) mL  = src[idxL0].d[0] * (1.0 - fracL);
-		if (idxL1 >= 0 && idxL1 <= winSize/2) mL += src[idxL1].d[0] * fracL;
-		if (idxR0 >= 0 && idxR0 <= winSize/2) mR  = src[idxR0].d[1] * (1.0 - fracR);
-		if (idxR1 >= 0 && idxR1 <= winSize/2) mR += src[idxR1].d[1] * fracR;
+		if (idxL0 >= 0 && idxL0 <= half) mL  = src[idxL0].d[0] * (1.0 - fracL);
+		if (idxL1 >= 0 && idxL1 <= half) mL += src[idxL1].d[0] * fracL;
+		if (idxR0 >= 0 && idxR0 <= half) mR  = src[idxR0].d[1] * (1.0 - fracR);
+		if (idxR1 >= 0 && idxR1 <= half) mR += src[idxR1].d[1] * fracR;
 		dst[k] = sample_t(mL, mR);
 	}
 	// Restore conjugate symmetry: mirror positive-freq half to negative-freq half
-	for (int k = 1; k < winSize/2; k++)
+	for (int k = 1; k < half; k++)
 		dst[winSize - k] = dst[k];
+}
+
+
+static inline double FOZA_HarmonicProfile(double fi, double bwi)
+{
+	double x = fi / bwi;
+	x *= x;
+	if (x > 14.71280603)
+		return 0.0;
+	return exp(-x);
 }
 
 void SYNTHCALL FOURIOZA_tick(SynthNode* n)
@@ -5046,13 +5062,15 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 	NODE_CALL_INPUT(FOURIOZA_STRETCH);
 	NODE_CALL_INPUT(FOURIOZA_PHASESMOOTH);
 	NODE_CALL_INPUT(FOURIOZA_HARMONICSMOOTH);
+	NODE_CALL_INPUT(FOURIOZA_HARMONICSBASEFREQ);
+	NODE_CALL_INPUT(FOURIOZA_HARMONICSBW);
+	NODE_CALL_INPUT(FOURIOZA_NUMHARMONICS);
 	NODE_CALL_INPUT(FOURIOZA_LOWCUT);
 	NODE_CALL_INPUT(FOURIOZA_HIGHCUT);
+	NODE_CALL_INPUT(FOURIOZA_FREQSHIFT);
 	NODE_CALL_INPUT(FOURIOZA_BASEPITCH);
-	NODE_CALL_INPUT(FOURIOZA_LAYER1PITCH);
-	NODE_CALL_INPUT(FOURIOZA_LAYER2PITCH);
-	NODE_CALL_INPUT(FOURIOZA_LAYER1MIX);
-	NODE_CALL_INPUT(FOURIOZA_LAYER2MIX);
+	NODE_CALL_INPUT(FOURIOZA_LAYERPITCH);
+	NODE_CALL_INPUT(FOURIOZA_LAYERMIX);
 	// NODE_CALL_INPUT(FOURIOZA_MODE);
 #ifdef COMPILE_VSTI
 	int mode = n->input[FOURIOZA_MODE]->i[0];
@@ -5084,6 +5102,18 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 		FOZA_HARMRATIO = harmR;
 		FOZA_ABSHARM   = s_ifthen(harmR >= sample_t::zero(), harmR, -harmR);
 
+		// Harmonic mask parameters from UI-normalized inputs
+		{
+			double baseNorm = s_clamp(INP(FOURIOZA_HARMONICSBASEFREQ), SC[S_1_0], sample_t::zero()).d[0];
+			FOZA_HARMBASEHZ = sample_t(10.0 * pow(500.0, baseNorm));
+		}
+		{
+			sample_t harmBwNorm = s_clamp(INP(FOURIOZA_HARMONICSBW), SC[S_1_0], sample_t::zero());
+			FOZA_HARMBW = sample_t(0.1) + harmBwNorm * sample_t(199.9);
+		}
+		FOZA_FREQSHIFTHZ = s_clamp(INP(FOURIOZA_FREQSHIFT), SC[S_1_0], sample_t(-1.0)) * sample_t(1000.0);
+		FOZA_NUMHARM = (int)(s_clamp(INP(FOURIOZA_NUMHARMONICS), SC[S_1_0], sample_t::zero()).d[0] * 100.0 + 0.5);
+
 		// Spectral cut thresholds in bin units (BQF log mapping × winSize/2)
 		sample_t halfWin = sample_t((double)(FOZA_WINSIZE >> 1));
 		sample_t loIn = s_clamp(INP(FOURIOZA_LOWCUT),  SC[S_1_0], sample_t::zero());
@@ -5093,12 +5123,11 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 
 		// Pitch multipliers (semitones/128 → frequency ratio via s_exp2)
 		FOZA_PITCHMULT = s_exp2(INP(FOURIOZA_BASEPITCH)  * SC[S_128_0] * SC[S_1_O_12]);
-		FOZA_L1MULT    = s_exp2(INP(FOURIOZA_LAYER1PITCH) * SC[S_128_0] * SC[S_1_O_12]);
-		FOZA_L2MULT    = s_exp2(INP(FOURIOZA_LAYER2PITCH) * SC[S_128_0] * SC[S_1_O_12]);
 
-		// Layer blend gains [0..1]
-		FOZA_L1GAIN = s_clamp(INP(FOURIOZA_LAYER1MIX), SC[S_1_0], sample_t::zero());
-		FOZA_L2GAIN = s_clamp(INP(FOURIOZA_LAYER2MIX), SC[S_1_0], sample_t::zero());
+		// Layer pitch and blend gains from stereo inputs
+		// Left channel = layer 1, right channel = layer 2
+		FOZA_LAYERMULT = s_exp2(INP(FOURIOZA_LAYERPITCH) * SC[S_128_0] * SC[S_1_O_12]);
+		FOZA_LAYERGAIN = s_clamp(INP(FOURIOZA_LAYERMIX), SC[S_1_0], sample_t::zero());
 
 		// Boxcar half-width for harmonic split floor estimator
 		FOZA_BOXK = (FOZA_WINSIZE / 512 < 2) ? 2 : (FOZA_WINSIZE / 512);
@@ -5201,8 +5230,7 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 				magBuf[i] = rawBuf[i] = s_sqrt(fftBuf[i].re*fftBuf[i].re + fftBuf[i].im*fftBuf[i].im);
 
 			// ── Harmonic/noise split via frequency-axis boxcar floor estimator ──
-			bool doHarmonicSplit = !s_testz_si128((FOZA_HARMRATIO != sample_t::zero()), (FOZA_HARMRATIO != sample_t::zero()));
-			if (doHarmonicSplit)
+			if (!s_testz_si128((FOZA_HARMRATIO != sample_t::zero()), (FOZA_HARMRATIO != sample_t::zero())))
 			{
 				int K = FOZA_BOXK;
 				// Hoist the per-grain sign comparison out of the per-bin inner loop
@@ -5226,57 +5254,127 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 				}
 			}
 
+			// ── Harmonic comb mask (PaulXStretch style), active when Num Harmonics > 0 ──
+			if (FOZA_NUMHARM > 0)
+			{
+				sample_t* ampBuf = (sample_t*)FOZA_PITCHSCRATCH;
+				int half = FOZA_WINSIZE >> 1;
+				for (int i = 0; i <= half; i++)
+					ampBuf[i] = sample_t::zero();
+
+				double baseHz = FOZA_HARMBASEHZ.d[0];
+				double bandwidth = FOZA_HARMBW.d[0];
+				int numHarm = FOZA_NUMHARM;
+				if (baseHz < 10.0)
+					baseHz = 10.0;
+
+				double bwMul = pow(2.0, bandwidth / 1200.0) - 1.0;
+				for (int nh = 1; nh <= numHarm; nh++)
+				{
+					double f = (double)nh * baseHz;
+					if (f >= (double)SYNTH_SAMPLERATE * 0.5)
+						break;
+
+					double bwHz = bwMul * f;
+					double bwi = bwHz / (2.0 * (double)SYNTH_SAMPLERATE);
+					if (bwi <= 0.0)
+						continue;
+					double fi = f / (double)SYNTH_SAMPLERATE;
+
+					for (int k = 1; k <= half; k++)
+					{
+						double binF = (double)k / (double)FOZA_WINSIZE;
+						double hprofile = FOZA_HarmonicProfile(binF - fi, bwi);
+						// Max-combine per-harmonic lobes so adding more high harmonics
+						// does not globally renormalize and suppress low harmonics.
+						ampBuf[k] = s_max(ampBuf[k], sample_t(hprofile));
+					}
+				}
+				for (int k = 1; k <= half; k++)
+				{
+					double a = ampBuf[k].d[0];
+					double mask = (a < 0.368) ? 0.0 : 1.0;
+					sample_t maskV = sample_t(mask);
+					magBuf[k] *= maskV;
+					if (k < half)
+						magBuf[FOZA_WINSIZE - k] *= maskV;
+				}
+			}
+
 			// ── Spectral low-cut / high-cut — hard binary mask applied to magBuf ──
 			// FOZA_CUTLOV / FOZA_CUTHIV are pre-scaled bin thresholds from NODE_UPDATE_BEGIN.
 			{
-				for (int k = 0; k < FOZA_WINSIZE; k++)
+				int half = FOZA_WINSIZE >> 1;
+				for (int k = 0; k <= half; k++)
 				{
-					int kPos = (k <= FOZA_WINSIZE / 2) ? k : FOZA_WINSIZE - k;
-					sample_t kV = sample_t((double)kPos);
-					magBuf[k] *= s_ifthen((kV >= FOZA_CUTLOV) & (kV <= FOZA_CUTHIV), SC[S_1_0], sample_t::zero());
+					sample_t kV = sample_t((double)k);
+					sample_t maskV = s_ifthen((kV >= FOZA_CUTLOV) & (kV <= FOZA_CUTHIV), SC[S_1_0], sample_t::zero());
+					magBuf[k] *= maskV;
+					if (k > 0 && k < half)
+						magBuf[FOZA_WINSIZE - k] *= maskV;
 				}
 			}
 
-			// ── Base pitch shift — energy-normalized spectral resampling ──
-			// FOZA_PITCHMULT = 1.0 when BASEPITCH = 0; skip entirely in that case.
-			bool doPitchShift = !s_testz_si128((FOZA_PITCHMULT != SC[S_1_0]), (FOZA_PITCHMULT != SC[S_1_0]));
-			if (doPitchShift)
+			// ── Pitch shift + frequency shift — single composed spectral resample ──
+			// srcBin = (k - shiftBins) / pitchMult  →  srcScale = 1/pitchMult, srcOffset = shiftBins/pitchMult
 			{
-				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH;
+				sample_t pitchScale = SC[S_1_0] / FOZA_PITCHMULT;
+				sample_t shiftBins  = FOZA_FREQSHIFTHZ * sample_t((double)FOZA_WINSIZE / (double)SYNTH_SAMPLERATE);
+				bool doPitch = !s_testz_si128((FOZA_PITCHMULT != SC[S_1_0]), (FOZA_PITCHMULT != SC[S_1_0]));
+				bool doShift = !s_testz_si128((FOZA_FREQSHIFTHZ != sample_t::zero()), (FOZA_FREQSHIFTHZ != sample_t::zero()));
+				if (doPitch || doShift)
+				{
+					sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH;
 
-				sample_t sumB = sample_t::zero();
-				for (int k = 0; k < FOZA_WINSIZE; k++)
-					sumB += magBuf[k] * magBuf[k];
+					int half = FOZA_WINSIZE >> 1;
+					sample_t sumB = sample_t::zero();
+					for (int k = 0; k <= half; k++)
+						sumB += magBuf[k] * magBuf[k];
 
-				FOZA_PitchResample(magBuf, magScratch, FOZA_WINSIZE, FOZA_PITCHMULT);
+					FOZA_SpectralResample(magBuf, magScratch, FOZA_WINSIZE, pitchScale, shiftBins * pitchScale);
 
-				sample_t sumA = sample_t::zero();
-				for (int k = 0; k < FOZA_WINSIZE; k++)
-					sumA += magScratch[k] * magScratch[k];
-				sample_t scale = s_ifthen(sumA > sample_t(1e-30), s_sqrt(sumB / sumA), SC[S_1_0]);
-				for (int k = 0; k < FOZA_WINSIZE; k++)
-					magBuf[k] = magScratch[k] * scale;
+					sample_t sumA = sample_t::zero();
+					for (int k = 0; k <= half; k++)
+						sumA += magScratch[k] * magScratch[k];
+					
+					sample_t scale = s_ifthen(sumA > sample_t(1e-30), s_sqrt(sumB / sumA), SC[S_1_0]);
+					for (int k = 0; k < FOZA_WINSIZE; k++)
+						magBuf[k] = magScratch[k] * scale;
+				}
 			}
 
 			// ── Spectral layers — mix in pitch-shifted copies from frozen rawBuf snapshot ──
-			bool doLayer1 = !s_testz_si128((FOZA_L1GAIN > sample_t::zero()), (FOZA_L1GAIN > sample_t::zero()));
-			bool doLayer2 = !s_testz_si128((FOZA_L2GAIN > sample_t::zero()), (FOZA_L2GAIN > sample_t::zero()));
+			// Extract left=layer1, right=layer2 from stereo inputs
+			double l1Mult = FOZA_LAYERMULT.d[0];
+			double l2Mult = FOZA_LAYERMULT.d[1];
+			double l1Gain = FOZA_LAYERGAIN.d[0];
+			double l2Gain = FOZA_LAYERGAIN.d[1];
+			
+			bool doLayer1 = l1Gain > 1e-30;
+			bool doLayer2 = l2Gain > 1e-30;
+			
 			if (doLayer1 || doLayer2)
 			{
 				sample_t* magScratch = (sample_t*)FOZA_PITCHSCRATCH;
+				sample_t l1GainV = sample_t(l1Gain);
+				sample_t l2GainV = sample_t(l2Gain);
+				sample_t l1MultV = sample_t(l1Mult);
+				sample_t l2MultV = sample_t(l2Mult);
+				
 				for (int k = 0; k < FOZA_WINSIZE; k++)
 					rawBuf[k] = magBuf[k];
+				
 				if (doLayer1)
 				{
-					FOZA_PitchResample(rawBuf, magScratch, FOZA_WINSIZE, FOZA_L1MULT);
+					FOZA_SpectralResample(rawBuf, magScratch, FOZA_WINSIZE, SC[S_1_0] / l1MultV, sample_t(0.0));
 					for (int k = 0; k < FOZA_WINSIZE; k++)
-						magBuf[k] += magScratch[k] * FOZA_L1GAIN;
+						magBuf[k] += magScratch[k] * l1GainV;
 				}
 				if (doLayer2)
 				{
-					FOZA_PitchResample(rawBuf, magScratch, FOZA_WINSIZE, FOZA_L2MULT);
+					FOZA_SpectralResample(rawBuf, magScratch, FOZA_WINSIZE, SC[S_1_0] / l2MultV, sample_t(0.0));
 					for (int k = 0; k < FOZA_WINSIZE; k++)
-						magBuf[k] += magScratch[k] * FOZA_L2GAIN;
+						magBuf[k] += magScratch[k] * l2GainV;
 				}
 			}
 

@@ -1368,14 +1368,16 @@ enum FOURIOZA_INPUT
 	FOURIOZA_STRETCH,      // 2: time-stretch factor, engine 0..1 → 1x..128x
 	FOURIOZA_PHASESMOOTH,  // 3: phase smoothness, engine 0..1 → 0=original, 1=random
 	FOURIOZA_HARMONICSMOOTH,// 4: harmonic/noise split, -1..+1 (-1=noise, 0=raw, +1=harmonic)
-	FOURIOZA_LOWCUT,       // 5: spectral high-pass (low cut), BQF freq mapping (0..1 → 43..22050 Hz)
-	FOURIOZA_HIGHCUT,      // 6: spectral low-pass (high cut), BQF freq mapping (0..1 → 43..22050 Hz)
-	FOURIOZA_BASEPITCH,    // 7: base pitch shift in semitones, stored directly (-24..+24, 0=no shift)
-	FOURIOZA_LAYER1PITCH,  // 8: layer 1 pitch offset in semitones (same convention as PitchShift)
-	FOURIOZA_LAYER2PITCH,  // 9: layer 2 pitch offset in semitones
-	FOURIOZA_LAYER1MIX,    // 10: layer 1 blend gain 0..1 (mixes pitch-shifted copy into output)
-	FOURIOZA_LAYER2MIX,    // 11: layer 2 blend gain 0..1
-	FOURIOZA_MODE,         // 12: mode (window size in bits [2:0])
+	FOURIOZA_HARMONICSBASEFREQ, // 5: harmonic mask base frequency (0..1 → 10..5000 Hz, exponential)
+	FOURIOZA_HARMONICSBW,  // 6: harmonic mask bandwidth in cents (0..1 → 0.1..200)
+	FOURIOZA_NUMHARMONICS, // 7: harmonic comb peak count (0..1 → 0..100; 0 = disabled)
+	FOURIOZA_LOWCUT,       // 8: spectral high-pass (low cut), BQF freq mapping (0..1 → 43..22050 Hz)
+	FOURIOZA_HIGHCUT,      // 9: spectral low-pass (high cut), BQF freq mapping (0..1 → 43..22050 Hz)
+	FOURIOZA_BASEPITCH,    // 10: base pitch shift in semitones, stored directly (-24..+24, 0=no shift)
+	FOURIOZA_FREQSHIFT,    // 11: linear frequency shift (-1..1 → -1000..1000 Hz)
+	FOURIOZA_LAYERPITCH,   // 12: layer pitch offsets (left=layer1, right=layer2, semitones)
+	FOURIOZA_LAYERMIX,     // 13: layer blend gains (left=layer1, right=layer2, 0..1)
+	FOURIOZA_MODE,         // 14: mode flags (window size)
 	FOURIOZA_MAX,
 	FOURIOZA_REQ_GUI_SIGNALS = 1,
 	FOURIOZA_MAX_GUI_SIGNALS = FOURIOZA_MODE
