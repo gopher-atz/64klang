@@ -86,6 +86,30 @@ static KnobLabel truncatedHz(double freq)
     return { buf, "hz" };
 }
 
+// Convert frequency (Hz) to musical note name (e.g., "C4", "A#3")
+static void frequencyToNote(float freq, char* noteBuf, int bufSize)
+{
+    if (freq <= 0.f)
+    {
+        snprintf(noteBuf, bufSize, "");
+        return;
+    }
+
+    static const char* notes[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+
+    // Calculate semitones from A4 (440 Hz)
+    double semitones = 12.0 * log2(freq / 440.0);
+    // MIDI note number (A4 = 69)
+    int midiNote = (int)std::round(semitones + 69.0);
+
+    // Get octave and note index
+    int octave = (midiNote / 12) - 1;
+    int noteIdx = midiNote % 12;
+    if (noteIdx < 0) noteIdx += 12;
+
+    snprintf(noteBuf, bufSize, "%s%d", notes[noteIdx], octave);
+}
+
 static const char* BPM_TIME_NAMES[] = {
     "1/128", "1/64T", "1/128D", "1/64",
     "1/32T", "1/64D", "1/32",   "1/16T",
@@ -773,7 +797,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
     SynthNode* tmplNode = sc->getNode((DWORD)nodeID);
 
     // For voice-level nodes: copy live voice data into the template node's customMem.
-    // Spectrum mode: copy only the tiny pre-computed results section (~8 KB) — the FFT
+    // Spectrum mode: copy only the pre-computed spectrum section (header + magnitude bins)
     // is now done on the audio thread so there is no need for the 512 KB ring buffer copy.
     // This eliminates the mutex hold time that was causing audio-thread try_lock(0ms) failures.
     // Other modes still need the full ring buffer history.
@@ -788,7 +812,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                 if (vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM_TIMELINE ||
                     vizDisp == (int)SIGNAL_VISUALIZER_SPECTRUM)
                 {
-                    // ~8 KB: just the spectrum header + magnitude bins
+                    // Spectrum header + magnitude bins (size depends on max FFT setting)
                     const DWORD kSpecBytes = (SIGVIZ_SPEC_HDR_DW + SIGVIZ_SPEC_BINS) * (DWORD)sizeof(float);
                     memcpy(tmplNode->customMem + SIGVIZ_SPEC_BASE,
                            liveNode->customMem + SIGVIZ_SPEC_BASE,
@@ -815,8 +839,8 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         int slopeSel = (vizMode & SIGNAL_VISUALIZER_SLOPEMASK) >> SIGNAL_VISUALIZER_SLOPESHIFT;
         static const float kSlopeDbOct[] = { 0.f, 1.5f, 3.f, 4.5f };
         float slopeDbPerOct = kSlopeDbOct[slopeSel & 3];
-        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096, 8192, 16384 };
-        if (fftSel < 0 || fftSel >= 7) fftSel = 3;
+        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096, 8192, 16384, 32768 };
+        if (fftSel < 0 || fftSel >= 8) fftSel = 4;
         int fftHalf = kFFTSizes[fftSel] / 2;
 
         // ---------- read core pre-computed spectrum section ----------
@@ -1109,11 +1133,17 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
             float hoverBin  = expf(colCentreNorm * (logmax - logmin) + logmin);
             float hoverFreq = hoverBin * 44100.f / (float)(fftHalfV * 2);
 
-            char tooltip[32];
+            char freqStr[24], noteStr[16];
             if (hoverFreq >= 1000.f)
-                snprintf(tooltip, sizeof(tooltip), "%.2f kHz", hoverFreq * 0.001f);
+                snprintf(freqStr, sizeof(freqStr), "%.2f kHz", hoverFreq * 0.001f);
             else
-                snprintf(tooltip, sizeof(tooltip), "%.1f Hz", hoverFreq);
+                snprintf(freqStr, sizeof(freqStr), "%.1f Hz", hoverFreq);
+            frequencyToNote(hoverFreq, noteStr, sizeof(noteStr));
+            char tooltip[48];
+            if (noteStr[0] != '\0')
+                snprintf(tooltip, sizeof(tooltip), "%s (%s)", freqStr, noteStr);
+            else
+                snprintf(tooltip, sizeof(tooltip), "%s", freqStr);
 
             float lfsz = fontSize * 0.72f;
             ImVec2 ts  = ImGui::CalcTextSize(tooltip);
@@ -1231,8 +1261,8 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         int slopeSel = (vizMode & SIGNAL_VISUALIZER_SLOPEMASK) >> SIGNAL_VISUALIZER_SLOPESHIFT;
         static const float kSlopeDbOctB[] = { 0.f, 1.5f, 3.f, 4.5f };
         float slopeDbPerOct = kSlopeDbOctB[slopeSel & 3];
-        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096, 8192, 16384 };
-        if (fftSel < 0 || fftSel >= 7) fftSel = 3;
+        static const int kFFTSizes[] = { 256, 512, 1024, 2048, 4096, 8192, 16384, 32768 };
+        if (fftSel < 0 || fftSel >= 8) fftSel = 4;
         int fftHalf = kFFTSizes[fftSel] / 2;
 
         // ---------- read core pre-computed spectrum section ----------
@@ -1512,20 +1542,22 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
             float hoverPkTn = (hoverCol >= 0 && hoverCol < (int)colPk.size()) ? colPk[hoverCol] : 0.f;
             float hoverPkDb = hoverPkTn * 100.f - 100.f;
 
-            char freqStr[24], dbStr[16], pkStr[16];
+            char freqStr[24], noteStr[16], dbStr[16], pkStr[16];
             if (hoverFreq >= 1000.f)
                 snprintf(freqStr, sizeof(freqStr), "%.2f kHz", hoverFreq * 0.001f);
             else
                 snprintf(freqStr, sizeof(freqStr), "%.1f Hz", hoverFreq);
+            frequencyToNote(hoverFreq, noteStr, sizeof(noteStr));
             snprintf(dbStr,  sizeof(dbStr),  "%.1f dB", hoverDb);
             snprintf(pkStr,  sizeof(pkStr),  "%.1f dB pk", hoverPkDb);
 
             float lfsz  = fontSize * 0.72f;
             float scale = lfsz / ImGui::GetFont()->FontSize;
             float tw    = std::max({ ImGui::CalcTextSize(freqStr).x * scale,
+                                    ImGui::CalcTextSize(noteStr).x * scale,
                                     ImGui::CalcTextSize(dbStr).x   * scale,
                                     ImGui::CalcTextSize(pkStr).x   * scale });
-            float th    = lfsz * 3.f + 4.f * z;   // three lines + two gaps
+            float th    = lfsz * 4.f + 6.f * z;   // four lines + three gaps
             float tx    = mousePos.x - tw * 0.5f;
             float ty    = mousePos.y - th - 6.f * z;
             tx = std::max(specMin.x + 1.f, std::min(tx, specMax.x - tw - 1.f));
@@ -1538,9 +1570,12 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                         IM_COL32(200, 200, 180, 120), 0.f, 0, 1.f);
             dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty),
                         IM_COL32(255, 255, 200, 230), freqStr);
-            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + lfsz + 2.f * z),
+            if (noteStr[0] != '\0')
+                dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + lfsz + 2.f * z),
+                            IM_COL32(150, 255, 150, 220), noteStr);
+            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + (noteStr[0] != '\0' ? 2.f : 1.f) * (lfsz + 2.f * z)),
                         IM_COL32(180, 220, 255, 220), dbStr);
-            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + lfsz * 2.f + 4.f * z),
+            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + (noteStr[0] != '\0' ? 3.f : 2.f) * (lfsz + 2.f * z)),
                         IM_COL32(255, 180, 100, 220), pkStr);
         }
 

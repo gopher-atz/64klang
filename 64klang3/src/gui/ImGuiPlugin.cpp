@@ -255,7 +255,7 @@ static void renderToolbar()
         if (s_canvas)
             s_canvas->toggleWaveFileDialog();
     }
-
+    
     toolbarSeparator(dl, tbPos, tbH);
 
     if (ImGui::Button("Export Patch"))
@@ -353,6 +353,17 @@ static void renderToolbar()
             }
             ImGui::EndCombo();
         }
+    }
+    
+    ImGui::SameLine();
+    if (ImGui::Button("View"))
+        ImGui::OpenPopup("##viewMenu");
+    if (ImGui::BeginPopup("##viewMenu"))
+    {
+        bool snapToGrid = s_canvas && s_canvas->isSnapToGrid();
+        if (ImGui::MenuItem("Snap to grid", nullptr, &snapToGrid) && s_canvas)
+            s_canvas->setSnapToGrid(snapToGrid);
+        ImGui::EndPopup();
     }
 
     {

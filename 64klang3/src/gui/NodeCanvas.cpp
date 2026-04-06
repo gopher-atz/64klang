@@ -30,6 +30,17 @@ static constexpr ImU32 kColCheckmark    = IM_COL32(100, 200, 255, 255);
 static constexpr ImU32 kColCloseBtnBg   = IM_COL32(200,  40,  40, 255);
 static constexpr ImU32 kColResetBtnBg   = IM_COL32( 30,  90, 200, 255);
 static constexpr ImU32 kColGhostWire    = IM_COL32(255,  50,  50, 200);
+static constexpr float kCanvasGridStep  = 50.f;
+
+static inline float snapWorldToGrid(float worldCoord)
+{
+    return std::round(worldCoord / kCanvasGridStep) * kCanvasGridStep;
+}
+
+static inline ImVec2 snapWorldPosToGrid(const ImVec2& worldPos)
+{
+    return ImVec2(snapWorldToGrid(worldPos.x), snapWorldToGrid(worldPos.y));
+}
 
 // ── Platform-agnostic Ctrl key query ─────────────────────────────────────────
 static inline bool isCtrlHeld()
@@ -1022,6 +1033,17 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                     // Prepare for potential drag
                     pressedNodeID = hitID;
                     dragStartMouse = mousePos;
+                    dragStartOffsetX = offsetX;
+                    dragStartOffsetY = offsetY;
+                    dragStartNodePos.clear();
+                    dragStartNodePos.reserve(selectedNodeIDs.size());
+                    for (int id : selectedNodeIDs)
+                    {
+                        auto fit = frameIdToGi.find(id);
+                        if (fit == frameIdToGi.end()) continue;
+                        int sgi = fit->second;
+                        dragStartNodePos[id] = ImVec2((float)sc->gnX(sgi), (float)sc->gnY(sgi));
+                    }
                     isDragging = false;
                 }
             }
@@ -1040,6 +1062,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             rubberBandStart = mousePos;
             rubberBandCurrent = mousePos;
             pressedNodeID = -1;
+            dragStartNodePos.clear();
         }
     }
 
@@ -1061,21 +1084,80 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
 
             if (isDragging)
             {
-                float dxNode = dx / zoom;
-                float dyNode = dy / zoom;
+                // Auto-scroll when dragging close to canvas borders.
+                // Keep dragged nodes under the cursor while panning by applying
+                // the inverse world delta to the dragged selection.
+                ImVec2 mouseLocal(mousePos.x - canvasPos.x, mousePos.y - canvasPos.y);
+                const float edgeZonePx = 64.f;
+                const float maxScrollPxPerSec = 900.f;
 
-                for (int id : selectedNodeIDs)
+                auto edgeFactor = [edgeZonePx](float distToEdge) -> float
                 {
-                    // Use frameIdToGi for O(1) lookup instead of O(N) findGuiIndex.
-                    auto fit = frameIdToGi.find(id);
-                    if (fit == frameIdToGi.end()) continue;
-                    int gi = fit->second;
-                    sc->setX((DWORD)id, sc->gnX(gi) + dxNode);
-                    sc->setY((DWORD)id, sc->gnY(gi) + dyNode);
+                    float clamped = std::max(0.f, std::min(distToEdge, edgeZonePx));
+                    return (edgeZonePx - clamped) / edgeZonePx;
+                };
+
+                float leftDist   = mouseLocal.x;
+                float rightDist  = canvasSize.x - mouseLocal.x;
+                float topDist    = mouseLocal.y;
+                float bottomDist = canvasSize.y - mouseLocal.y;
+
+                float scrollX = 0.f;
+                float scrollY = 0.f;
+
+                if (leftDist < edgeZonePx)
+                    scrollX += edgeFactor(leftDist) * maxScrollPxPerSec * io.DeltaTime;
+                if (rightDist < edgeZonePx)
+                    scrollX -= edgeFactor(rightDist) * maxScrollPxPerSec * io.DeltaTime;
+                if (topDist < edgeZonePx)
+                    scrollY += edgeFactor(topDist) * maxScrollPxPerSec * io.DeltaTime;
+                if (bottomDist < edgeZonePx)
+                    scrollY -= edgeFactor(bottomDist) * maxScrollPxPerSec * io.DeltaTime;
+
+                if (scrollX != 0.f || scrollY != 0.f)
+                {
+                    float panWorldX = scrollX / zoom;
+                    float panWorldY = scrollY / zoom;
+
+                    offsetX += panWorldX;
+                    offsetY += panWorldY;
                 }
 
-                // Reset for incremental delta
-                dragStartMouse = mousePos;
+                if (!dragStartNodePos.empty())
+                {
+                    float totalDxNode = (mousePos.x - dragStartMouse.x) / zoom;
+                    float totalDyNode = (mousePos.y - dragStartMouse.y) / zoom;
+                    float panCompX = dragStartOffsetX - offsetX;
+                    float panCompY = dragStartOffsetY - offsetY;
+
+                    float appliedDx = totalDxNode + panCompX;
+                    float appliedDy = totalDyNode + panCompY;
+
+                    if (snapToGrid)
+                    {
+                        auto anchorIt = dragStartNodePos.find(pressedNodeID);
+                        if (anchorIt != dragStartNodePos.end())
+                        {
+                            float anchorTargetX = anchorIt->second.x + appliedDx;
+                            float anchorTargetY = anchorIt->second.y + appliedDy;
+                            float snappedAnchorX = snapWorldToGrid(anchorTargetX);
+                            float snappedAnchorY = snapWorldToGrid(anchorTargetY);
+                            appliedDx = snappedAnchorX - anchorIt->second.x;
+                            appliedDy = snappedAnchorY - anchorIt->second.y;
+                        }
+                    }
+
+                    for (int id : selectedNodeIDs)
+                    {
+                        auto sit = dragStartNodePos.find(id);
+                        if (sit == dragStartNodePos.end()) continue;
+                        float targetX = sit->second.x + appliedDx;
+                        float targetY = sit->second.y + appliedDy;
+                        sc->setX((DWORD)id, targetX);
+                        sc->setY((DWORD)id, targetY);
+                    }
+                }
+
                 // Must re-query numGUINodes to refresh accessor after position changes
                 sc->numGUINodes();
             }
@@ -1110,6 +1192,7 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         isDragging = false;
         pressedNodeID = -1;
         isRubberBanding = false;
+        dragStartNodePos.clear();
     }
 
     // ── Right-button release: open context menu if no panning occurred ──
@@ -1301,6 +1384,7 @@ void NodeCanvas::pasteNodes(bool forceGlobal, bool forceVoice)
         return;
 
     std::unordered_set<int> validSet(validIndices.begin(), validIndices.end());
+    ImVec2 pasteAnchor = snapToGrid ? snapWorldPosToGrid(contextMenuCanvasPos) : contextMenuCanvasPos;
 
     sc->killVoices();
 
@@ -1309,8 +1393,8 @@ void NodeCanvas::pasteNodes(bool forceGlobal, bool forceVoice)
     for (int i : validIndices)
     {
         const auto& cn = clipboard[i];
-        double px = contextMenuCanvasPos.x + cn.relX;
-        double py = contextMenuCanvasPos.y + cn.relY;
+        double px = pasteAnchor.x + cn.relX;
+        double py = pasteAnchor.y + cn.relY;
 
         bool isGlobal = cn.isGlobal;
         if (forceGlobal) isGlobal = true;
@@ -2915,7 +2999,7 @@ void NodeCanvas::render()
     dl->PushClipRect(canvasPos, ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y), true);
 
     // Draw background grid
-    float gridStep = 50.f * zoom;
+    float gridStep = kCanvasGridStep * zoom;
     if (gridStep > 5.f)
     {
         ImU32 gridColor = IM_COL32(50, 50, 55, 100);
@@ -3147,11 +3231,12 @@ void NodeCanvas::render()
                             }
                         }
                         sc->killVoices();
+                        ImVec2 createPos = snapToGrid ? snapWorldPosToGrid(contextMenuCanvasPos) : contextMenuCanvasPos;
                         SynthNode* newNode = sc->createGUINode((DWORD)SIGNAL_VISUALIZER_ID,
                                                                (DWORD)channel,
                                                                (DWORD)(isGlobal ? 1 : 0),
-                                                               contextMenuCanvasPos.x,
-                                                               contextMenuCanvasPos.y);
+                                                               createPos.x,
+                                                               createPos.y);
                         if (newNode)
                         {
                             int newID = (int)newNode->valueOffset;
@@ -3262,6 +3347,8 @@ void NodeCanvas::render()
                                 {
                                     sc->killVoices();
                                     ImVec2 createPos = doWireDragInsert ? wireDragInsertCanvasPos : contextMenuCanvasPos;
+                                    if (snapToGrid)
+                                        createPos = snapWorldPosToGrid(createPos);
                                     SynthNode* newNode = sc->createGUINode((DWORD)nodeDef->id, (DWORD)channel,
                                                                            (DWORD)(isGlobal ? 1 : 0),
                                                                            createPos.x, createPos.y);

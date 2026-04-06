@@ -5501,8 +5501,8 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 	}
 
 	// Spectrum pre-computation: runs on the audio thread every 'step' samples.
-	// Stores one FFT magnitude frame in customMem so the GUI can read a tiny result
-	// section (~8 KB) instead of doing FFT itself or copying the 512 KB ring buffer.
+	// Stores one FFT magnitude frame in customMem so the GUI can read a compact result
+	// section instead of doing FFT itself or copying the full ring buffer.
 	// Safe to use static work buffers because the audio tick is single-threaded.
 	if (n->input[SIGNAL_VISUALIZER_MODE])
 	{
@@ -5519,9 +5519,9 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 
 			if (modeBits != (DWORD)vizMode) { stepCtr = 0; modeBits = (DWORD)vizMode; }
 
-			static const int   kFFTSizes[] = { 256, 512, 1024, 2048, 4096 };
+			static const int   kFFTSizes[] = { 256, 512, 1024, 2048, 4096, 8192, 16384, 32768 };
 			int fftSel = (vizMode & SIGNAL_VISUALIZER_FFTMASK) >> SIGNAL_VISUALIZER_FFTSHIFT;
-			if (fftSel < 0 || fftSel >= 5) fftSel = 3;
+			if (fftSel < 0 || fftSel >= 8) fftSel = 4;
 			int   fftSize  = kFFTSizes[fftSel];
 			int   fftHalfV = fftSize / 2;
 			// Neither spectrum mode uses the History setting for its FFT update rate —
@@ -5535,9 +5535,9 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 				int chanSel = (vizMode & SIGNAL_VISUALIZER_CHANMASK) >> SIGNAL_VISUALIZER_CHANSHIFT;
 
 				// Static work buffers: safe because audio tick is single-threaded
-				static float           s_winCoeff[4096];
+				static float           s_winCoeff[32768];
 				static DWORD           s_lastWinKey = ~0u;
-				static complexsample_t s_fftBuf[4096];
+				static complexsample_t s_fftBuf[32768];
 
 				// Recompute window coefficients only when window type or fft size changed
 				DWORD winKey = (DWORD)(winSel | (fftSel << 8));

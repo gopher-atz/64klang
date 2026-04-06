@@ -35,6 +35,8 @@ public:
     // Toolbar integration
     void toggleWaveFileDialog() { showWaveFileDialog = !showWaveFileDialog; }
     void toggleDebugOverlay()   { showDebugOverlay   = !showDebugOverlay;   }
+    void setSnapToGrid(bool enabled) { snapToGrid = enabled; }
+    bool isSnapToGrid() const { return snapToGrid; }
     void jumpToChannel(int channel);           // scroll canvas to center on ChannelRoot N
 
 private:
@@ -55,6 +57,9 @@ private:
     bool   isDragging = false;
     int    pressedNodeID = -1;
     ImVec2 dragStartMouse = {0, 0};
+    std::unordered_map<int, ImVec2> dragStartNodePos;
+    float dragStartOffsetX = 0.f;
+    float dragStartOffsetY = 0.f;
 
     // Rubber-band
     bool   isRubberBanding = false;
@@ -159,6 +164,9 @@ private:
     // Debug overlay toggle
     bool     showDebugOverlay = false;
     uint64_t debugFrameCount  = 0;
+
+    // When enabled, dragged nodes snap their top-left corner to grid intersections.
+    bool   snapToGrid = false;
 
     // Wave File References dialog (Ctrl+W)
     bool   showWaveFileDialog = false;

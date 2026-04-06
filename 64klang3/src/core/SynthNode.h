@@ -1386,13 +1386,14 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n);
 void SYNTHCALL FOURIOZA_init(SynthNode* n);
 enum FOURIOZA_MODE
 {
-	FOURIOZA_WINMASK  = 0x00000007,  // bits [2:0]: window size index 0..5 → 512..16384
+	FOURIOZA_WINMASK  = 0x00000007,  // bits [2:0]: window size index 0..6 → 512..32768
 	FOURIOZA_WIN_512  = 0,
 	FOURIOZA_WIN_1024 = 1,
 	FOURIOZA_WIN_2048 = 2,
 	FOURIOZA_WIN_4096 = 3,
 	FOURIOZA_WIN_8192 = 4,
 	FOURIOZA_WIN_16384 = 5,
+	FOURIOZA_WIN_32768 = 6,
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1436,7 +1437,7 @@ void SYNTHCALL VOICEPARAM_tick(SynthNode* n);
 //   [SIGVIZ_SPEC_BASE + 4 .. +4+SIGVIZ_SPEC_BINS-1] = magnitude array (float)
 #define SIGVIZ_SPEC_BASE    (SIGVIZ_HEADER_DW + SIGVIZ_BUF_SIZE * 2)
 #define SIGVIZ_SPEC_HDR_DW  4
-#define SIGVIZ_SPEC_BINS    2048  // max fftSize/2 (at fftSize=4096)
+#define SIGVIZ_SPEC_BINS    16384  // max fftSize/2 (at fftSize=32768)
 #define SIGVIZ_TOTAL_DW     (SIGVIZ_SPEC_BASE + SIGVIZ_SPEC_HDR_DW + SIGVIZ_SPEC_BINS)
 
 enum SIGNAL_VISUALIZER_INPUT

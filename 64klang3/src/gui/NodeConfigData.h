@@ -1578,6 +1578,7 @@ R"xml(
           <ModeItem name="4096"  value="3"/>
           <ModeItem name="8192"  value="4"/>
           <ModeItem name="16384" value="5"/>
+          <ModeItem name="32768" value="6"/>
         </ModeGroup>
       </NodeInput>
     </Node>
@@ -1622,6 +1623,7 @@ R"xml(
 					<ModeItem name="4096" value="4"/>
 					<ModeItem name="8192" value="5"/>
 					<ModeItem name="16384" value="6"/>
+					<ModeItem name="32768" value="7"/>
 				</ModeGroup>
 				<ModeGroup name="FFT Window" mask="768" shift="8" showFor="3">
 					<ModeItem name="Rectangular"     value="0"/>
@@ -1648,6 +1650,7 @@ R"xml(
 					<ModeItem name="4096" value="4"/>
 					<ModeItem name="8192" value="5"/>
 					<ModeItem name="16384" value="6"/>
+					<ModeItem name="32768" value="7"/>
 				</ModeGroup>
 				<ModeGroup name="FFT Window" mask="768" shift="8" showFor="5">
 					<ModeItem name="Rectangular"     value="0"/>
