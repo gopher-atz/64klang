@@ -349,13 +349,40 @@ return r;
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 // Cooley-Tukey FFT (in-place, breadth-first, decimation-in-frequency), x needs to be a 2^N array of complexsample_t
+
+// sin/cos for twiddle factors.
+// 32-bit non-VSTi: x87 inline asm avoids __libm_sse2_sin/cos_precise CRT dependency.
+// All other cases (x64, VSTi, non-MSVC): standard <cmath>.
+#if defined(_MSC_VER) && defined(_M_IX86) && !defined(COMPILE_VSTI)
+static inline double k64_sin(double x)
+{
+	double r;
+	__asm fld x
+	__asm fsin
+	__asm fstp r
+	return r;
+}
+static inline double k64_cos(double x)
+{
+	double r;
+	__asm fld x
+	__asm fcos
+	__asm fstp r
+	return r;
+}
+#else
+#include <cmath>
+static inline double k64_sin(double x) { return sin(x); }
+static inline double k64_cos(double x) { return cos(x); }
+#endif
+
 void SYNTHCALL	c_fft(complexsample_t* x, int N)
 {
 	// DFT
 	int k = N;
 	sample_t thetaT = SC[S_PI] / sample_t((double)N);
 	// need real sin/cos here for precision
-	complexsample_t phiT = complexsample_t(cos(thetaT.d[1]), -sin(thetaT.d[0])), T;
+	complexsample_t phiT = complexsample_t(k64_cos(thetaT.d[1]), -k64_sin(thetaT.d[0])), T;
 	while (k > 1)
 	{
 		int nk = k;

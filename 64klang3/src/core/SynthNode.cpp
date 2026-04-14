@@ -4144,7 +4144,7 @@ void SYNTHCALL SAPI_tick(SynthNode* n)
 		if (n->customMem)
 			SynthFree(n->customMem);
 #endif
-		int tlen = (int)strlen(ttsText) + 1;
+		int tlen = 0; while (ttsText[tlen]) tlen++; tlen++; // manual strlen — avoids CRT in no-CRT builds
 		MultiByteToWideChar(0, 0, ttsText, tlen, lpSAPITextBuffer, tlen);
 
 		CoInitialize(NULL);
@@ -5044,13 +5044,13 @@ static inline void FOZA_SpectralResample(const sample_t* src, sample_t* dst, int
 }
 
 
-static inline double FOZA_HarmonicProfile(double fi, double bwi)
+static inline sample_t FOZA_HarmonicProfile(sample_t fi, sample_t bwi)
 {
-	double x = fi / bwi;
-	x *= x;
-	if (x > 14.71280603)
-		return 0.0;
-	return exp(-x);
+	sample_t x = fi / bwi;
+	x = x * x;
+	// exp(-x) underflows to zero for x > ~14.71 (gaussian cutoff); avoid unnecessary exp call
+	sample_t result = s_exp(-x);
+	return result & (x < sample_t(14.71280603));
 }
 
 void SYNTHCALL FOURIOZA_tick(SynthNode* n)
@@ -5105,7 +5105,7 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 		// Harmonic mask parameters from UI-normalized inputs
 		{
 			double baseNorm = s_clamp(INP(FOURIOZA_HARMONICSBASEFREQ), SC[S_1_0], sample_t::zero()).d[0];
-			FOZA_HARMBASEHZ = sample_t(10.0 * pow(500.0, baseNorm));
+			FOZA_HARMBASEHZ = sample_t(10.0) * s_pow(sample_t(500.0), sample_t(baseNorm));
 		}
 		{
 			sample_t harmBwNorm = s_clamp(INP(FOURIOZA_HARMONICSBW), SC[S_1_0], sample_t::zero());
@@ -5262,39 +5262,42 @@ void SYNTHCALL FOURIOZA_tick(SynthNode* n)
 				for (int i = 0; i <= half; i++)
 					ampBuf[i] = sample_t::zero();
 
-				double baseHz = FOZA_HARMBASEHZ.d[0];
-				double bandwidth = FOZA_HARMBW.d[0];
+				// Keep all scalars as sample_t so L and R channels are processed independently.
+				sample_t baseHz = s_max(FOZA_HARMBASEHZ, sample_t(10.0));
+				sample_t bwMul  = s_exp2(FOZA_HARMBW / sample_t(1200.0)) - SC[S_1_0];
+				sample_t nyquist = sample_t((double)SYNTH_SAMPLERATE * 0.5);
+				sample_t srInv   = sample_t(1.0 / (double)SYNTH_SAMPLERATE);
 				int numHarm = FOZA_NUMHARM;
-				if (baseHz < 10.0)
-					baseHz = 10.0;
 
-				double bwMul = pow(2.0, bandwidth / 1200.0) - 1.0;
 				for (int nh = 1; nh <= numHarm; nh++)
 				{
-					double f = (double)nh * baseHz;
-					if (f >= (double)SYNTH_SAMPLERATE * 0.5)
+					sample_t f = sample_t((double)nh) * baseHz;
+					// Stop when both channels have exceeded Nyquist.
+					if (f.d[0] >= (double)SYNTH_SAMPLERATE * 0.5 &&
+					    f.d[1] >= (double)SYNTH_SAMPLERATE * 0.5)
 						break;
 
-					double bwHz = bwMul * f;
-					double bwi = bwHz / (2.0 * (double)SYNTH_SAMPLERATE);
-					if (bwi <= 0.0)
+					sample_t bwi = bwMul * f / sample_t(2.0 * (double)SYNTH_SAMPLERATE);
+					if (bwi.d[0] <= 0.0 && bwi.d[1] <= 0.0)
 						continue;
-					double fi = f / (double)SYNTH_SAMPLERATE;
+
+					// Mask out contributions from channels where f already exceeded Nyquist.
+					sample_t active = f < nyquist;
+					sample_t fi     = f * srInv;
 
 					for (int k = 1; k <= half; k++)
 					{
-						double binF = (double)k / (double)FOZA_WINSIZE;
-						double hprofile = FOZA_HarmonicProfile(binF - fi, bwi);
+						sample_t binF    = sample_t((double)k / (double)FOZA_WINSIZE);
+						sample_t hprofile = FOZA_HarmonicProfile(binF - fi, bwi) & active;
 						// Max-combine per-harmonic lobes so adding more high harmonics
 						// does not globally renormalize and suppress low harmonics.
-						ampBuf[k] = s_max(ampBuf[k], sample_t(hprofile));
+						ampBuf[k] = s_max(ampBuf[k], hprofile);
 					}
 				}
 				for (int k = 1; k <= half; k++)
 				{
-					double a = ampBuf[k].d[0];
-					double mask = (a < 0.368) ? 0.0 : 1.0;
-					sample_t maskV = sample_t(mask);
+					// Threshold mask: pass bins where amplitude exceeds e^{-1} ≈ 0.368 (1-sigma).
+					sample_t maskV = s_ifthen(ampBuf[k] >= sample_t(0.368), SC[S_1_0], sample_t::zero());
 					magBuf[k] *= maskV;
 					if (k < half)
 						magBuf[FOZA_WINSIZE - k] *= maskV;

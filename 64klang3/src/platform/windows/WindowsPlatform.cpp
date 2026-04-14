@@ -1,4 +1,4 @@
-#ifdef _WIN32
+#if defined(_WIN32) && defined(COMPILE_VSTI)
 
 #include "../PlatformInterfaces.h"
 #include <windows.h>
@@ -146,4 +146,4 @@ ITTSEngine* createTTSEngine()
 
 } // namespace K64Platform
 
-#endif // _WIN32
+#endif // _WIN32 && COMPILE_VSTI

@@ -153,6 +153,11 @@ static inline void* k64_aligned_alloc(size_t size, size_t alignment)
     return ptr;
   }
   return nullptr;
+#elif defined(_WIN32) && !defined(COMPILE_VSTI)
+  // Player / 64k build: Win32 heap avoids CRT (_mm_malloc / _aligned_malloc / memset).
+  // HEAP_ZERO_MEMORY zeroes the block; SynthMalloc handles 16-byte alignment internally.
+  (void)alignment;
+  return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
 #else
   void* ptr = _mm_malloc(size, alignment);
   if (ptr) memset(ptr, 0, size);
@@ -164,6 +169,8 @@ static inline void k64_aligned_free(void* ptr)
 {
 #if defined(K64_USE_NEON)
   free(ptr);
+#elif defined(_WIN32) && !defined(COMPILE_VSTI)
+  HeapFree(GetProcessHeap(), 0, ptr);
 #else
   _mm_free(ptr);
 #endif

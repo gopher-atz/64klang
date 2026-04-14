@@ -262,3 +262,9 @@ if(WIN32)
         endif()
     endif()
 endif()
+
+###############################################################################
+# Player — size-optimised standalone playback executable (Windows only)
+###############################################################################
+
+add_subdirectory(Player)
