@@ -2134,8 +2134,14 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         float padY    = ImGui::GetStyle().WindowPadding.y * 2.f;
                         float maxH    = itemH * 8.f + padY;
                         ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, maxH));
+                        // When maxH won't fit below the button, anchor the bottom of the popup
+                        // to the top of the button (pivot Y=1) instead of dropping it down.
+                        float screenH = ImGui::GetIO().DisplaySize.y;
+                        if (btnMax.y + maxH > screenH)
+                            ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMin.y), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+                        else
+                            ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y), ImGuiCond_Always, ImVec2(0.0f, 0.0f));
                     }
-                    ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y));
                     ImGui::PushFont(pickFont(fontSize));
                     if (ImGui::BeginPopup(popupID))
                     {
@@ -3148,6 +3154,17 @@ void NodeCanvas::render()
     // Context menu popup (must be outside clip rect)
     if (showContextMenu)
     {
+        // Position at cursor; flip upward when near screen bottom so menu
+        // doesn't get clipped.  ImGui will finalize the size on first frame,
+        // so we use a pivot: (0,0) = top-left at cursor, (0,1) = bottom-left.
+        {
+            ImVec2 cursor = ImGui::GetIO().MousePos;
+            float  screenH = ImGui::GetIO().DisplaySize.y;
+            // Estimate: a typical node menu is ~400px tall; if less than that
+            // remains below the cursor, anchor the bottom of the menu there.
+            float pivotY = (screenH - cursor.y < 400.f) ? 1.f : 0.f;
+            ImGui::SetNextWindowPos(cursor, ImGuiCond_Appearing, ImVec2(0.f, pivotY));
+        }
         if (ImGui::BeginPopup("##nodeMenu"))
         {
             const float menuFontScale = 18.f / ImGui::GetFont()->FontSize;
@@ -3262,9 +3279,20 @@ void NodeCanvas::render()
             const auto& cats = NodeConfig::instance().getCategories();
             for (const auto& cat : cats)
             {
+                // Set submenu position with a pivot BEFORE BeginMenu.
+                // ImGui's internal BeginMenu calls SetNextWindowPos without a pivot, so the
+                // window_pos_with_pivot branch (which runs first in Begin) will use our value.
+                // Use pivot (0,1) = bottom-left anchor when the item is in the lower half of
+                // the screen so the menu opens upward; (0,0) = top-left otherwise.
+                {
+                    float screenH  = ImGui::GetIO().DisplaySize.y;
+                    ImVec2 itemPos = ImGui::GetCursorScreenPos();
+                    float  pivotY  = (itemPos.y > screenH * 0.5f) ? 1.0f : 0.0f;
+                    ImGui::SetNextWindowPos(itemPos, ImGuiCond_Always, ImVec2(0.0f, pivotY));
+                }
+                const auto& nodes = NodeConfig::instance().getNodesInCategory(cat);
                 if (ImGui::BeginMenu(cat.c_str()))
                 {
-                    const auto& nodes = NodeConfig::instance().getNodesInCategory(cat);
                     for (const auto* nodeDef : nodes)
                     {
                         if (ImGui::MenuItem(nodeDef->name.c_str()))
