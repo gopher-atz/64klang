@@ -2996,6 +2996,7 @@ void NodeCanvas::render()
             if (sc->gnIsVisible(i)) frameIdToGi[sc->gnID(i)] = i;
     }
 
+    handleMinimapInput(canvasPos, canvasSize);
     handlePanZoom(canvasPos, canvasSize);
     handleNodeInteraction(canvasPos, canvasSize);
 
@@ -3150,6 +3151,8 @@ void NodeCanvas::render()
     drawEditPanel(dl, canvasPos);
 
     dl->PopClipRect();
+
+    drawMinimap(canvasPos, canvasSize);
 
     // Context menu popup (must be outside clip rect)
     if (showContextMenu)
@@ -3547,6 +3550,199 @@ void NodeCanvas::showToast(const char* msg)
     for (auto& t : toasts)
         if (t.message == msg) { t.expireTime = now + 3.0; return; }
     toasts.push_back({ msg, now + 3.0 });
+}
+
+// ── Minimap ───────────────────────────────────────────────────────────────
+
+// Called early in render() to compute minimap bounds, handle input, and
+// clear canvasHovered when the mouse is over the minimap panel.
+void NodeCanvas::handleMinimapInput(const ImVec2& canvasPos, const ImVec2& canvasSize)
+{
+    // Release drag on mouse-up (checked before any new click detection).
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+        minimapDragging = false;
+
+    SynthController* sc = SynthController::instance();
+    if (!sc || !sc->isInitialized()) return;
+
+    int nNodes = sc->numGUINodes();
+    if (nNodes == 0) return;
+
+    // Compute bounding box of all visible nodes in world space.
+    float gMinX =  FLT_MAX, gMinY =  FLT_MAX;
+    float gMaxX = -FLT_MAX, gMaxY = -FLT_MAX;
+    for (int i = 0; i < nNodes; i++)
+    {
+        if (!sc->gnIsVisible(i)) continue;
+        float nx = (float)sc->gnX(i);
+        float ny = (float)sc->gnY(i);
+        float nh = nodeHeight(effectiveInputCount(i), nodeHasEditButton(i));
+        gMinX = std::min(gMinX, nx);
+        gMinY = std::min(gMinY, ny);
+        gMaxX = std::max(gMaxX, nx + kNodeWidth);
+        gMaxY = std::max(gMaxY, ny + nh);
+    }
+    if (gMinX == FLT_MAX) return;
+
+    // Add padding around the graph bounds.
+    const float pad = 300.f;
+    gMinX -= pad;  gMinY -= pad;
+    gMaxX += pad;  gMaxY += pad;
+    float gW = gMaxX - gMinX;
+    float gH = gMaxY - gMinY;
+    if (gW <= 0.f || gH <= 0.f) return;
+
+    // Minimap panel: maintain graph aspect ratio, capped at 220×160 px.
+    const float mmMargin = 10.f;
+    const float mmMaxW   = 220.f;
+    const float mmMaxH   = 160.f;
+    float aspect = gW / gH;
+    float mmW, mmH;
+    if (aspect > mmMaxW / mmMaxH) { mmW = mmMaxW; mmH = mmMaxW / aspect; }
+    else                          { mmH = mmMaxH; mmW = mmMaxH * aspect; }
+    mmW = std::max(mmW, 80.f);
+    mmH = std::max(mmH, 60.f);
+
+    ImVec2 mmMin(canvasPos.x + canvasSize.x - mmW - mmMargin,
+                 canvasPos.y + canvasSize.y - mmH - mmMargin);
+    ImVec2 mmMax(mmMin.x + mmW, mmMin.y + mmH);
+
+    minimapData.panelMin  = mmMin;
+    minimapData.panelMax  = mmMax;
+    minimapData.graphMinX = gMinX;
+    minimapData.graphMinY = gMinY;
+    minimapData.graphW    = gW;
+    minimapData.graphH    = gH;
+
+    // Click / drag on minimap → pan the main viewport.
+    ImGuiIO& io = ImGui::GetIO();
+    bool mouseInMM = (io.MousePos.x >= mmMin.x && io.MousePos.x <= mmMax.x &&
+                      io.MousePos.y >= mmMin.y && io.MousePos.y <= mmMax.y);
+
+    if (mouseInMM && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        minimapDragging = true;
+
+    if (minimapDragging && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+    {
+        float wx = gMinX + (io.MousePos.x - mmMin.x) / mmW * gW;
+        float wy = gMinY + (io.MousePos.y - mmMin.y) / mmH * gH;
+        offsetX = canvasSize.x / (2.f * zoom) - wx;
+        offsetY = canvasSize.y / (2.f * zoom) - wy;
+    }
+
+    // Suppress normal canvas interaction while hovering or dragging the minimap.
+    if (mouseInMM || minimapDragging)
+        canvasHovered = false;
+}
+
+// Called after the canvas clip rect is popped, draws the minimap overlay.
+void NodeCanvas::drawMinimap(const ImVec2& canvasPos, const ImVec2& canvasSize)
+{
+    SynthController* sc = SynthController::instance();
+    if (!sc || !sc->isInitialized()) return;
+
+    const ImVec2& mmMin = minimapData.panelMin;
+    const ImVec2& mmMax = minimapData.panelMax;
+    float gMinX = minimapData.graphMinX;
+    float gMinY = minimapData.graphMinY;
+    float gW    = minimapData.graphW;
+    float gH    = minimapData.graphH;
+    float mmW   = mmMax.x - mmMin.x;
+    float mmH   = mmMax.y - mmMin.y;
+
+    // World → minimap screen coords.
+    auto worldToMM = [&](float wx, float wy) -> ImVec2 {
+        return ImVec2(mmMin.x + (wx - gMinX) / gW * mmW,
+                      mmMin.y + (wy - gMinY) / gH * mmH);
+    };
+
+    ImDrawList* dl = ImGui::GetForegroundDrawList();
+
+    // Panel background and border.
+    dl->AddRectFilled(mmMin, mmMax, IM_COL32(18, 20, 25, 220), 4.f);
+    dl->AddRect(mmMin, mmMax, IM_COL32(70, 75, 85, 255), 4.f, 0, 1.5f);
+
+    // Draw wires and nodes, clipped to the panel.
+    dl->PushClipRect(mmMin, mmMax, true);
+    int nNodes = sc->numGUINodes();
+
+    // Build nodeID → gui-index map for wire rendering.
+    std::unordered_map<int,int> idToGi;
+    idToGi.reserve(nNodes);
+    for (int i = 0; i < nNodes; i++)
+        if (sc->gnIsVisible(i)) idToGi[sc->gnID(i)] = i;
+
+    // Draw wires first (behind nodes).
+    for (int toIdx = 0; toIdx < nNodes; toIdx++)
+    {
+        if (!sc->gnIsVisible(toIdx)) continue;
+        int numSig = effectiveInputCount(toIdx);
+        float toNX = (float)sc->gnX(toIdx);
+        float toNY = (float)sc->gnY(toIdx);
+        float toNH = nodeHeight(numSig, nodeHasEditButton(toIdx));
+        // Input-pin side: left edge, vertically centered on node.
+        ImVec2 toPt = worldToMM(toNX, toNY + toNH * 0.5f);
+
+        for (int pin = 0; pin < numSig; pin++)
+        {
+            int srcID = sc->gnInput(toIdx, pin);
+            if (!isRealConnection(srcID, sc)) continue;
+            auto fit = idToGi.find(srcID);
+            if (fit == idToGi.end()) continue;
+            int fromIdx = fit->second;
+            if (!sc->gnIsVisible(fromIdx)) continue;
+
+            float fromNX = (float)sc->gnX(fromIdx);
+            float fromNY = (float)sc->gnY(fromIdx);
+            float fromNH = nodeHeight(effectiveInputCount(fromIdx), nodeHasEditButton(fromIdx));
+            // Output-pin side: right edge, vertically centered on node.
+            ImVec2 fromPt = worldToMM(fromNX + kNodeWidth, fromNY + fromNH * 0.5f);
+
+            bool isGlobal = sc->gnIsGlobal(fromIdx);
+            ImU32 wireCol = isGlobal ? IM_COL32(255, 20, 147, 120)   // DeepPink, translucent
+                                     : IM_COL32(135, 206, 250, 100);  // LightSkyBlue, translucent
+            dl->AddLine(fromPt, toPt, wireCol, 1.f);
+        }
+    }
+
+    // Draw nodes on top of wires.
+    for (int i = 0; i < nNodes; i++)
+    {
+        if (!sc->gnIsVisible(i)) continue;
+        float nx = (float)sc->gnX(i);
+        float ny = (float)sc->gnY(i);
+        float nh = nodeHeight(effectiveInputCount(i), nodeHasEditButton(i));
+
+        ImVec2 rMin = worldToMM(nx, ny);
+        ImVec2 rMax = worldToMM(nx + kNodeWidth, ny + nh);
+        // Ensure at least a 2×2 px dot so every node is always visible.
+        if (rMax.x < rMin.x + 2.f) rMax.x = rMin.x + 2.f;
+        if (rMax.y < rMin.y + 2.f) rMax.y = rMin.y + 2.f;
+
+        bool isGlobal = sc->gnIsGlobal(i);
+        bool isSel    = selectedNodeIDs.count(sc->gnID(i)) > 0;
+        ImU32 col = isSel      ? colorSelectedNode()
+                  : isGlobal   ? colorGlobalNode()
+                               : colorVoiceNode();
+        dl->AddRectFilled(rMin, rMax, col);
+    }
+    dl->PopClipRect();
+
+    // Viewport rectangle (white border + subtle fill).
+    float viewMinX = -offsetX;
+    float viewMinY = -offsetY;
+    float viewMaxX = -offsetX + canvasSize.x / zoom;
+    float viewMaxY = -offsetY + canvasSize.y / zoom;
+    ImVec2 vpMin = worldToMM(viewMinX, viewMinY);
+    ImVec2 vpMax = worldToMM(viewMaxX, viewMaxY);
+    // Clamp to the panel boundary.
+    ImVec2 vpMinC(std::max(vpMin.x, mmMin.x), std::max(vpMin.y, mmMin.y));
+    ImVec2 vpMaxC(std::min(vpMax.x, mmMax.x), std::min(vpMax.y, mmMax.y));
+    if (vpMaxC.x > vpMinC.x && vpMaxC.y > vpMinC.y)
+    {
+        dl->AddRectFilled(vpMinC, vpMaxC, IM_COL32(255, 255, 255, 28));
+        dl->AddRect(vpMinC, vpMaxC, IM_COL32(255, 255, 255, 200), 0.f, 0, 1.5f);
+    }
 }
 
 void NodeCanvas::drawToasts(const ImVec2& canvasPos, const ImVec2& canvasSize)

@@ -177,6 +177,17 @@ private:
     void showToast(const char* msg);
     void drawToasts(const ImVec2& canvasPos, const ImVec2& canvasSize);
 
+    // Minimap (bottom-right overlay)
+    struct MinimapData {
+        ImVec2 panelMin = {0, 0};
+        ImVec2 panelMax = {0, 0};
+        float  graphMinX = 0, graphMinY = 0, graphW = 0, graphH = 0;
+    };
+    MinimapData minimapData;
+    bool        minimapDragging = false;
+    void handleMinimapInput(const ImVec2& canvasPos, const ImVec2& canvasSize);
+    void drawMinimap(const ImVec2& canvasPos, const ImVec2& canvasSize);
+
     // Visual constants matching original WPF GUI
     static constexpr float kNodeWidth = 120.f;
     static constexpr float kHeaderHeight = 25.f;
