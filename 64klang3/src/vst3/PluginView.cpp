@@ -4,6 +4,8 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <GL/gl.h>
+#include <vector>
+#include <algorithm>
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_opengl3.h"
@@ -199,6 +201,10 @@ static volatile bool  s_winRenderRunning = false;
 static std::mutex     s_renderMutex;
 static int            s_viewCount        = 0;  // # of live K64PluginView instances
 
+// All live K64PluginView instances — used to find a fallback renderer when the
+// active view is removed while other editors are still open.
+static std::vector<K64PluginView*> s_allViews;
+
 #elif !defined(__APPLE__)
 // Linux: forward declaration — definition is at the bottom of this file
 static void* renderThreadEntryLinux(void* arg);
@@ -210,12 +216,18 @@ K64PluginView::K64PluginView()
     rect = { 0, 0, kDefaultWidth, kDefaultHeight };
 #ifdef _WIN32
     ++s_viewCount;
+    s_allViews.push_back(this);
 #endif
 }
 
 K64PluginView::~K64PluginView()
 {
 #ifdef _WIN32
+    // Unregister from the view list.
+    auto it = std::find(s_allViews.begin(), s_allViews.end(), this);
+    if (it != s_allViews.end())
+        s_allViews.erase(it);
+
     // Destroy the singleton ImGui context when the very last view instance is
     // released (i.e. the plugin processor itself is being unloaded).  Until
     // then the context stays alive so canvas state survives window close/reopen.
@@ -519,6 +531,21 @@ tresult PLUGIN_API K64PluginView::removed()
 
             destroyWGLContext();
             s_nativeHandle = nullptr;
+
+            // If another view's editor window is still open, restart the singleton
+            // renderer on it.  This handles the case where a second alias editor
+            // was the active renderer and has just been removed while the first
+            // instance's editor window is still visible.
+            for (auto* v : s_allViews)
+            {
+                if (v != this && v->nativeHandle != nullptr)
+                {
+                    // Don't forcibly reposition the host-owned HWND.
+                    s_savedPos = { -1, -1 };
+                    v->attached(v->nativeHandle, kPlatformTypeHWND);
+                    break;
+                }
+            }
         }
     } // if (nativeHandle)
 

@@ -61,6 +61,9 @@ tresult PLUGIN_API K64Plugin::initialize(FUnknown* context)
 
 tresult PLUGIN_API K64Plugin::terminate()
 {
+    // Kill all active voices so notes don't hang when this instance is removed.
+    SynthController::instance()->panic();
+
     // Relinquish render ownership so another instance can take over if present.
     K64Plugin* me = this;
     s_renderOwner.compare_exchange_strong(me, nullptr);
@@ -96,12 +99,7 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
 
     SynthController* sc = SynthController::instance();
 
-    // Try to acquire mutex with (zero-timeout lock to avoid audio glitches)
-    // MIDI events (especially note-offs) are processed unconditionally below so
-    // that a timeout never causes stuck notes by swallowing a note-off event.
-    bool mutexAcquired = SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(0));
-
-    // Process MIDI events
+    // Process MIDI events — noteOn/noteOff/midiSignal do not need the data mutex.
     if (data.inputEvents)
     {
         int32 numEvents = data.inputEvents->getEventCount();
@@ -253,22 +251,21 @@ tresult PLUGIN_API K64Plugin::process(ProcessData& data)
     {
         float* left  = data.outputs[0].channelBuffers32[0];
         float* right = data.outputs[0].channelBuffers32[1];
-        if (mutexAcquired && this == s_renderOwner.load(std::memory_order_relaxed))
+        memset(left,  0, (size_t)data.numSamples * sizeof(float));
+        memset(right, 0, (size_t)data.numSamples * sizeof(float));
+        if (this == s_renderOwner.load(std::memory_order_relaxed))
         {
-            sc->tick(left, right, data.numSamples);
-        }
-        else
-        {
-            for (int32 i = 0; i < data.numSamples; i++)
+            // Only the render owner acquires the data mutex — non-owner instances
+            // must never contend for it, otherwise a parallel process() call from
+            // the non-owner could block this lock and cause a dropped audio block.
+            if (SynthController::DataAccessMutex.try_lock_for(std::chrono::milliseconds(0)))
             {
-                left[i]  = 0.f;
-                right[i] = 0.f;
+                sc->tick(left, right, data.numSamples);
+                SynthController::DataAccessMutex.unlock();
             }
+            // else: GUI is holding the lock; leave the zeroed buffers as silence.
         }
     }
-
-    if (mutexAcquired)
-        SynthController::DataAccessMutex.unlock();
 
     return kResultOk;
 }
