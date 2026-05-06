@@ -75,7 +75,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake g++ libx11-dev
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ libx11-dev libgl-dev
 
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release ./64klang3
