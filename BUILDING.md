@@ -50,13 +50,13 @@ sudo dnf install cmake gcc-c++ git libX11-devel
 ### Build steps
 
 ```bash
-./scripts/build_linux.sh
+./64klang3/build_linux.sh
 ```
 
 This uses the `build/` directory at the repo root and builds with `Release` by default. For a debug build:
 
 ```bash
-./scripts/build_linux.sh Debug
+./64klang3/build_linux.sh Debug
 ```
 
 The VST3 plugin bundle will be produced in the build tree (e.g. under a path like `VST3/Release/64klang3.vst3` or similar, depending on the VST3 SDK layout). Install or symlink it into your user or system VST3 directory so your DAW can load it, for example:
