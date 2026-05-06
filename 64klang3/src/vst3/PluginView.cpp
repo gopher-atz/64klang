@@ -6,6 +6,7 @@
 #include <GL/gl.h>
 #include <vector>
 #include <algorithm>
+#include <mutex>
 #include "imgui.h"
 #include "imgui_impl_win32.h"
 #include "imgui_impl_opengl3.h"
@@ -59,6 +60,9 @@ void k64_macOS_renderFrame();
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "gui/ImGuiPlugin.h"
+#include <vector>
+#include <algorithm>
+#include <mutex>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
@@ -176,6 +180,19 @@ namespace Steinberg {
 namespace Vst {
 
 // Persists window size and position across view create/destroy cycles within a
+#if defined(_WIN32) || (defined(__linux__) && !defined(__APPLE__))
+// Common singleton view state shared by Windows and Linux implementations.
+static ImGuiContext*  s_imguiCtx      = nullptr;
+static void*          s_nativeHandle  = nullptr;   // current host handle hosting renderer
+static int            s_viewWidth     = K64PluginView::kDefaultWidth;
+static int            s_viewHeight    = K64PluginView::kDefaultHeight;
+static volatile bool  s_renderRunning = false;
+static std::mutex     s_renderMutex;
+static int            s_viewCount     = 0;  // # of live K64PluginView instances
+static std::vector<K64PluginView*> s_allViews;
+static K64PluginView* s_activeView    = nullptr;
+#endif
+
 #ifdef _WIN32
 // Session-static window geometry — position and total HWND size (including host
 // chrome) captured from GetWindowRect so SetWindowPos round-trips cleanly.
@@ -190,22 +207,17 @@ static DWORD WINAPI renderThreadEntryWin(LPVOID arg);
 // The ImGui context, GL context, and render thread are process-wide singletons.
 // Multiple K64PluginView instances (VST alias instruments) share this state so
 // there is always exactly one ImGui context and one render thread at a time.
-static ImGuiContext*  s_imguiCtx         = nullptr;
 static void*          s_winGLCtx         = nullptr;   // HGLRC
 static void*          s_winDC            = nullptr;   // HDC
-static void*          s_nativeHandle     = nullptr;   // HWND currently hosting GL
-static int            s_viewWidth        = K64PluginView::kDefaultWidth;
-static int            s_viewHeight       = K64PluginView::kDefaultHeight;
 static void*          s_winRenderThread  = nullptr;   // HANDLE
-static volatile bool  s_winRenderRunning = false;
-static std::mutex     s_renderMutex;
-static int            s_viewCount        = 0;  // # of live K64PluginView instances
 
-// All live K64PluginView instances — used to find a fallback renderer when the
-// active view is removed while other editors are still open.
-static std::vector<K64PluginView*> s_allViews;
+#elif defined(__linux__) && !defined(__APPLE__)
+// Linux singleton render state (mirrors the Windows singleton model)
+static Display*        s_linuxDisplay       = nullptr;
+static Window          s_linuxWindow        = 0;
+static GLXContext      s_linuxGLCtx         = nullptr;
+static pthread_t       s_linuxRenderThread  = 0;
 
-#elif !defined(__APPLE__)
 // Linux: forward declaration — definition is at the bottom of this file
 static void* renderThreadEntryLinux(void* arg);
 #endif
@@ -214,7 +226,7 @@ K64PluginView::K64PluginView()
     : CPluginView(nullptr)
 {
     rect = { 0, 0, kDefaultWidth, kDefaultHeight };
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__linux__) && !defined(__APPLE__))
     ++s_viewCount;
     s_allViews.push_back(this);
 #endif
@@ -222,15 +234,14 @@ K64PluginView::K64PluginView()
 
 K64PluginView::~K64PluginView()
 {
-#ifdef _WIN32
+#if defined(_WIN32) || (defined(__linux__) && !defined(__APPLE__))
     // Unregister from the view list.
     auto it = std::find(s_allViews.begin(), s_allViews.end(), this);
     if (it != s_allViews.end())
         s_allViews.erase(it);
 
     // Destroy the singleton ImGui context when the very last view instance is
-    // released (i.e. the plugin processor itself is being unloaded).  Until
-    // then the context stays alive so canvas state survives window close/reopen.
+    // released (plugin unload).
     if (--s_viewCount <= 0)
     {
         s_viewCount = 0;
@@ -267,9 +278,9 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     // If another view is currently rendering (e.g. a second alias editor just
     // opened), stop that render and tear down its backends before re-initialising
     // on the new HWND.  The ImGui context is kept alive to preserve canvas state.
-    if (s_imguiCtx && s_winRenderRunning)
+    if (s_imguiCtx && s_renderRunning)
     {
-        s_winRenderRunning = false;
+        s_renderRunning = false;
         if (s_winRenderThread)
         {
             WaitForSingleObject((HANDLE)s_winRenderThread, 3000);
@@ -347,7 +358,7 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     wglMakeCurrent(nullptr, nullptr);
 
     // ── Start render thread ───────────────────────────────────────────────────
-    s_winRenderRunning = true;
+    s_renderRunning = true;
     s_winRenderThread  = CreateThread(nullptr, 0, renderThreadEntryWin, this, 0, nullptr);
 
     s_pendingRestore = true;
@@ -363,21 +374,65 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
 
 #else // Linux — X11 + OpenGL3
 
-    viewWidth  = rect.right  - rect.left;
-    viewHeight = rect.bottom - rect.top;
-    if (viewWidth  <= 0) viewWidth  = kDefaultWidth;
-    if (viewHeight <= 0) viewHeight = kDefaultHeight;
+    s_viewWidth  = rect.right  - rect.left;
+    s_viewHeight = rect.bottom - rect.top;
+    if (s_viewWidth  <= 0) s_viewWidth  = kDefaultWidth;
+    if (s_viewHeight <= 0) s_viewHeight = kDefaultHeight;
+
+    // ── Singleton migration ─────────────────────────────────────────────────
+    // If another view currently owns rendering, stop and tear down Linux GL/X11
+    // backends before recreating on the new host parent. Keep ImGui context.
+    if (s_linuxDisplay && s_renderRunning)
+    {
+        s_renderRunning = false;
+        if (s_linuxRenderThread)
+        {
+            pthread_join(s_linuxRenderThread, nullptr);
+            s_linuxRenderThread = 0;
+        }
+
+        if (s_linuxDisplay && s_linuxWindow && s_linuxGLCtx)
+            glXMakeCurrent(s_linuxDisplay, s_linuxWindow, s_linuxGLCtx);
+
+        K64GUI::setWindowHandle(nullptr);
+
+        if (s_imguiCtx)
+        {
+            ImGui::SetCurrentContext(s_imguiCtx);
+            ImGui_ImplOpenGL3_Shutdown();
+        }
+
+        if (s_linuxDisplay)
+        {
+            glXMakeCurrent(s_linuxDisplay, None, nullptr);
+            if (s_linuxGLCtx)
+            {
+                glXDestroyContext(s_linuxDisplay, s_linuxGLCtx);
+                s_linuxGLCtx = nullptr;
+            }
+            if (s_linuxWindow)
+            {
+                XDestroyWindow(s_linuxDisplay, s_linuxWindow);
+                s_linuxWindow = 0;
+            }
+            XCloseDisplay(s_linuxDisplay);
+            s_linuxDisplay = nullptr;
+        }
+
+        s_nativeHandle = nullptr;
+        s_activeView = nullptr;
+    }
 
     // Open connection to the X server
     XInitThreads();
-    linuxDisplay = XOpenDisplay(nullptr);
-    if (!linuxDisplay)
+    s_linuxDisplay = XOpenDisplay(nullptr);
+    if (!s_linuxDisplay)
     {
         fprintf(stderr, "64klang3: XOpenDisplay failed\n");
         return kResultFalse;
     }
 
-    int screen = DefaultScreen(linuxDisplay);
+    int screen = DefaultScreen(s_linuxDisplay);
 
     // Choose a visual with double-buffered OpenGL
     static const int visualAttribs[] = {
@@ -386,55 +441,59 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
         GLX_DEPTH_SIZE, 0,
         None
     };
-    XVisualInfo* vi = glXChooseVisual(linuxDisplay, screen, const_cast<int*>(visualAttribs));
+    XVisualInfo* vi = glXChooseVisual(s_linuxDisplay, screen, const_cast<int*>(visualAttribs));
     if (!vi)
     {
         fprintf(stderr, "64klang3: glXChooseVisual failed\n");
-        XCloseDisplay(linuxDisplay);
-        linuxDisplay = nullptr;
+        XCloseDisplay(s_linuxDisplay);
+        s_linuxDisplay = nullptr;
         return kResultFalse;
     }
 
     // Create a child X11 window embedded in the host's window
     XSetWindowAttributes swa = {};
-    swa.colormap   = XCreateColormap(linuxDisplay,
-                                     RootWindow(linuxDisplay, vi->screen),
+    swa.colormap   = XCreateColormap(s_linuxDisplay,
+                                     RootWindow(s_linuxDisplay, vi->screen),
                                      vi->visual, AllocNone);
     swa.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask
                    | ButtonPressMask | ButtonReleaseMask | PointerMotionMask
                    | StructureNotifyMask | FocusChangeMask | EnterWindowMask | LeaveWindowMask;
 
-    linuxWindow = XCreateWindow(
-        linuxDisplay,
+    s_linuxWindow = XCreateWindow(
+        s_linuxDisplay,
         (Window)(uintptr_t)parent,   // parent from host
         0, 0,
-        (unsigned)viewWidth, (unsigned)viewHeight,
+        (unsigned)s_viewWidth, (unsigned)s_viewHeight,
         0,
         vi->depth, InputOutput, vi->visual,
         CWColormap | CWEventMask, &swa);
 
-    XMapWindow(linuxDisplay, linuxWindow);
-    XFlush(linuxDisplay);
+    XMapWindow(s_linuxDisplay, s_linuxWindow);
+    XFlush(s_linuxDisplay);
 
     // Create GLX context
-    linuxGLCtx = glXCreateContext(linuxDisplay, vi, nullptr, GL_TRUE);
+    s_linuxGLCtx = glXCreateContext(s_linuxDisplay, vi, nullptr, GL_TRUE);
     XFree(vi);
-    if (!linuxGLCtx)
+    if (!s_linuxGLCtx)
     {
         fprintf(stderr, "64klang3: glXCreateContext failed\n");
-        XDestroyWindow(linuxDisplay, linuxWindow);
-        XCloseDisplay(linuxDisplay);
-        linuxDisplay = nullptr;
-        linuxWindow  = 0;
+        XDestroyWindow(s_linuxDisplay, s_linuxWindow);
+        XCloseDisplay(s_linuxDisplay);
+        s_linuxDisplay = nullptr;
+        s_linuxWindow  = 0;
         return kResultFalse;
     }
 
     // Make current on this thread briefly to initialise ImGui, then release —
     // the render thread will own the context for the rest of the session.
-    glXMakeCurrent(linuxDisplay, linuxWindow, linuxGLCtx);
+    glXMakeCurrent(s_linuxDisplay, s_linuxWindow, s_linuxGLCtx);
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    if (!s_imguiCtx)
+    {
+        IMGUI_CHECKVERSION();
+        s_imguiCtx = ImGui::CreateContext();
+    }
+    ImGui::SetCurrentContext(s_imguiCtx);
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename  = nullptr;
@@ -465,12 +524,15 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
     ImGui_ImplOpenGL3_Init("#version 130");
 
     K64GUI::init();
+    K64GUI::setWindowHandle(parent);
 
-    glXMakeCurrent(linuxDisplay, None, nullptr); // release; render thread takes over
+    glXMakeCurrent(s_linuxDisplay, None, nullptr); // release; render thread takes over
 
     // Start background render thread
-    renderRunning = true;
-    pthread_create(&renderThread, nullptr, renderThreadEntryLinux, this);
+    s_nativeHandle = parent;
+    s_activeView = this;
+    s_renderRunning = true;
+    pthread_create(&s_linuxRenderThread, nullptr, renderThreadEntryLinux, this);
 
 #endif
 
@@ -496,7 +558,7 @@ tresult PLUGIN_API K64PluginView::removed()
             s_savedWinH = wr.bottom - wr.top;
 
             // Signal the render thread to stop and wait for it to exit.
-            s_winRenderRunning = false;
+            s_renderRunning = false;
             if (s_winRenderThread)
             {
                 WaitForSingleObject((HANDLE)s_winRenderThread, 3000);
@@ -555,29 +617,58 @@ tresult PLUGIN_API K64PluginView::removed()
 
 #else // Linux
 
-    renderRunning = false;
-    if (renderThread)
+    if (nativeHandle && nativeHandle == s_nativeHandle)
     {
-        pthread_join(renderThread, nullptr);
-        renderThread = 0;
-    }
+        s_renderRunning = false;
+        if (s_linuxRenderThread)
+        {
+            pthread_join(s_linuxRenderThread, nullptr);
+            s_linuxRenderThread = 0;
+        }
 
-    if (linuxDisplay)
-    {
-        glXMakeCurrent(linuxDisplay, linuxWindow, linuxGLCtx);
+        if (s_linuxDisplay && s_linuxWindow && s_linuxGLCtx)
+            glXMakeCurrent(s_linuxDisplay, s_linuxWindow, s_linuxGLCtx);
 
+        K64GUI::setWindowHandle(nullptr);
         K64GUI::shutdown();
-        ImGui_ImplOpenGL3_Shutdown();
-        ImGui::DestroyContext();
 
-        glXMakeCurrent(linuxDisplay, None, nullptr);
-        glXDestroyContext(linuxDisplay, linuxGLCtx);
-        linuxGLCtx = nullptr;
+        if (s_imguiCtx)
+        {
+            ImGui::SetCurrentContext(s_imguiCtx);
+            ImGui_ImplOpenGL3_Shutdown();
+        }
 
-        XDestroyWindow(linuxDisplay, linuxWindow);
-        linuxWindow = 0;
-        XCloseDisplay(linuxDisplay);
-        linuxDisplay = nullptr;
+        if (s_linuxDisplay)
+        {
+            glXMakeCurrent(s_linuxDisplay, None, nullptr);
+            if (s_linuxGLCtx)
+            {
+                glXDestroyContext(s_linuxDisplay, s_linuxGLCtx);
+                s_linuxGLCtx = nullptr;
+            }
+
+            if (s_linuxWindow)
+            {
+                XDestroyWindow(s_linuxDisplay, s_linuxWindow);
+                s_linuxWindow = 0;
+            }
+
+            XCloseDisplay(s_linuxDisplay);
+            s_linuxDisplay = nullptr;
+        }
+
+        s_nativeHandle = nullptr;
+        s_activeView = nullptr;
+
+        // Reattach singleton renderer to another still-open view if available.
+        for (auto* v : s_allViews)
+        {
+            if (v != this && v->nativeHandle != nullptr)
+            {
+                v->attached(v->nativeHandle, kPlatformTypeX11EmbedWindowID);
+                break;
+            }
+        }
     }
 
 #endif
@@ -617,15 +708,16 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
 
 #else // Linux
 
-    if (guiInitialized && linuxDisplay && linuxWindow && w > 0 && h > 0)
+    if (guiInitialized && nativeHandle && nativeHandle == s_nativeHandle &&
+        s_linuxDisplay && s_linuxWindow && w > 0 && h > 0)
     {
         // Wait for any in-progress renderFrameLinux() to finish before
         // modifying the dimensions the render thread reads each frame.
-        std::lock_guard<std::mutex> lock(renderMutex);
-        viewWidth  = w;
-        viewHeight = h;
-        XResizeWindow(linuxDisplay, linuxWindow, (unsigned)w, (unsigned)h);
-        XFlush(linuxDisplay);
+        std::lock_guard<std::mutex> lock(s_renderMutex);
+        s_viewWidth  = w;
+        s_viewHeight = h;
+        XResizeWindow(s_linuxDisplay, s_linuxWindow, (unsigned)w, (unsigned)h);
+        XFlush(s_linuxDisplay);
     }
 
 #endif
@@ -788,7 +880,7 @@ void K64PluginView::runWinRenderLoop()
 {
     wglMakeCurrent((HDC)s_winDC, (HGLRC)s_winGLCtx);
 
-    while (s_winRenderRunning)
+    while (s_renderRunning)
     {
         // Handle the pendingRestore case outside the frame lock so we can
         // call SetWindowPos without deadlocking on renderMutex.
@@ -840,18 +932,18 @@ void K64PluginView::renderFrameMacOS()
 
 void K64PluginView::renderFrameLinux()
 {
-    if (!linuxDisplay || !linuxWindow || !linuxGLCtx)
+    if (!s_linuxDisplay || !s_linuxWindow || !s_linuxGLCtx)
         return;
 
     // Hold the mutex for the entire frame so that onSize() (host thread) and
     // removed() (after pthread_join) cannot race with resource access.
-    std::lock_guard<std::mutex> lock(renderMutex);
+    std::lock_guard<std::mutex> lock(s_renderMutex);
 
     // Handle X11 events (key/mouse) — forward to ImGui
-    while (XPending(linuxDisplay))
+    while (XPending(s_linuxDisplay))
     {
         XEvent ev;
-        XNextEvent(linuxDisplay, &ev);
+        XNextEvent(s_linuxDisplay, &ev);
         ImGuiIO& io = ImGui::GetIO();
 
         switch (ev.type)
@@ -924,7 +1016,7 @@ void K64PluginView::renderFrameLinux()
 
     // Render frame
     ImGuiIO& io = ImGui::GetIO();
-    io.DisplaySize = ImVec2((float)viewWidth, (float)viewHeight);
+    io.DisplaySize = ImVec2((float)s_viewWidth, (float)s_viewHeight);
     io.DeltaTime   = 1.0f / 60.0f;
 
     ImGui_ImplOpenGL3_NewFrame();
@@ -938,18 +1030,18 @@ void K64PluginView::renderFrameLinux()
     glClear(GL_COLOR_BUFFER_BIT);
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-    glXSwapBuffers(linuxDisplay, linuxWindow);
+    glXSwapBuffers(s_linuxDisplay, s_linuxWindow);
 }
 
 void K64PluginView::runLinuxRenderLoop()
 {
-    glXMakeCurrent(linuxDisplay, linuxWindow, linuxGLCtx);
-    while (renderRunning)
+    glXMakeCurrent(s_linuxDisplay, s_linuxWindow, s_linuxGLCtx);
+    while (s_renderRunning)
     {
         renderFrameLinux();
         usleep(16000); // ~60 fps
     }
-    glXMakeCurrent(linuxDisplay, None, nullptr);
+    glXMakeCurrent(s_linuxDisplay, None, nullptr);
 }
 
 static void* renderThreadEntryLinux(void* arg)

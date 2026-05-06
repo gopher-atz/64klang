@@ -4,20 +4,6 @@
 #include "public.sdk/source/common/pluginview.h"
 
 #include <cstdint>    // uintptr_t
-#include <mutex>
-
-
-
-#if defined(__linux__) && !defined(__APPLE__)
-#include <pthread.h>
-// Forward-declare X11/GLX types without pulling in the full headers here
-typedef unsigned long XID;
-typedef XID Window;
-struct _XDisplay;
-typedef struct _XDisplay Display;
-struct __GLXcontextRec;
-typedef struct __GLXcontextRec* GLXContext;
-#endif
 
 namespace Steinberg {
 namespace Vst {
@@ -63,16 +49,6 @@ private:
     bool createWGLContext(void* hwnd);
     void destroyWGLContext();
 #endif // _WIN32
-
-#if defined(__linux__) && !defined(__APPLE__)
-    Display*    linuxDisplay = nullptr;
-    Window      linuxWindow  = 0;
-    GLXContext  linuxGLCtx   = nullptr;
-    pthread_t   renderThread = 0;
-    volatile bool renderRunning = false;
-    int         viewWidth  = kDefaultWidth;
-    int         viewHeight = kDefaultHeight;
-#endif
 };
 
 } // namespace Vst
