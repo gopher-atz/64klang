@@ -131,8 +131,8 @@ After any paste the previous selection is cleared and all newly pasted nodes are
 | **Save Patch** | Save patch to `.64k2Patch`. |
 | **Reset Patch** | Reset patch to default. |
 | **Wavetables** | Toggle wavetable file dialog. |
-| **Export Patch** | Export patch as C header (`.h`). |
-| **Export Song** | Export song as C header (`.h`). |
+| **Export Patch** | Export patch as C header (`.h`) and binary blob (`.h.blob`). |
+| **Export Song** | Export song as C header (`.h`) and binary blob (`.h.blob`). The `.blob` files can be loaded at runtime without recompilation via the `64klang_blob` library. |
 | **Quantization combo** | Choose sample count (16–256) for song export. |
 | **Jump To** | Select channel to center canvas. |
 | **P.A.N.I.C** | Kill all voices (panic). |
@@ -145,3 +145,29 @@ After any paste the previous selection is cleared and all newly pasted nodes are
 - Edit panels can be stacked; only the topmost panel under the cursor receives clicks.
 - Knob dragging continues across the panel; mouse release anywhere stops it.
 - Popups (dropdowns, context menus) suppress canvas hit-testing to avoid accidental canvas actions when closing them.
+
+---
+
+## Minimap
+
+A minimap overlay is drawn in the **bottom-right corner** of the canvas. It shows the full node graph at a glance and the current viewport.
+
+| Action | Result |
+|--------|--------|
+| **Left-click on minimap** | Jump the main viewport to that position (centres on the clicked point). |
+| **Left-click + drag on minimap** | Pan the main viewport continuously as you drag. |
+
+---
+
+## Blob Export & Runtime Loading
+
+Every **Export Patch** and **Export Song** operation writes two files:
+
+| File | Use |
+|------|-----|
+| `64k2Patch.h` / `64k2Song.h` | Compile-time embedding (traditional Player / 64k intro workflow) |
+| `64k2Patch.h.blob` / `64k2Song.h.blob` | Runtime loading via the `64klang_blob` static library — no recompilation needed |
+
+The blob format embeds all engine data in full-feature mode (no `*_SKIP` defines), making it suitable for editor tools and other host codebases that need to load different songs without a build step.
+
+See `64klang3/blobplayer/64klang_blob_api.h` for the C API and `64klang3/blobplayer/example_host.cpp` for a minimal Win32 waveOut demonstration.
