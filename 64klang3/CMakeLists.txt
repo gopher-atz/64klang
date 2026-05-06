@@ -267,10 +267,14 @@ endif()
 # Player — size-optimised standalone playback executable (Windows only)
 ###############################################################################
 
-add_subdirectory(Player)
+if(WIN32)
+    add_subdirectory(player)
+endif()
 
 ###############################################################################
 # BlobPlayer — runtime blob-loading static lib + example host (Windows only)
 ###############################################################################
 
-add_subdirectory(blobplayer)
+if(WIN32)
+    add_subdirectory(blobplayer)
+endif()
