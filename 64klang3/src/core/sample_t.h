@@ -13,7 +13,7 @@
 #define S_SKIP_UNUSED
 
 #if defined(K64_USE_NEON)
-K64_ALIGN16 union sample_t
+union K64_ALIGN16 sample_t
 {
 	char		c[16];
 	short		s[8];
@@ -59,7 +59,7 @@ K64_ALIGN16 union sample_t
 	inline sample_t operator>=(const sample_t& x);
 };
 #else
-K64_ALIGN16 union sample_t
+union K64_ALIGN16 sample_t
 {
 	char		c[16];
 	short		s[8];
@@ -337,15 +337,10 @@ inline sample_t		s_cerp	(const sample_t& x, const sample_t& y, const sample_t& f
 inline sample_t		s_equalp(const sample_t& x, const sample_t& y, const sample_t& f)	{ return x*s_sin(SC[S_PI2] + SC[S_PI2] * f) + y*s_sin(SC[S_PI2] * f); }
 inline sample_t		s_db2lin(const sample_t& x)											{ return s_exp2(x / SC[S_6_0]); }
 inline sample_t		s_lin2db(const sample_t& x)											{ return s_log2(s_abs(x) + SC[CHANNELROOT_EFT]) * SC[S_6_0]; }
-K64_ALIGN16 union complexsample_t
+struct K64_ALIGN16 complexsample_t
 {
-	double  d[4];
-	sample_t pd[2];
-	struct
-	{
-		sample_t re;
-		sample_t im;
-	};
+	sample_t re;
+	sample_t im;
 
 
 	// construction

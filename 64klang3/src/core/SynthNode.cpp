@@ -7,6 +7,16 @@
 #include "SynthAllocator.h"
 // warning 4244 disabled via CMake
 
+#if defined(__GNUC__) || defined(__clang__)
+#define K64_COSF(x) __builtin_cosf(x)
+#define K64_SQRT(x) __builtin_sqrt(x)
+#else
+extern "C" float cosf(float);
+extern "C" double sqrt(double);
+#define K64_COSF(x) cosf(x)
+#define K64_SQRT(x) sqrt(x)
+#endif
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // macros and helpers
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5553,10 +5563,10 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 						float a = 2.f * 3.14159265358979f * i / (fftSize - 1);
 						float w;
 						switch (winSel) {
-							case 1:  w = 0.54f - 0.46f * cosf(a); break;                               // Hamming
-							case 2:  w = 0.42f - 0.5f * cosf(a) + 0.08f * cosf(2.f * a); break;       // Blackman
-							case 3:  w = 0.35875f - 0.48829f * cosf(a) + 0.14128f * cosf(2.f * a)
-							              - 0.01168f * cosf(3.f * a); break;                           // Blackman-Harris
+							case 1:  w = 0.54f - 0.46f * K64_COSF(a); break;                               // Hamming
+							case 2:  w = 0.42f - 0.5f * K64_COSF(a) + 0.08f * K64_COSF(2.f * a); break;       // Blackman
+							case 3:  w = 0.35875f - 0.48829f * K64_COSF(a) + 0.14128f * K64_COSF(2.f * a)
+							              - 0.01168f * K64_COSF(3.f * a); break;                           // Blackman-Harris
 							default: w = 1.f; break;                                                   // Rectangular
 						}
 						s_winCoeff[i] = w;
@@ -5588,7 +5598,7 @@ void SYNTHCALL SIGNAL_VISUALIZER_tick(SynthNode* n)
 				{
 					double re = s_fftBuf[bin].re.d[0];
 					double im = s_fftBuf[bin].im.d[0];
-					specMags[bin] = (float)sqrt(re * re + im * im);
+					specMags[bin] = (float)K64_SQRT(re * re + im * im);
 				}
 				specHalf = (DWORD)fftHalfV;
 				colCtr++;

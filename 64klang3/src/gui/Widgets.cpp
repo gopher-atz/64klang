@@ -1910,7 +1910,7 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
         }
         auto dbNorm = [](float amp) -> float {
             if (amp <= 0.f) return 0.f;
-            float db = 20.f * std::log10f(amp);
+            float db = 20.f * (float)std::log10((double)amp);
             return std::max(0.f, std::min(1.f, (db + 60.f) / 60.f));
         };
         float normL  = dbNorm(rawL),  normR  = dbNorm(rawR);
