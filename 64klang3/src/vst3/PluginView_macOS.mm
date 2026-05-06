@@ -82,6 +82,18 @@ bool k64_macOS_createView(void* parentNSView, int width, int height, K64PluginVi
 
     NSView* parent = (__bridge NSView*)parentNSView;
 
+    // Singleton backend already exists: just re-parent the existing child view.
+    if (g_device && g_cmdQueue && g_childView && g_metalLayer && g_timer)
+    {
+        NSRect frame = NSMakeRect(0, 0, (CGFloat)width, (CGFloat)height);
+        g_childView.frame  = frame;
+        g_metalLayer.frame = g_childView.bounds;
+        [g_childView removeFromSuperview];
+        [parent addSubview:g_childView];
+        K64GUI::setWindowHandle((__bridge void*)g_childView);
+        return true;
+    }
+
     // Metal device
     g_device = MTLCreateSystemDefaultDevice();
     if (!g_device)
@@ -150,14 +162,22 @@ bool k64_macOS_createView(void* parentNSView, int width, int height, K64PluginVi
     return true;
 }
 
+void k64_macOS_detachView()
+{
+    g_activeView = nullptr;
+    K64GUI::setWindowHandle(nullptr);
+    if (g_childView)
+        [g_childView removeFromSuperview];
+}
+
 void k64_macOS_destroyView()
 {
+    k64_macOS_detachView();
+
     [g_timer invalidate];
     g_timer = nil;
     g_timerTarget = nil;
-    g_activeView = nullptr;
 
-    K64GUI::setWindowHandle(nullptr);
     K64GUI::shutdown();
 
     ImGui_ImplOSX_Shutdown();

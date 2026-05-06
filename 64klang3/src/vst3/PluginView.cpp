@@ -1,11 +1,11 @@
 #include "PluginView.h"
 #include "pluginterfaces/base/fstrdefs.h"
+#include <vector>
+#include <algorithm>
 
 #ifdef _WIN32
 #include <windows.h>
 #include <GL/gl.h>
-#include <vector>
-#include <algorithm>
 #include <mutex>
 #include "imgui.h"
 #include "imgui_impl_win32.h"
@@ -51,6 +51,7 @@ static LRESULT CALLBACK editorWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM
 // Bridge functions implemented in PluginView_macOS.mm
 bool k64_macOS_createView(void* parentNSView, int width, int height,
                            Steinberg::Vst::K64PluginView* view);
+void k64_macOS_detachView();
 void k64_macOS_destroyView();
 void k64_macOS_resizeView(int width, int height);
 void k64_macOS_renderFrame();
@@ -60,8 +61,6 @@ void k64_macOS_renderFrame();
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "gui/ImGuiPlugin.h"
-#include <vector>
-#include <algorithm>
 #include <mutex>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -179,18 +178,19 @@ static ImGuiKey k64_x11KeysymToImGuiKey(KeySym sym)
 namespace Steinberg {
 namespace Vst {
 
-// Persists window size and position across view create/destroy cycles within a
-#if defined(_WIN32) || (defined(__linux__) && !defined(__APPLE__))
-// Common singleton view state shared by Windows and Linux implementations.
-static ImGuiContext*  s_imguiCtx      = nullptr;
+// Common singleton view state shared by all platform implementations.
 static void*          s_nativeHandle  = nullptr;   // current host handle hosting renderer
 static int            s_viewWidth     = K64PluginView::kDefaultWidth;
 static int            s_viewHeight    = K64PluginView::kDefaultHeight;
-static volatile bool  s_renderRunning = false;
-static std::mutex     s_renderMutex;
 static int            s_viewCount     = 0;  // # of live K64PluginView instances
 static std::vector<K64PluginView*> s_allViews;
 static K64PluginView* s_activeView    = nullptr;
+
+#if defined(_WIN32) || (defined(__linux__) && !defined(__APPLE__))
+// Shared only by threaded GL backends (Windows + Linux).
+static ImGuiContext*  s_imguiCtx      = nullptr;
+static volatile bool  s_renderRunning = false;
+static std::mutex     s_renderMutex;
 #endif
 
 #ifdef _WIN32
@@ -226,25 +226,25 @@ K64PluginView::K64PluginView()
     : CPluginView(nullptr)
 {
     rect = { 0, 0, kDefaultWidth, kDefaultHeight };
-#if defined(_WIN32) || (defined(__linux__) && !defined(__APPLE__))
     ++s_viewCount;
     s_allViews.push_back(this);
-#endif
 }
 
 K64PluginView::~K64PluginView()
 {
-#if defined(_WIN32) || (defined(__linux__) && !defined(__APPLE__))
     // Unregister from the view list.
     auto it = std::find(s_allViews.begin(), s_allViews.end(), this);
     if (it != s_allViews.end())
         s_allViews.erase(it);
 
+    if (--s_viewCount <= 0)
+        s_viewCount = 0;
+
+#if defined(_WIN32) || (defined(__linux__) && !defined(__APPLE__))
     // Destroy the singleton ImGui context when the very last view instance is
     // released (plugin unload).
-    if (--s_viewCount <= 0)
+    if (s_viewCount <= 0)
     {
-        s_viewCount = 0;
         if (s_imguiCtx)
         {
             ImGui::DestroyContext(s_imguiCtx);
@@ -365,12 +365,15 @@ tresult PLUGIN_API K64PluginView::attached(void* parent, FIDString type)
 
 #elif defined(__APPLE__)
 
-    int w = rect.right  - rect.left;
-    int h = rect.bottom - rect.top;
-    if (w <= 0) w = kDefaultWidth;
-    if (h <= 0) h = kDefaultHeight;
-    if (!k64_macOS_createView(parent, w, h, this))
+    s_viewWidth  = rect.right  - rect.left;
+    s_viewHeight = rect.bottom - rect.top;
+    if (s_viewWidth <= 0) s_viewWidth = kDefaultWidth;
+    if (s_viewHeight <= 0) s_viewHeight = kDefaultHeight;
+    if (!k64_macOS_createView(parent, s_viewWidth, s_viewHeight, this))
         return kResultFalse;
+
+    s_nativeHandle = parent;
+    s_activeView = this;
 
 #else // Linux — X11 + OpenGL3
 
@@ -613,7 +616,26 @@ tresult PLUGIN_API K64PluginView::removed()
 
 #elif defined(__APPLE__)
 
-    k64_macOS_destroyView();
+    if (nativeHandle && nativeHandle == s_nativeHandle)
+    {
+        k64_macOS_detachView();
+        s_nativeHandle = nullptr;
+        s_activeView = nullptr;
+
+        bool handedOff = false;
+        for (auto* v : s_allViews)
+        {
+            if (v != this && v->nativeHandle != nullptr)
+            {
+                v->attached(v->nativeHandle, kPlatformTypeNSView);
+                handedOff = true;
+                break;
+            }
+        }
+
+        if (!handedOff)
+            k64_macOS_destroyView();
+    }
 
 #else // Linux
 
@@ -703,8 +725,12 @@ tresult PLUGIN_API K64PluginView::onSize(ViewRect* newSize)
 
 #elif defined(__APPLE__)
 
-    if (guiInitialized && w > 0 && h > 0)
+    if (guiInitialized && nativeHandle && nativeHandle == s_nativeHandle && w > 0 && h > 0)
+    {
+        s_viewWidth  = w;
+        s_viewHeight = h;
         k64_macOS_resizeView(w, h);
+    }
 
 #else // Linux
 
