@@ -6,6 +6,9 @@ on:
     tags: ['v*']
   pull_request:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Windows 64-bit ──────────────────────────────────────────────────────────
   build-windows-64:
@@ -74,8 +77,11 @@ jobs:
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake g++ libx11-dev
 
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release ./64klang3
+
       - name: Build
-        run: ./64klang3/build_linux.sh
+        run: cmake --build build --target 64klang3 --config Release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
