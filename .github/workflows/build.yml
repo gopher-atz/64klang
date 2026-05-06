@@ -1,0 +1,116 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  # ── Windows 64-bit ──────────────────────────────────────────────────────────
+  build-windows-64:
+    name: Windows 64-bit
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build64 -A x64 ./64klang3
+
+      - name: Build
+        run: cmake --build build64 --target 64klang3 --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 64klang3-win64
+          path: build64/VST3/Release/64klang3.vst3
+
+  # ── Windows 32-bit ──────────────────────────────────────────────────────────
+  build-windows-32:
+    name: Windows 32-bit
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build32 -A Win32 ./64klang3
+
+      - name: Build
+        run: cmake --build build32 --target 64klang3 --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 64klang3-win32
+          path: build32/VST3/Release/64klang3.vst3
+
+  # ── macOS ARM ───────────────────────────────────────────────────────────────
+  build-macos-arm:
+    name: macOS ARM
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build-mac -DCMAKE_BUILD_TYPE=Release ./64klang3
+
+      - name: Build
+        run: cmake --build build-mac --target 64klang3 --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 64klang3-macos-arm
+          path: build-mac/VST3/Release/64klang3.vst3
+
+  # ── Linux ───────────────────────────────────────────────────────────────────
+  build-linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ libx11-dev
+
+      - name: Build
+        run: ./64klang3/build_linux.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 64klang3-linux
+          path: build/VST3/Release/64klang3.vst3
+
+  # ── Release (tag pushes only) ────────────────────────────────────────────
+  release:
+    name: Create Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-windows-64, build-windows-32, build-macos-arm, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package artifacts
+        run: |
+          cd artifacts
+          zip -r ../64klang3-win64.zip  64klang3-win64/
+          zip -r ../64klang3-win32.zip  64klang3-win32/
+          zip -r ../64klang3-macos-arm.zip 64klang3-macos-arm/
+          zip -r ../64klang3-linux.zip  64klang3-linux/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            64klang3-win64.zip
+            64klang3-win32.zip
+            64klang3-macos-arm.zip
+            64klang3-linux.zip
+          generate_release_notes: true
