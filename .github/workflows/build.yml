@@ -24,7 +24,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: 64klang3-win64
-          path: build64/VST3/Release/64klang3.vst3
+          path: build64/VST3/Release
+          include-hidden-files: true
 
   # ── Windows 32-bit ──────────────────────────────────────────────────────────
   build-windows-32:
@@ -43,7 +44,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: 64klang3-win32
-          path: build32/VST3/Release/64klang3.vst3
+          path: build32/VST3/Release
+          include-hidden-files: true
 
   # ── macOS ARM ───────────────────────────────────────────────────────────────
   build-macos-arm:
@@ -62,7 +64,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: 64klang3-macos-arm
-          path: build-mac/VST3/Release/64klang3.vst3
+          path: build-mac/VST3/Release
+          include-hidden-files: true
 
   # ── Linux ───────────────────────────────────────────────────────────────────
   build-linux:
@@ -84,7 +87,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: 64klang3-linux
-          path: build/VST3/Release/64klang3.vst3
+          path: build/VST3/Release
+          include-hidden-files: true
 
   # ── Release (tag pushes only) ────────────────────────────────────────────
   release:
@@ -103,10 +107,40 @@ jobs:
       - name: Package artifacts
         run: |
           cd artifacts
-          zip -r ../64klang3-win64.zip  64klang3-win64/
-          zip -r ../64klang3-win32.zip  64klang3-win32/
-          zip -r ../64klang3-macos-arm.zip 64klang3-macos-arm/
-          zip -r ../64klang3-linux.zip  64klang3-linux/
+          mkdir -p pkg/win64 pkg/win32 pkg/macos pkg/linux
+
+          if [ -d 64klang3-win64/64klang3.vst3 ]; then
+            cp -a 64klang3-win64/64klang3.vst3 pkg/win64/
+          else
+            mkdir -p pkg/win64/64klang3.vst3
+            cp -a 64klang3-win64/. pkg/win64/64klang3.vst3/
+          fi
+
+          if [ -d 64klang3-win32/64klang3.vst3 ]; then
+            cp -a 64klang3-win32/64klang3.vst3 pkg/win32/
+          else
+            mkdir -p pkg/win32/64klang3.vst3
+            cp -a 64klang3-win32/. pkg/win32/64klang3.vst3/
+          fi
+
+          if [ -d 64klang3-macos-arm/64klang3.vst3 ]; then
+            cp -a 64klang3-macos-arm/64klang3.vst3 pkg/macos/
+          else
+            mkdir -p pkg/macos/64klang3.vst3
+            cp -a 64klang3-macos-arm/. pkg/macos/64klang3.vst3/
+          fi
+
+          if [ -d 64klang3-linux/64klang3.vst3 ]; then
+            cp -a 64klang3-linux/64klang3.vst3 pkg/linux/
+          else
+            mkdir -p pkg/linux/64klang3.vst3
+            cp -a 64klang3-linux/. pkg/linux/64klang3.vst3/
+          fi
+
+          (cd pkg/win64 && zip -r ../../../64klang3-win64.zip 64klang3.vst3)
+          (cd pkg/win32 && zip -r ../../../64klang3-win32.zip 64klang3.vst3)
+          (cd pkg/macos && zip -r ../../../64klang3-macos-arm.zip 64klang3.vst3)
+          (cd pkg/linux && zip -r ../../../64klang3-linux.zip 64klang3.vst3)
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
