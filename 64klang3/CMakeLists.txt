@@ -196,7 +196,15 @@ target_link_libraries(64klang3 PRIVATE
     sdk
 )
 
-# Stamp current git hash into version.h before every build
+# Generate version.h at configure time so it exists for the first compilation
+# on all generators (on Ninja/Makefiles PRE_BUILD runs before link, not compile).
+set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+set(OUT_FILE ${CMAKE_BINARY_DIR}/version.h)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/StampVersion.cmake)
+unset(SRC_DIR)
+unset(OUT_FILE)
+
+# Keep version.h up-to-date on every rebuild (picks up new commits without reconfiguring)
 add_custom_command(TARGET 64klang3 PRE_BUILD
     COMMAND ${CMAKE_COMMAND}
         -DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
