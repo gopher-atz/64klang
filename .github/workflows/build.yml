@@ -6,16 +6,13 @@ on:
     tags: ['v*']
   pull_request:
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   # ── Windows 64-bit ──────────────────────────────────────────────────────────
   build-windows-64:
     name: Windows 64-bit
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure
         run: cmake -B build64 -A x64 ./64klang3
@@ -24,7 +21,7 @@ jobs:
         run: cmake --build build64 --target 64klang3 --config Release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 64klang3-win64
           path: build64/VST3/Release/64klang3.vst3
@@ -32,9 +29,9 @@ jobs:
   # ── Windows 32-bit ──────────────────────────────────────────────────────────
   build-windows-32:
     name: Windows 32-bit
-    runs-on: windows-latest
+    runs-on: windows-2025-vs2026
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure
         run: cmake -B build32 -A Win32 ./64klang3
@@ -43,7 +40,7 @@ jobs:
         run: cmake --build build32 --target 64klang3 --config Release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 64klang3-win32
           path: build32/VST3/Release/64klang3.vst3
@@ -53,7 +50,7 @@ jobs:
     name: macOS ARM
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Configure
         run: cmake -B build-mac -DCMAKE_BUILD_TYPE=Release ./64klang3
@@ -62,7 +59,7 @@ jobs:
         run: cmake --build build-mac --target 64klang3 --config Release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 64klang3-macos-arm
           path: build-mac/VST3/Release/64klang3.vst3
@@ -72,7 +69,7 @@ jobs:
     name: Linux
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake g++ libx11-dev libgl-dev
@@ -84,7 +81,7 @@ jobs:
         run: cmake --build build --target 64klang3 --config Release
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: 64klang3-linux
           path: build/VST3/Release/64klang3.vst3
@@ -99,7 +96,7 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -112,7 +109,7 @@ jobs:
           zip -r ../64klang3-linux.zip  64klang3-linux/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             64klang3-win64.zip
