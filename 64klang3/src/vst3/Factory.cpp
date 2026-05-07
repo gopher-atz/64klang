@@ -3,11 +3,11 @@
 
 #include "Plugin.h"
 #include "Controller.h"
+#include "version.h"    // generated at build time by cmake/StampVersion.cmake
 
 #define K64_VENDOR      "Alcatraz"
 #define K64_URL         "https://github.com/gopher-atz/64klang"
 #define K64_EMAIL       ""
-#define K64_VERSION     "3.0.0"
 
 // Processor UID
 static const Steinberg::FUID kProcessorUID(0x64ABCDEF, 0x12340001, 0xAAAABBBB, 0xCCCCDDD1);

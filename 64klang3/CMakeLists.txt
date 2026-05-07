@@ -196,9 +196,20 @@ target_link_libraries(64klang3 PRIVATE
     sdk
 )
 
+# Stamp current git hash into version.h before every build
+add_custom_command(TARGET 64klang3 PRE_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        -DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -DOUT_FILE=${CMAKE_BINARY_DIR}/version.h
+        -DPROJECT_VERSION=${PROJECT_VERSION}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/StampVersion.cmake
+    COMMENT "Stamping git hash into version.h"
+)
+
 target_include_directories(64klang3 PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${GUI_DIR}
+    ${CMAKE_BINARY_DIR}
 )
 
 if(APPLE)
@@ -252,10 +263,19 @@ if(WIN32)
             opengl32
             winmm
         )
+        add_custom_command(TARGET DebugExe PRE_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DSRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DOUT_FILE=${CMAKE_BINARY_DIR}/version.h
+                -DPROJECT_VERSION=${PROJECT_VERSION}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/StampVersion.cmake
+            COMMENT "Stamping git hash into version.h"
+        )
         target_include_directories(DebugExe PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/src
             ${GUI_DIR}
             ${DEBUG_DIR}
+            ${CMAKE_BINARY_DIR}
         )
         if(MSVC)
             target_compile_options(DebugExe PRIVATE /wd4244 /wd4267)

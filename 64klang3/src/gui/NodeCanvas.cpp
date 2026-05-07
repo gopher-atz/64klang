@@ -4,6 +4,7 @@
 #include "Widgets.h"
 #include "ArpEditor.h"
 #include "core/SynthController.h"
+#include "version.h"    // generated at build time by cmake/StampVersion.cmake
 
 #include <algorithm>
 #include <cctype>
@@ -3115,20 +3116,21 @@ void NodeCanvas::render()
         float canvasMouseX = (io.MousePos.x - canvasPos.x) / zoom - offsetX;
         float canvasMouseY = (io.MousePos.y - canvasPos.y) / zoom - offsetY;
 
-        char dbg[6][256];
-        snprintf(dbg[0], sizeof(dbg[0]),
+        char dbg[7][256] = {};
+        snprintf(dbg[0], sizeof(dbg[0]), "64klang3  %s", K64_VERSION_FULL);
+        snprintf(dbg[1], sizeof(dbg[1]),
                     "Frame=%-8llu  FPS=%.1f  dt=%.3fms",
                     (unsigned long long)debugFrameCount, io.Framerate, io.DeltaTime * 1000.f);
-        snprintf(dbg[1], sizeof(dbg[1]),
+        snprintf(dbg[2], sizeof(dbg[2]),
                     "Mouse=%.1f,%.1f  CanvasOrigin=%.1f,%.1f  DisplaySize=%.0fx%.0f",
                     io.MousePos.x, io.MousePos.y,
                     canvasPos.x, canvasPos.y,
                     io.DisplaySize.x, io.DisplaySize.y);
-        snprintf(dbg[2], sizeof(dbg[2]),
+        snprintf(dbg[3], sizeof(dbg[3]),
                     "CanvasXY=%.1f,%.1f  Zoom=%.3f  Offset=%.1f,%.1f",
                     canvasMouseX, canvasMouseY,
                     zoom, offsetX, offsetY);
-        snprintf(dbg[3], sizeof(dbg[3]),
+        snprintf(dbg[4], sizeof(dbg[4]),
                     "ItemHov=%d WinHov=%d MB0=%d MB1=%d  Hit=%d Sel=%d Nodes=%d",
                     (int)canvasHovered, (int)winHovered,
                     (int)io.MouseDown[0], (int)io.MouseDown[1],
@@ -3140,9 +3142,9 @@ void NodeCanvas::render()
             maxW = std::max(maxW, ImGui::CalcTextSize(line).x);
         ImVec2 dbgPos(canvasPos.x + 4, canvasPos.y + 4);
         dl->AddRectFilled(dbgPos,
-                            ImVec2(dbgPos.x + maxW + 8, dbgPos.y + lineH * 6 + 6),
+                            ImVec2(dbgPos.x + maxW + 8, dbgPos.y + lineH * 7 + 6),
                             IM_COL32(0, 0, 0, 200));
-        for (int li = 0; li < 6; li++)
+        for (int li = 0; li < 7; li++)
             dl->AddText(ImVec2(dbgPos.x + 4, dbgPos.y + 3 + li * lineH),
                         IM_COL32(255, 255, 0, 255), dbg[li]);
     }
@@ -3153,6 +3155,12 @@ void NodeCanvas::render()
     dl->PopClipRect();
 
     drawMinimap(canvasPos, canvasSize);
+
+    // Version label — top-left corner of the canvas (same position as debug overlay)
+    {
+        ImVec2 vpos(canvasPos.x + 4.f, canvasPos.y + 4.f);
+        dl->AddText(vpos, IM_COL32(200, 50, 50, 200), K64_VERSION_FULL);
+    }
 
     // Context menu popup (must be outside clip rect)
     if (showContextMenu)
