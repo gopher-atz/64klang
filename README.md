@@ -2,6 +2,8 @@
 
 Official 64klang repository
 
+[Get the latest prebuilt VST3 plugins](https://github.com/gopher-atz/64klang/releases)
+
 For discussion or feedback please use our **#64klang** channel on [Discord](https://discord.gg/bH7QBxq4Ts)
 
 ---
@@ -18,18 +20,26 @@ The probably quite unique thing about 64klang is its ability to have basically u
 
 ---
 
-## 64klang3 (current version)
+## 64klang3
 
-64klang3 is a complete rewrite as a **VST3 plugin** with a platform-independent ImGui node-graph GUI. It is the active version under development.
+64klang3 is a partial rewrite of 64klang2, now as a **VST3 plugin** with a **platform-independent** node-graph GUI using **ImGui**. It is the active version under development.
+The Synthesizer core is still the same as in 64klang2, so old Instrument (.64k2Channel) and Patch (.64k2Patch) files are expected to work as before.
+
+64klang2 as the previous Win32 only version is also still available [in the repo](64klang2/) and listed in the [releases](https://github.com/gopher-atz/64klang/releases/tag/v2.0.0.28650)
 
 ### Key features
 
-- VST3 plugin (Windows / macOS / Linux)
+- VST3 plugin
+  - Windows 32bit
+  - Windows 64bit
+  - macOS 64bit
+  - Linux 64bit
 - ImGui-based zoomable/pannable node-graph editor
-- 60+ node types: oscillators, filters, envelopes, delays, reverb, EQ, samplers, arpeggiator, spectral processing (FOURIOZA Paulstretch), and more
-- 44100 Hz, SSE4.1-accelerated stereo engine (`sample_t` = two packed `double`s per stereo pair)
+- 60+ node types: oscillators, filters, envelopes, delays, reverb, EQ, samplers, arpeggiator, spectral processing and more
+- 44100 Hz, SSE4.1-accelerated stereo engine (`sample_t` = two packed `double`s per stereo pair), per sample processing (allowing node feedback loops).
 - Multi-instance support: multiple plugin instances share the singleton engine; first instance is render owner, others forward MIDI only
-- Runtime blob loading: export patch + song as `.blob` files from the plugin; load them at runtime in any codebase without recompilation (`64klang_blob` static library)
+- Runtime blob loading for tools: export patch + song as `.blob` files from the plugin; load them at runtime in any codebase without recompilation (`64klang_blob` static library)
+- optimized header files export for patch + song for direct compilation in size restricted [demoscene](https://en.wikipedia.org/wiki/Demoscene) productions like [32k exemusic or 64k intros](#examples)
 
 > **Platform note:** Three node features require Windows APIs and produce silence on macOS/Linux: the **Sampler** node (GSM 6.10 compression via Windows ACM), the **GM.DLS Sampler** node (reads `GM.DLS` from the Windows system), and the **TTS** node (Windows SAPI speech synthesis). All other nodes are fully cross-platform.
 
