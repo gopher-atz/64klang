@@ -5,7 +5,6 @@ if(NOT WIN32)
 endif()
 
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src/core)
-set(PLATFORM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../src/platform)
 
 ###############################################################################
 # Player executable
@@ -25,16 +24,16 @@ set(PLAYER_SONG_DIR "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH
 # No TinyXML / SynthController: not needed for player builds.
 add_executable(Player
     main.cpp
+    ${PLAYER_SONG_DIR}/64k2Patch.h
+    ${PLAYER_SONG_DIR}/64k2Song.h
     ${CORE_DIR}/sample_t.cpp
     ${CORE_DIR}/SynthNode.cpp
     ${CORE_DIR}/SynthAllocator.cpp
     ${CORE_DIR}/Synth.cpp
-    ${PLATFORM_DIR}/windows/WindowsPlatform.cpp
 )
 
 target_include_directories(Player PRIVATE
     ${CORE_DIR}
-    ${PLATFORM_DIR}
     ${PLAYER_SONG_DIR}
 )
 
