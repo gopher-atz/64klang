@@ -5730,32 +5730,44 @@ void SynthController::exportPatch(const std::string& filename)
 
 void SynthController::noteOn(int channel, int note, int velocity)
 {
-	Recorder.AddNoteOn(channel, note, velocity);
-	_64klang_NoteOn(channel, note, velocity);
+	// no synth processing in recording mode, just record incoming events
+	if (isRecording())
+		Recorder.AddNoteOn(channel, note, velocity);
+	else
+		_64klang_NoteOn(channel, note, velocity);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SynthController::noteOff(int channel, int note, int velocity)
 {
-	Recorder.AddNoteOff(channel, note);
-	_64klang_NoteOff(channel, note, velocity);
+	// no synth processing in recording mode, just record incoming events
+	if (isRecording())
+		Recorder.AddNoteOff(channel, note);
+	else
+		_64klang_NoteOff(channel, note, velocity);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SynthController::noteAftertouch(int channel, int note, int pressure)
 {
-	Recorder.AddNoteAftertouch(channel, note, pressure);
-	_64klang_NoteAftertouch(channel, note, pressure);
+	// no synth processing in recording mode, just record incoming events
+	if (isRecording())
+		Recorder.AddNoteAftertouch(channel, note, pressure);
+	else
+		_64klang_NoteAftertouch(channel, note, pressure);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SynthController::midiSignal(int channel, int value, int cc)
 {
-	Recorder.AddCC(channel, value, cc);
-	_64klang_MidiSignal(channel, value, cc);
+	// no synth processing in recording mode, just record incoming events
+	if (isRecording())
+		Recorder.AddCC(channel, value, cc);
+	else
+		_64klang_MidiSignal(channel, value, cc);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -5769,12 +5781,11 @@ void SynthController::setBPM(float bpm)
 
 void SynthController::tick(float* left, float* right, int samples)
 {
-	// During stream recording: skip the synth engine entirely (too expensive to
-	// run alongside the recorder) and output a quiet sawtooth keep-alive signal
-	// so the host never thinks the plugin is silent and suspends it.
+	// no synth processing in recording mode, just record incoming events
 	if (isRecording())
 	{
 		Recorder.AddSamples(samples);
+		// send a stayalive signal to the host (some sawtooth sound)
 		for (int i = 0; i < samples; i++)
 		{
 			float signal = 0.03125f * ((float)(i & 255) / 128.0f - 1.0f);
