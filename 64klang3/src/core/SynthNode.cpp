@@ -7,6 +7,7 @@
 #include "SynthAllocator.h"
 // warning 4244 disabled via CMake
 
+#if defined(COMPILE_VSTI)
 #if defined(__GNUC__) || defined(__clang__)
 #define K64_COSF(x) __builtin_cosf(x)
 #define K64_SQRT(x) __builtin_sqrt(x)
@@ -15,6 +16,7 @@ extern "C" float cosf(float);
 extern "C" double sqrt(double);
 #define K64_COSF(x) cosf(x)
 #define K64_SQRT(x) sqrt(x)
+#endif
 #endif
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
