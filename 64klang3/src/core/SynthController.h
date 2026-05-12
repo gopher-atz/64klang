@@ -11,32 +11,16 @@
 #include "SynthNode.h"
 
 #define MAX_NODES			32768
+#define NODE_SLOTS			(NODE_MAX_INPUTS+1)
 
 class TiXmlElement;
 
 class K64_API SynthController
 {
-private:
-
-	struct Connection
+public:
+	// additional node information needed for gui
+	struct NodeGUIInfo
 	{
-		int from;
-		int to;
-		int index;
-	};
-	struct Position
-	{
-		int x,y;
-	};
-
-	SynthController();
-	~SynthController();
-	static SynthController* _instance;
-
-	// additional node information only needed for gui
-	class NodeGUIInfo
-	{
-	public:
 		NodeGUIInfo() : Visible(false), Node(0), X(0), Y(0), FixedChannel(-2), IsModAdder(false), IsParameter(false), RecursionFlag(false), IsSelected(false)
 		{
 			for (int i = 0; i < NODE_MAX_INPUTS; i++)
@@ -68,6 +52,26 @@ private:
 		// the node name to be used in display
 		std::string Name;
 	};
+
+	// O(1) node lookup by valueOffset (nodeID); returns null if slot unused
+	NodeGUIInfo* guiNode(DWORD nodeID) { return _guiInfo[nodeID / NODE_SLOTS]; }
+
+private:
+
+	struct Connection
+	{
+		int from;
+		int to;
+		int index;
+	};
+	struct Position
+	{
+		int x,y;
+	};
+
+	SynthController();
+	~SynthController();
+	static SynthController* _instance;
 
 	void RemoveOutput(SynthNode* node, SynthNode* target);
 
@@ -123,24 +127,14 @@ public:
 	double getNodeValue(DWORD node, DWORD index, DWORD channel);
 	void setNodeProcessingFlags(DWORD node, DWORD flags);
 
-	// indexed accessors for mass gui update
+	// node list (rebuilds _activeNodeIDs if dirty)
 	int		numGUINodes();
-	int		numSelectedGUINodes();
-	SynthNode* gnNode(DWORD index);
-	bool	gnIsVisible(DWORD index);
-	int		gnType(DWORD index);
-	int		gnID(DWORD index);
-	int		gnNodeInputs(DWORD index);
-	int		gnNodeReqSignals(DWORD index);
-	int		gnNodeMaxSignals(DWORD index);
-	double	gnX(DWORD index);
-	double	gnY(DWORD index);
-	std::string	gnName(DWORD index);
-	int		gnChannel(DWORD index);
-	int		gnInput(DWORD index, DWORD input);
-	double	gnInputValue(DWORD index, DWORD inputIndex, DWORD channel);
-	int		gnInputMode(DWORD index, DWORD inputIndex);
-	bool	gnIsGlobal(DWORD index);
+	const std::vector<DWORD>& activeNodeIDs() const { return _activeNodeIDs; }
+
+	// complex accessors that need non-trivial logic (take nodeID = valueOffset)
+	int		gnInput(DWORD nodeID, DWORD input);
+	int		gnNodeReqSignals(DWORD nodeID);
+	int		gnNodeMaxSignals(DWORD nodeID);
 
 	// misc
 	int		getNumActiveVoices();
@@ -195,14 +189,17 @@ public:
 	void tick		(float* left, float* right, int samples);
 
 private:
+	// slot ↔ nodeID helpers (nodeID = valueOffset = slot * NODE_SLOTS)
+	static DWORD indexFromOffset(DWORD nodeID) { return nodeID / NODE_SLOTS; }
+	
 	// the values blob for all nodes
 	SynthNode**							_nodes;
 	std::map<DWORD, DWORD>				_freeSlots;
-	std::map<DWORD, NodeGUIInfo>		_nodeGUIInfo;
+	NodeGUIInfo*						_guiInfo[MAX_NODES]; // indexed by slot, null = unused
 
-	std::vector<NodeGUIInfo*>			_nodesGUIAccessor;
-	// Set to true whenever _nodeGUIInfo entries are inserted or erased;
-	// numGUINodes() only rebuilds _nodesGUIAccessor when dirty.
+	std::vector<DWORD>					_activeNodeIDs; // dense list of active valueOffsets
+	// Set to true whenever _guiInfo entries are created or destroyed;
+	// numGUINodes() only rebuilds _activeNodeIDs when dirty.
 	bool _accessorDirty = true;
 
 	std::vector<void*>					_deferredFreeNodes;

@@ -93,10 +93,6 @@ private:
     // Z-order: nodeIDs back-to-front. Kept in sync on every structural change.
     std::vector<int> nodeZOrder;
 
-    // Per-frame nodeID→guiIndex map: rebuilt once at the start of render().
-    // Avoids O(N²) findGuiIndex calls in drawWires and the main draw loop.
-    std::unordered_map<int,int> frameIdToGi;
-
     // Per-parameter sync state: key = (uint64_t)nodeID<<32 | paramIdx
     // Initialised lazily when a panel opens (from L==R equality).
     // Stored explicitly so the user can toggle it independently of the values.
@@ -235,10 +231,8 @@ private:
     void bringMultipleToFront(const std::unordered_set<int>& ids);
 
     int  hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) const;
-    int  findGuiIndex(int nodeID) const;
-    bool nodeOverlapsRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax, const ImVec2& canvasOrigin) const;
-    void recursiveSelect(int nodeID, std::unordered_set<int>& visited,
-                          const std::unordered_map<int,int>& idToGi);
+    bool nodeOverlapsRect(int nodeID, ImVec2 rectMin, ImVec2 rectMax, const ImVec2& canvasOrigin) const;
+    void recursiveSelect(int nodeID, std::unordered_set<int>& visited);
     void syncSelectionToCore();
     void deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly);
 

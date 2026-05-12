@@ -19,7 +19,6 @@
 // vsti specific
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define	NODE_SLOTS	(NODE_MAX_INPUTS+1)
 #define CONSTANT_0	((MAX_NODES-1)*NODE_SLOTS)
 
 SynthController*	SynthController::_instance = 0;
@@ -369,6 +368,7 @@ SynthController::SynthController() : _nodes(0)
 {
 	_64klang_Init(NULL, NULL, 0, 0, MAX_NODES*NODE_SLOTS);
 	_nodes = (SynthNode**)SynthMalloc(MAX_NODES*sizeof(SynthNode*));
+	memset(_guiInfo, 0, sizeof(_guiInfo));
 	// init free nodes index list
 	for (DWORD i = 0; i < MAX_NODES; i++)
 		_freeSlots[i] = 1;
@@ -441,25 +441,25 @@ SynthNode* SynthController::createNode(DWORD id, DWORD channel, DWORD isGlobal)
 	// always put the node in the global nodes map
 	SynthGlobalState.GlobalNodes[offset] = _nodes[slot];
 
-	NodeGUIInfo info;
+	NodeGUIInfo* info = new NodeGUIInfo();
 
 	// set all inputs to default 0
 	for (int i = 0; i < NODE_MAX_INPUTS; i++)
 	{
-		info.ModAdder[i] = 0;
+		info->ModAdder[i] = 0;
 		_nodes[slot]->input[i] = (sample_t*)constant0();
 		int ofsconstz = CONSTANT_0;
 		SynthGlobalState.NodeValues[++offset] = ofsconstz;
 	}
 
-	info.Node = _nodes[slot];
+	info->Node = _nodes[slot];
 	// set fixed channel
 	if (id == SYNTHROOT_ID)
-		info.FixedChannel = -1;
+		info->FixedChannel = -1;
 	else
-		info.FixedChannel = channel;
-	info.Outputs.clear();
-	_nodeGUIInfo[slot*NODE_SLOTS] = info;
+		info->FixedChannel = channel;
+	info->Outputs.clear();
+	_guiInfo[slot] = info;
 	_accessorDirty = true;
 
 	return _nodes[slot];
@@ -499,9 +499,10 @@ SynthNode* SynthController::createGUINode(DWORD id, DWORD channel, DWORD isGloba
 		node->numInputs = 2;
 
 	// set position in info
-	_nodeGUIInfo[node->valueOffset].X = x;
-	_nodeGUIInfo[node->valueOffset].Y = y;
-	_nodeGUIInfo[node->valueOffset].Visible = true;
+	DWORD nodeSlot = indexFromOffset(node->valueOffset);
+	_guiInfo[nodeSlot]->X = x;
+	_guiInfo[nodeSlot]->Y = y;
+	_guiInfo[nodeSlot]->Visible = true;
 
 	// create the modulation parameter constants and adders
 	for (DWORD i = NodeReqGUISignals[id]; i < NodeMaxGUISignals[id]; i++)
@@ -515,7 +516,7 @@ SynthNode* SynthController::createGUINode(DWORD id, DWORD channel, DWORD isGloba
 		// connect to the node input
 		node->input[i] = (sample_t*)constant;
 		SynthGlobalState.NodeValues[node->valueOffset+1+i] = constant->valueOffset;
-		_nodeGUIInfo[constant->valueOffset].IsParameter = true;
+		_guiInfo[indexFromOffset(constant->valueOffset)]->IsParameter = true;
 
 		// create modulation adder and store in info for later use when connecting modulations
 		SynthNode* adder = createNode(ADD_ID, -2, isGlobal);
@@ -524,9 +525,9 @@ SynthNode* SynthController::createGUINode(DWORD id, DWORD channel, DWORD isGloba
 		adder->input[1] = (sample_t*)constant0();
 		SynthGlobalState.NodeValues[adder->valueOffset+1+0] = constant->valueOffset;
 		SynthGlobalState.NodeValues[adder->valueOffset+1+1] = constant0()->valueOffset;
-		_nodeGUIInfo[adder->valueOffset].IsModAdder = true;
+		_guiInfo[indexFromOffset(adder->valueOffset)]->IsModAdder = true;
 
-		_nodeGUIInfo[node->valueOffset].ModAdder[i] = adder;
+		_guiInfo[nodeSlot]->ModAdder[i] = adder;
 	}
 	// create mode constants
 	bool oldMassDataUpdate = _massDataUpdate;
@@ -537,7 +538,7 @@ SynthNode* SynthController::createGUINode(DWORD id, DWORD channel, DWORD isGloba
 		// connect to the node input
 		node->input[i] = (sample_t*)constant;
 		SynthGlobalState.NodeValues[node->valueOffset+1+i] = constant->valueOffset;
-		_nodeGUIInfo[constant->valueOffset].IsParameter = true;
+		_guiInfo[indexFromOffset(constant->valueOffset)]->IsParameter = true;
 	}
 	_massDataUpdate = oldMassDataUpdate; // restore massdataupdate flag
 
@@ -833,8 +834,9 @@ void SynthController::deleteNode(DWORD node)
 	}
 	_accessorDirty = true; // node entries will be erased below
 
+	DWORD nodeSlot = indexFromOffset(node);
 	// parameters and modadders are destroyed when their owner nodes are destroyed
-	if (_nodeGUIInfo[node].IsParameter || _nodeGUIInfo[node].IsModAdder)
+	if (_guiInfo[nodeSlot]->IsParameter || _guiInfo[nodeSlot]->IsModAdder)
 	{
 		if (!wasUpdating)
 		{
@@ -845,17 +847,17 @@ void SynthController::deleteNode(DWORD node)
 	}
 
 	// the gui node to be deleted
-	SynthNode* dnode = _nodeGUIInfo[node].Node;
+	SynthNode* dnode = _guiInfo[nodeSlot]->Node;
 
 	// disconnect from all dependent nodes and reestablish default 0 for them
-	for (std::set<SynthNode*>::iterator it = _nodeGUIInfo[node].Outputs.begin(); it != _nodeGUIInfo[node].Outputs.end(); it++)
+	for (std::set<SynthNode*>::iterator it = _guiInfo[nodeSlot]->Outputs.begin(); it != _guiInfo[nodeSlot]->Outputs.end(); it++)
 	{
 		// loop outputs inputs
 		for (DWORD i = 0; i < (*it)->numInputs; i++)
 		{
 			SynthNode* input = (SynthNode*)((*it)->input[i]);
 			// input is a modadder, so refer to its connected input
-			if (input == _nodeGUIInfo[(*it)->valueOffset].ModAdder[i])
+			if (input == _guiInfo[indexFromOffset((*it)->valueOffset)]->ModAdder[i])
 				input = (SynthNode*)(input->input[1]);
 			// found our node, so disconnect
 			if (input == dnode)
@@ -878,7 +880,7 @@ void SynthController::deleteNode(DWORD node)
 			else if (i < NodeMaxGUISignals[dnode->id])
 			{
 				SynthNode* input = (SynthNode*)(dnode->input[i]);
-				if (input == _nodeGUIInfo[dnode->valueOffset].ModAdder[i])
+				if (input == guiNode(dnode->valueOffset)->ModAdder[i])
 					disconnectInput(dnode->valueOffset, i);
 			}
 			// disconnect multiadd inputs
@@ -893,28 +895,31 @@ void SynthController::deleteNode(DWORD node)
 		{
 			for (DWORD i = NodeReqGUISignals[dnode->id]; i < dnode->numInputs; i++)
 			{
-				if (_nodeGUIInfo[dnode->valueOffset].ModAdder[i])
+				if (guiNode(dnode->valueOffset)->ModAdder[i])
 				{
-					SynthNode* modadder = _nodeGUIInfo[dnode->valueOffset].ModAdder[i];
+					SynthNode* modadder = guiNode(dnode->valueOffset)->ModAdder[i];
 					// free the modadder constant
 					SynthNode* constant = (SynthNode*)(modadder->input[0]);
-					_freeSlots[constant->valueOffset/NODE_SLOTS] = 1;
-					_nodes[constant->valueOffset/NODE_SLOTS] = 0;
-					_nodeGUIInfo.erase(constant->valueOffset);
+					DWORD cSlot = indexFromOffset(constant->valueOffset);
+					_freeSlots[cSlot] = 1;
+					_nodes[cSlot] = 0;
+					delete _guiInfo[cSlot]; _guiInfo[cSlot] = nullptr;
 					SynthFree(constant);
 					// free the modadder itself
-					_freeSlots[modadder->valueOffset/NODE_SLOTS] = 1;
-					_nodes[modadder->valueOffset/NODE_SLOTS] = 0;
-					_nodeGUIInfo.erase(modadder->valueOffset);
+					DWORD mSlot = indexFromOffset(modadder->valueOffset);
+					_freeSlots[mSlot] = 1;
+					_nodes[mSlot] = 0;
+					delete _guiInfo[mSlot]; _guiInfo[mSlot] = nullptr;
 					SynthFree(modadder);
 				}
 				// mode constants
 				else
 				{
 					SynthNode* constant = (SynthNode*)(dnode->input[i]);
-					_freeSlots[constant->valueOffset/NODE_SLOTS] = 1;
-					_nodes[constant->valueOffset/NODE_SLOTS] = 0;
-					_nodeGUIInfo.erase(constant->valueOffset);
+					DWORD cSlot = indexFromOffset(constant->valueOffset);
+					_freeSlots[cSlot] = 1;
+					_nodes[cSlot] = 0;
+					delete _guiInfo[cSlot]; _guiInfo[cSlot] = nullptr;
 					SynthFree(constant);
 				}
 			}
@@ -922,10 +927,11 @@ void SynthController::deleteNode(DWORD node)
 	}
 
 	// mark the slot as free again
-	_freeSlots[dnode->valueOffset/NODE_SLOTS] = 1;
-	_nodes[dnode->valueOffset/NODE_SLOTS] = 0;
+	DWORD dSlot = indexFromOffset(dnode->valueOffset);
+	_freeSlots[dSlot] = 1;
+	_nodes[dSlot] = 0;
 	SynthGlobalState.GlobalNodes[dnode->valueOffset] = 0;
-	_nodeGUIInfo.erase(dnode->valueOffset);
+	delete _guiInfo[dSlot]; _guiInfo[dSlot] = nullptr;
 	if (dnode->customMem)
 		SynthFree(dnode->customMem);
 	SynthFree(dnode);
@@ -941,9 +947,9 @@ void SynthController::deleteNode(DWORD node)
 
 SynthNode* SynthController::getNode(DWORD node)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(node);
-	if (it != _nodeGUIInfo.end())
-		return it->second.Node;
+	DWORD s = indexFromOffset(node);
+	if (s < MAX_NODES && _guiInfo[s])
+		return _guiInfo[s]->Node;
 	return NULL;
 }
 
@@ -959,14 +965,14 @@ void SynthController::connectInput(DWORD inputid, DWORD targetid, DWORD index)
 	if (!_massDataUpdate)
 		DataAccessMutex.lock();
 
-	SynthNode* input = _nodeGUIInfo[inputid].Node;
-	SynthNode* target = _nodeGUIInfo[targetid].Node;
+	SynthNode* input = guiNode(inputid)->Node;
+	SynthNode* target = guiNode(targetid)->Node;
 
 	// special case for multiadd based nodes with variable inputs
 	if (target->id == MULTIADD_ID || target->id == NOTECONTROLLER_ID)
 	{
 		// gui connection
-		_nodeGUIInfo[input->valueOffset].Outputs.insert(target);
+		guiNode(input->valueOffset)->Outputs.insert(target);
 		target->input[target->numInputs] = (sample_t*)input;
 		// core connection
 		SynthGlobalState.NodeValues[target->valueOffset+1+target->numInputs] = input->valueOffset;
@@ -981,7 +987,7 @@ void SynthController::connectInput(DWORD inputid, DWORD targetid, DWORD index)
 		if (index < NodeReqGUISignals[target->id])
 		{
 			// gui connection
-			_nodeGUIInfo[input->valueOffset].Outputs.insert(target);
+			guiNode(input->valueOffset)->Outputs.insert(target);
 			target->input[index] = (sample_t*)input;
 			// core connection
 			SynthGlobalState.NodeValues[target->valueOffset+1+index] = input->valueOffset;
@@ -989,9 +995,9 @@ void SynthController::connectInput(DWORD inputid, DWORD targetid, DWORD index)
 		// something connected from the gui as a modulator
 		else if (index < NodeMaxGUISignals[target->id])
 		{
-			SynthNode* modadder = _nodeGUIInfo[target->valueOffset].ModAdder[index];
+			SynthNode* modadder = guiNode(target->valueOffset)->ModAdder[index];
 			// gui connection (hidden by modadder)
-			_nodeGUIInfo[input->valueOffset].Outputs.insert(target);
+			guiNode(input->valueOffset)->Outputs.insert(target);
 			modadder->input[1] = (sample_t*)input;
 			target->input[index] = (sample_t*)modadder;
 			// core connection
@@ -1018,14 +1024,14 @@ void SynthController::RemoveOutput(SynthNode* node, SynthNode* target)
 	{
 		SynthNode* input = (SynthNode*)(target->input[i]);
 		// input is a modadder, so refer to its connected input
-		if (input == _nodeGUIInfo[target->valueOffset].ModAdder[i])
+		if (input == guiNode(target->valueOffset)->ModAdder[i])
 			input = (SynthNode*)(input->input[1]);
 		// increase counter on input match
 		if (input == node)
 			count++;
 	}
 	if (count == 1)
-		_nodeGUIInfo[node->valueOffset].Outputs.erase(target);
+		guiNode(node->valueOffset)->Outputs.erase(target);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1035,7 +1041,7 @@ void SynthController::disconnectInput(DWORD targetid, DWORD index, bool removeOu
 	if (!_massDataUpdate)
 		DataAccessMutex.lock();
 
-	SynthNode* target = _nodeGUIInfo[targetid].Node;
+	SynthNode* target = guiNode(targetid)->Node;
 
 	// special case for multiadd based nodes with variable inputs
 	if (target->id == MULTIADD_ID || target->id == NOTECONTROLLER_ID)
@@ -1070,7 +1076,7 @@ void SynthController::disconnectInput(DWORD targetid, DWORD index, bool removeOu
 		// a modulation slot was disconnected, so reconnect constant directly to the input
 		else if (index < NodeMaxGUISignals[target->id])
 		{
-			SynthNode* modadder = _nodeGUIInfo[target->valueOffset].ModAdder[index];
+			SynthNode* modadder = guiNode(target->valueOffset)->ModAdder[index];
 			// get the node to disconnect from the modadder at index and remove target from the outputs
 			SynthNode* input = (SynthNode*)(modadder->input[1]);
 			if (removeOutput)
@@ -1100,7 +1106,7 @@ void SynthController::setInputValue(DWORD nodeid, DWORD index, double value1, do
 	if (!_massDataUpdate)
 		DataAccessMutex.lock();
 
-	SynthNode* node = _nodeGUIInfo[nodeid].Node;
+	SynthNode* node = guiNode(nodeid)->Node;
 
 	if (index == -1)
 	{
@@ -1109,7 +1115,7 @@ void SynthController::setInputValue(DWORD nodeid, DWORD index, double value1, do
 	else
 	{
 		SynthNode* store = (SynthNode*)(node->input[index]);
-		SynthNode* modadder = _nodeGUIInfo[node->valueOffset].ModAdder[index];
+		SynthNode* modadder = guiNode(node->valueOffset)->ModAdder[index];
 		// if modadder at index is connected store in the constant at modadders index 0
 		if (store == modadder)
 			*(modadder->input[0]) = sample_t(value1, value2);
@@ -1129,10 +1135,10 @@ void SynthController::setInputMode(DWORD nodeid, DWORD index, DWORD mode, DWORD 
 	if (!_massDataUpdate)
 		DataAccessMutex.lock();
 
-	SynthNode* node = _nodeGUIInfo[nodeid].Node;
+	SynthNode* node = guiNode(nodeid)->Node;
 
 	SynthNode* store = (SynthNode*)(node->input[index]);
-	SynthNode* modadder = _nodeGUIInfo[node->valueOffset].ModAdder[index];
+	SynthNode* modadder = guiNode(node->valueOffset)->ModAdder[index];
 	// if modadder at index is connected store in the constant at modadders index 0
 	if (store == modadder)
 	{
@@ -1154,7 +1160,7 @@ void SynthController::setInputMode(DWORD nodeid, DWORD index, DWORD mode, DWORD 
 
 double SynthController::getInputValue(DWORD nodeid, DWORD inputIndex, DWORD channel)
 {
-	SynthNode* node = _nodeGUIInfo[nodeid].Node;
+	SynthNode* node = guiNode(nodeid)->Node;
 
 	// special case for constant
 	if (inputIndex == -1)
@@ -1179,7 +1185,7 @@ double SynthController::getInputValue(DWORD nodeid, DWORD inputIndex, DWORD chan
 			// modadder used? return referenced input
 			else
 			{
-				NodeGUIInfo* info = &(_nodeGUIInfo[node->valueOffset]);
+				NodeGUIInfo* info = guiNode(node->valueOffset);
 				SynthNode* modadder = info->ModAdder[inputIndex];
 				return modadder->input[0]->d[channel];
 			}
@@ -1203,7 +1209,7 @@ double SynthController::getInputValue(DWORD nodeid, DWORD inputIndex, DWORD chan
 
 int SynthController::getInputMode(DWORD nodeid, DWORD inputIndex)
 {
-	SynthNode* node = _nodeGUIInfo[nodeid].Node;
+	SynthNode* node = guiNode(nodeid)->Node;
 
 	// required input? return input
 	if (inputIndex < NodeReqGUISignals[node->id])
@@ -1229,7 +1235,7 @@ void SynthController::resetEventSignal(DWORD nodeid)
 	if (!_massDataUpdate)
 		DataAccessMutex.lock();
 
-	SynthNode* node = _nodeGUIInfo[nodeid].Node;
+	SynthNode* node = guiNode(nodeid)->Node;
 	node->e = sample_t::zero();
 
 	if (!_massDataUpdate)
@@ -1317,46 +1323,33 @@ void SynthController::setArpStepData(DWORD nodeid, DWORD step, DWORD value)
 
 void SynthController::setX(DWORD nodeid, double x)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
-	{
-		it->second.X = x;
-	}
+	NodeGUIInfo* gi = guiNode(nodeid);
+	if (gi) gi->X = x;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SynthController::setY(DWORD nodeid, double y)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
-	{
-		it->second.Y = y;
-	}
+	NodeGUIInfo* gi = guiNode(nodeid);
+	if (gi) gi->Y = y;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SynthController::setName(DWORD nodeid, std::string name)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
-	{
-		it->second.Name = name;
-	}
+	NodeGUIInfo* gi = guiNode(nodeid);
+	if (gi) gi->Name = name;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 std::string SynthController::getName(DWORD nodeid)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
-	{
-		return it->second.Name;
-	}
-	else
-		return "";
+	NodeGUIInfo* gi = guiNode(nodeid);
+	if (gi) return gi->Name;
+	return "";
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1557,22 +1550,16 @@ std::string SynthController::getFormulaText(DWORD nodeid)
 
 void SynthController::clearSelection()
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it;
-	for (it = _nodeGUIInfo.begin(); it != _nodeGUIInfo.end(); it++)
-	{
-		it->second.IsSelected = false;
-	}
+	for (DWORD i = 0; i < MAX_NODES; i++)
+		if (_guiInfo[i]) _guiInfo[i]->IsSelected = false;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void SynthController::setSelected(DWORD nodeid, int selected)
 {
-	std::map<DWORD, NodeGUIInfo>::iterator it = _nodeGUIInfo.find(nodeid);
-	if (it != _nodeGUIInfo.end())
-	{
-		it->second.IsSelected = selected;
-	}
+	NodeGUIInfo* gi = guiNode(nodeid);
+	if (gi) gi->IsSelected = selected;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1607,137 +1594,39 @@ int SynthController::numGUINodes()
 {
 	if (_accessorDirty)
 	{
-		// rebuild accessor list
-		_nodesGUIAccessor.clear();
-		for (auto it = _nodeGUIInfo.begin(); it != _nodeGUIInfo.end(); it++)
-			_nodesGUIAccessor.push_back(&(it->second));
+		_activeNodeIDs.clear();
+		for (DWORD i = 0; i < MAX_NODES; i++)
+			if (_guiInfo[i])
+				_activeNodeIDs.push_back(i * NODE_SLOTS);
 		_accessorDirty = false;
 	}
-	return (int)_nodesGUIAccessor.size();
+	return (int)_activeNodeIDs.size();
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-int SynthController::numSelectedGUINodes()
+int SynthController::gnNodeReqSignals(DWORD nodeID)
 {
-	// rebuild accessor list
-	_nodesGUIAccessor.clear();
-	std::map<DWORD, NodeGUIInfo>::iterator it;
-	for (it = _nodeGUIInfo.begin(); it != _nodeGUIInfo.end(); it++)
-	{
-		if (it->second.IsSelected)
-			_nodesGUIAccessor.push_back(&(it->second));
-	}
-	return (int)_nodesGUIAccessor.size();
+	NodeGUIInfo* gi = guiNode(nodeID);
+	return gi ? NodeReqGUISignals[gi->Node->id] : 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-SynthNode* SynthController::gnNode(DWORD index)
+int SynthController::gnNodeMaxSignals(DWORD nodeID)
 {
-	if (index >= _nodesGUIAccessor.size())
-		return NULL;
-	return _nodesGUIAccessor[index]->Node;
+	NodeGUIInfo* gi = guiNode(nodeID);
+	return gi ? NodeMaxGUISignals[gi->Node->id] : 0;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool SynthController::gnIsVisible(DWORD index)
+int SynthController::gnInput(DWORD nodeID, DWORD inputIndex)
 {
-	if (index >= _nodesGUIAccessor.size())
-		return false;
-	return _nodesGUIAccessor[index]->Visible;
-}
+	NodeGUIInfo* gi = guiNode(nodeID);
+	if (!gi) return 0;
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int SynthController::gnType(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return _nodesGUIAccessor[index]->Node->id;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int SynthController::gnID(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return _nodesGUIAccessor[index]->Node->valueOffset;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int SynthController::gnNodeInputs(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return _nodesGUIAccessor[index]->Node->numInputs;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int SynthController::gnNodeReqSignals(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return NodeReqGUISignals[_nodesGUIAccessor[index]->Node->id];
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int SynthController::gnNodeMaxSignals(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return NodeMaxGUISignals[_nodesGUIAccessor[index]->Node->id];
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-double SynthController::gnX(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return _nodesGUIAccessor[index]->X;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-double SynthController::gnY(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return _nodesGUIAccessor[index]->Y;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-std::string SynthController::gnName(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return "";
-	return _nodesGUIAccessor[index]->Name;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int SynthController::gnChannel(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return _nodesGUIAccessor[index]->FixedChannel;
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int SynthController::gnInput(DWORD index, DWORD inputIndex)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-
-	SynthNode* node = _nodesGUIAccessor[index]->Node;
+	SynthNode* node = gi->Node;
 	// required input? return input
 	if (inputIndex < NodeReqGUISignals[node->id])
 	{
@@ -1756,8 +1645,7 @@ int SynthController::gnInput(DWORD index, DWORD inputIndex)
 		// modadder used? return referenced input
 		else
 		{
-			NodeGUIInfo* info = &(_nodeGUIInfo[node->valueOffset]);
-			SynthNode* modadder = info->ModAdder[inputIndex];
+			SynthNode* modadder = gi->ModAdder[inputIndex];
 			SynthNode* inode = (SynthNode*)(modadder->input[1]);
 			return inode->valueOffset;
 		}
@@ -1768,35 +1656,6 @@ int SynthController::gnInput(DWORD index, DWORD inputIndex)
 		SynthNode* inode = (SynthNode*)(node->input[inputIndex]);
 		return inode->valueOffset;
 	}
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-double SynthController::gnInputValue(DWORD index, DWORD inputIndex, DWORD channel)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0.0;
-	SynthNode* node = _nodesGUIAccessor[index]->Node;
-	return getInputValue(node->valueOffset, inputIndex, channel);
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int SynthController::gnInputMode(DWORD index, DWORD inputIndex)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	SynthNode* node = _nodesGUIAccessor[index]->Node;
-	return getInputMode(node->valueOffset, inputIndex);
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool SynthController::gnIsGlobal(DWORD index)
-{
-	if (index >= _nodesGUIAccessor.size())
-		return 0;
-	return _nodesGUIAccessor[index]->Node->isGlobal;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1823,9 +1682,9 @@ int SynthController::getNumActiveVoices(DWORD nodeid)
 
 bool SynthController::inputIsModulated(DWORD nodeID, DWORD inputIdx)
 {
-	auto it = _nodeGUIInfo.find(nodeID);
-	if (it == _nodeGUIInfo.end()) return false;
-	SynthNode* modadder = it->second.ModAdder[inputIdx];
+	NodeGUIInfo* gi = guiNode(nodeID);
+	if (!gi) return false;
+	SynthNode* modadder = gi->ModAdder[inputIdx];
 	if (!modadder) return false;
 	// input[1] of the ModAdder is reset to constant0() by disconnectInput when no wire is connected.
 	return modadder->input[1] != (sample_t*)constant0();
@@ -1908,10 +1767,10 @@ void SynthController::killVoices()
 		DataAccessMutex.lock();
 
 #define W ((VMWork*)(node->customMem))
-	std::map<DWORD, NodeGUIInfo>::iterator it;
-	for (it = _nodeGUIInfo.begin(); it != _nodeGUIInfo.end(); it++)
+	for (DWORD _i = 0; _i < MAX_NODES; _i++)
 	{
-		SynthNode* node = it->second.Node;
+		if (!_guiInfo[_i]) continue;
+		SynthNode* node = _guiInfo[_i]->Node;
 		if (node->id == VOICEMANAGER_ID)
 		{
 			int numActive = W->NumActiveVoices;
@@ -1951,10 +1810,10 @@ void SynthController::panic()
 	killVoices();
 
 	// clean up the synth
-	std::map<DWORD, NodeGUIInfo>::iterator it;
-	for (it = _nodeGUIInfo.begin(); it != _nodeGUIInfo.end(); it++)
+	for (DWORD _i = 0; _i < MAX_NODES; _i++)
 	{
-		SynthNode* node = it->second.Node;
+		if (!_guiInfo[_i]) continue;
+		SynthNode* node = _guiInfo[_i]->Node;
 		if (node->id < CONSTANT_ID)
 		{
 			node->out = sample_t::zero();
@@ -2024,7 +1883,7 @@ void SynthController::DeferredSynthFree()
 
 void SynthController::recursiveAddChannel(SynthNode* node, int channel)
 {
-	NodeGUIInfo* gi = &(_nodeGUIInfo[node->valueOffset]);
+	NodeGUIInfo* gi = guiNode(node->valueOffset);
 	// skip already processed nodes
 	if (gi->RecursionFlag == 0)
 	{
@@ -2065,7 +1924,7 @@ void SynthController::saveNode(SynthNode* n, TiXmlElement& root, int saveChannel
 		// special case for multiadds
 		if (n->id == MULTIADD_ID || n->id == NOTECONTROLLER_ID)
 		{
-			NodeGUIInfo* ni = &(_nodeGUIInfo[n->valueOffset]);
+			NodeGUIInfo* ni = guiNode(n->valueOffset);
 			TiXmlElement node("Node");
 			node.SetAttribute("type", n->id);
 			node.SetAttribute("global", n->isGlobal);
@@ -2087,7 +1946,7 @@ void SynthController::saveNode(SynthNode* n, TiXmlElement& root, int saveChannel
 		// normal nodes
 		else if (n->id != CONSTANT_ID)
 		{
-			NodeGUIInfo* ni = &(_nodeGUIInfo[n->valueOffset]);
+			NodeGUIInfo* ni = guiNode(n->valueOffset);
 			// modadders are not saved
 			if (ni->IsModAdder)
 				return;
@@ -2205,7 +2064,7 @@ void SynthController::saveNode(SynthNode* n, TiXmlElement& root, int saveChannel
 		// only manually created constants
 		else if (n->id == CONSTANT_ID)
 		{
-			NodeGUIInfo* ni = &(_nodeGUIInfo[n->valueOffset]);
+			NodeGUIInfo* ni = guiNode(n->valueOffset);
 			if (!ni->Visible)
 				return;
 
@@ -2228,7 +2087,7 @@ void SynthController::saveNode(SynthNode* n, TiXmlElement& root, int saveChannel
 
 void SynthController::recursiveSaveNode(SynthNode* node, int channel, TiXmlElement& root, bool &interconnected)
 {
-	NodeGUIInfo* gi = &(_nodeGUIInfo[node->valueOffset]);
+	NodeGUIInfo* gi = guiNode(node->valueOffset);
 	// skip already processed nodes
 	if (gi->RecursionFlag == 0)
 	{
@@ -2251,7 +2110,7 @@ void SynthController::recursiveSaveNode(SynthNode* node, int channel, TiXmlEleme
 			{
 				SynthNode* input = (SynthNode*)(node->input[i]);
 				// only write until a global node not of our channel is hit
-				if (input->id <= NOTECONTROLLER_ID && _nodeGUIInfo[input->valueOffset].FixedChannel != channel)
+				if (input->id <= NOTECONTROLLER_ID && guiNode(input->valueOffset)->FixedChannel != channel)
 					continue;
 				else
 					recursiveSaveNode(input, channel, root, interconnected);
@@ -2292,10 +2151,10 @@ void SynthController::loadNode(TiXmlElement* child, std::map<int, SynthNode*>& i
 		else
 		{
 			node = channelRoot;
-			_nodeGUIInfo[node->valueOffset].X = x;
-			_nodeGUIInfo[node->valueOffset].Y = y;
+			guiNode(node->valueOffset)->X = x;
+			guiNode(node->valueOffset)->Y = y;
 		}
-		_nodeGUIInfo[node->valueOffset].Name = name;
+		guiNode(node->valueOffset)->Name = name;
 		idNodeMap[id] = node;
 
 		// get connections and set the parameters & modes
@@ -2435,7 +2294,7 @@ void SynthController::loadNode(TiXmlElement* child, std::map<int, SynthNode*>& i
 		child->QueryDoubleAttribute("value2", &v2);
 		// create the node
 		SynthNode* node = createGUINode(type, -1, global, x, y);
-		_nodeGUIInfo[node->valueOffset].Name = name;
+		guiNode(node->valueOffset)->Name = name;
 		idNodeMap[id] = node;
 		// set the values
 		node->out.d[0] = v1;
@@ -2804,8 +2663,8 @@ void SynthController::resetPatch(bool createDefault, bool acquireMutex)
 			// move way to the left
 			for (DWORD i = NodeMaxGUISignals[intrumentroot->id]; i < NodeInputs[intrumentroot->id]; i++)
 			{
-				_nodeGUIInfo[((SynthNode*)(intrumentroot->input[i]))->valueOffset].X -= 800;
-				_nodeGUIInfo[((SynthNode*)(intrumentroot->input[i]))->valueOffset].Y -= 40 - (i-2)*30;
+				guiNode(((SynthNode*)(intrumentroot->input[i]))->valueOffset)->X -= 800;
+				guiNode(((SynthNode*)(intrumentroot->input[i]))->valueOffset)->Y -= 40 - (i-2)*30;
 			}
 
 			SynthNode* osc = createGUINode(OSCILLATOR_ID, -2, 0, 16384 - 600, channely - 100);
@@ -2852,15 +2711,15 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 		if (_nodes[i])
 		{
 			if (_nodes[i]->id == CHANNELROOT_ID)
-				channelRoots[_nodeGUIInfo[_nodes[i]->valueOffset].FixedChannel] = _nodes[i];
+				channelRoots[guiNode(_nodes[i]->valueOffset)->FixedChannel] = _nodes[i];
 
-			_nodeGUIInfo[_nodes[i]->valueOffset].RecursionFlag = 0;
-			_nodeGUIInfo[_nodes[i]->valueOffset].Channels.clear();
+			guiNode(_nodes[i]->valueOffset)->RecursionFlag = 0;
+			guiNode(_nodes[i]->valueOffset)->Channels.clear();
 		}
 	}
 	// get the reference xy pos from current channel root
-	double refX = _nodeGUIInfo[channelRoots[channel]->valueOffset].X;
-	double refY = _nodeGUIInfo[channelRoots[channel]->valueOffset].Y;
+	double refX = guiNode(channelRoots[channel]->valueOffset)->X;
+	double refY = guiNode(channelRoots[channel]->valueOffset)->Y;
 
 	// propagate channel usage of nodes to all nodes beeing input to channel roots
 	for (int i = 0; i < MAX_CHANNELS; i++)
@@ -2868,7 +2727,7 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 		for (DWORD n = 0; n < MAX_NODES; n++)
 		{
 			if (_nodes[n])
-				_nodeGUIInfo[_nodes[n]->valueOffset].RecursionFlag = 0;
+				guiNode(_nodes[n]->valueOffset)->RecursionFlag = 0;
 		}
 		recursiveAddChannel(channelRoots[i], i);
 	}
@@ -2879,7 +2738,7 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 	{
 		if (_nodes[i])
 		{
-			if ((_nodeGUIInfo[_nodes[i]->valueOffset].Channels.find(channel) != _nodeGUIInfo[_nodes[i]->valueOffset].Channels.end()) && (_nodeGUIInfo[_nodes[i]->valueOffset].Channels.size() > 1))
+			if ((guiNode(_nodes[i]->valueOffset)->Channels.find(channel) != guiNode(_nodes[i]->valueOffset)->Channels.end()) && (guiNode(_nodes[i]->valueOffset)->Channels.size() > 1))
 			{
 				interconnected = true;
 				break;
@@ -2895,7 +2754,7 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 		{
 			if (_nodes[i])
 			{
-				NodeGUIInfo* gi = &(_nodeGUIInfo[_nodes[i]->valueOffset]);
+				NodeGUIInfo* gi = guiNode(_nodes[i]->valueOffset);
 				if ((gi->FixedChannel == channel) ||
 					(gi->Channels.find(channel) != gi->Channels.end()))
 				{
@@ -2925,15 +2784,15 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 		}
 
 		// step 2: reposition nodes
-		double refXNew = _nodeGUIInfo[channelRoots[channel]->valueOffset].X;
-		double refYNew = _nodeGUIInfo[channelRoots[channel]->valueOffset].Y;
+		double refXNew = guiNode(channelRoots[channel]->valueOffset)->X;
+		double refYNew = guiNode(channelRoots[channel]->valueOffset)->Y;
 		for (std::map<int, SynthNode*>::iterator it = idNodeMap.begin(); it != idNodeMap.end(); it++)
 		{
 			SynthNode* curNode = it->second;
-			double dX = _nodeGUIInfo[curNode->valueOffset].X - refXNew;
-			double dY = _nodeGUIInfo[curNode->valueOffset].Y - refYNew;
-			_nodeGUIInfo[curNode->valueOffset].X = refX + dX;
-			_nodeGUIInfo[curNode->valueOffset].Y = refY + dY;
+			double dX = guiNode(curNode->valueOffset)->X - refXNew;
+			double dY = guiNode(curNode->valueOffset)->Y - refYNew;
+			guiNode(curNode->valueOffset)->X = refX + dX;
+			guiNode(curNode->valueOffset)->Y = refY + dY;
 		}
 
 		// step 3: establish connections
@@ -2949,7 +2808,7 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 		}
 
 		// Set channel name from filename when empty (e.g. old channel files without name attribute)
-		if (_nodeGUIInfo[channelRoots[channel]->valueOffset].Name.empty())
+		if (guiNode(channelRoots[channel]->valueOffset)->Name.empty())
 		{
 			int ls = (int)filename.rfind("/");
 			int lbs = (int)filename.rfind("\\");
@@ -2959,7 +2818,7 @@ bool SynthController::loadChannel(int channel, const std::string& filename)
 			int ext = (int)name.find_last_of(".");
 			if (ext > 0)
 				name = name.substr(0, ext);
-			_nodeGUIInfo[channelRoots[channel]->valueOffset].Name = name;
+			guiNode(channelRoots[channel]->valueOffset)->Name = name;
 		}
 	}
 
@@ -2987,10 +2846,10 @@ bool SynthController::saveChannel(int channel, const std::string& filename)
 		if (_nodes[i])
 		{
 			if (_nodes[i]->id == CHANNELROOT_ID)
-				channelRoots[_nodeGUIInfo[_nodes[i]->valueOffset].FixedChannel] = _nodes[i];
+				channelRoots[guiNode(_nodes[i]->valueOffset)->FixedChannel] = _nodes[i];
 
-			_nodeGUIInfo[_nodes[i]->valueOffset].RecursionFlag = 0;
-			_nodeGUIInfo[_nodes[i]->valueOffset].Channels.clear();
+			guiNode(_nodes[i]->valueOffset)->RecursionFlag = 0;
+			guiNode(_nodes[i]->valueOffset)->Channels.clear();
 		}
 	}
 
@@ -3000,7 +2859,7 @@ bool SynthController::saveChannel(int channel, const std::string& filename)
 		for (DWORD n = 0; n < MAX_NODES; n++)
 		{
 			if (_nodes[n])
-				_nodeGUIInfo[_nodes[n]->valueOffset].RecursionFlag = 0;
+				guiNode(_nodes[n]->valueOffset)->RecursionFlag = 0;
 		}
 		recursiveAddChannel(channelRoots[i], i);
 	}
@@ -3015,7 +2874,7 @@ bool SynthController::saveChannel(int channel, const std::string& filename)
 		int ext = (int)name.find_last_of(".");
 		if (ext > 0)
 			name = name.substr(0, ext);
-		_nodeGUIInfo[channelRoots[channel]->valueOffset].Name = name;
+		guiNode(channelRoots[channel]->valueOffset)->Name = name;
 	}
 
 	// recursively call the channel hierarchy
@@ -3078,11 +2937,11 @@ bool SynthController::loadSelection(const std::string& filename, int refX, int r
 	for (std::map<int, SynthNode*>::iterator it = idNodeMap.begin(); it != idNodeMap.end(); it++)
 	{
 		SynthNode* curNode = it->second;
-		double dX = _nodeGUIInfo[curNode->valueOffset].X - refXNew;
-		double dY = _nodeGUIInfo[curNode->valueOffset].Y - refYNew;
-		_nodeGUIInfo[curNode->valueOffset].X = refX + dX;
-		_nodeGUIInfo[curNode->valueOffset].Y = refY + dY;
-		_nodeGUIInfo[curNode->valueOffset].IsSelected = true;
+		double dX = guiNode(curNode->valueOffset)->X - refXNew;
+		double dY = guiNode(curNode->valueOffset)->Y - refYNew;
+		guiNode(curNode->valueOffset)->X = refX + dX;
+		guiNode(curNode->valueOffset)->Y = refY + dY;
+		guiNode(curNode->valueOffset)->IsSelected = true;
 	}
 
 	// step 3: establish connections
@@ -3112,11 +2971,10 @@ bool SynthController::saveSelection(const std::string& filename)
 	root.SetAttribute("version", "1.0");
 
 	// save all selected nodes
-	std::map<DWORD, NodeGUIInfo>::iterator it;
-	for (it = _nodeGUIInfo.begin(); it != _nodeGUIInfo.end(); it++)
+	for (DWORD _i = 0; _i < MAX_NODES; _i++)
 	{
-		if (it->second.IsSelected)
-			saveNode(it->second.Node, root);
+		if (_guiInfo[_i] && _guiInfo[_i]->IsSelected)
+			saveNode(_guiInfo[_i]->Node, root);
 	}
 
 	doc.InsertEndChild(root);

@@ -1542,22 +1542,25 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
             float hoverPkTn = (hoverCol >= 0 && hoverCol < (int)colPk.size()) ? colPk[hoverCol] : 0.f;
             float hoverPkDb = hoverPkTn * 100.f - 100.f;
 
-            char freqStr[24], noteStr[16], dbStr[16], pkStr[16];
+            char freqStr[24], noteStr[16], dbStr[16], pkStr[16], freqNote[48];
             if (hoverFreq >= 1000.f)
                 snprintf(freqStr, sizeof(freqStr), "%.2f kHz", hoverFreq * 0.001f);
             else
                 snprintf(freqStr, sizeof(freqStr), "%.1f Hz", hoverFreq);
             frequencyToNote(hoverFreq, noteStr, sizeof(noteStr));
+            if (noteStr[0] != '\0')
+                snprintf(freqNote, sizeof(freqNote), "%s (%s)", freqStr, noteStr);
+            else
+                snprintf(freqNote, sizeof(freqNote), "%s", freqStr);
             snprintf(dbStr,  sizeof(dbStr),  "%.1f dB", hoverDb);
             snprintf(pkStr,  sizeof(pkStr),  "%.1f dB pk", hoverPkDb);
 
             float lfsz  = fontSize * 0.72f;
             float scale = lfsz / ImGui::GetFont()->FontSize;
-            float tw    = std::max({ ImGui::CalcTextSize(freqStr).x * scale,
-                                    ImGui::CalcTextSize(noteStr).x * scale,
+            float tw    = std::max({ ImGui::CalcTextSize(freqNote).x * scale,
                                     ImGui::CalcTextSize(dbStr).x   * scale,
                                     ImGui::CalcTextSize(pkStr).x   * scale });
-            float th    = lfsz * 4.f + 6.f * z;   // four lines + three gaps
+            float th    = lfsz * 3.f + 4.f * z;   // three lines + two gaps
             float tx    = mousePos.x - tw * 0.5f;
             float ty    = mousePos.y - th - 6.f * z;
             tx = std::max(specMin.x + 1.f, std::min(tx, specMax.x - tw - 1.f));
@@ -1569,13 +1572,10 @@ void Widgets::drawSignalVisualizerPanel(const EditPanelCtx& ctx, float& curY, Sy
                         ImVec2(tx + tw + 4.f, ty + th + 2.f),
                         IM_COL32(200, 200, 180, 120), 0.f, 0, 1.f);
             dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty),
-                        IM_COL32(255, 255, 200, 230), freqStr);
-            if (noteStr[0] != '\0')
-                dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + lfsz + 2.f * z),
-                            IM_COL32(150, 255, 150, 220), noteStr);
-            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + (noteStr[0] != '\0' ? 2.f : 1.f) * (lfsz + 2.f * z)),
+                        IM_COL32(255, 255, 200, 230), freqNote);
+            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + lfsz + 2.f * z),
                         IM_COL32(180, 220, 255, 220), dbStr);
-            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + (noteStr[0] != '\0' ? 3.f : 2.f) * (lfsz + 2.f * z)),
+            dl->AddText(pickFont(lfsz), lfsz, ImVec2(tx, ty + 2.f * (lfsz + 2.f * z)),
                         IM_COL32(255, 180, 100, 220), pkStr);
         }
 

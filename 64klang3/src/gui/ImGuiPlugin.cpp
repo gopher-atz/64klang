@@ -323,14 +323,18 @@ static void renderToolbar()
             char        chBufs[16][64];
             const char* chLabels[17];
             std::string chNames[16];
-            int nn = sc ? sc->numGUINodes() : 0;
-            for (int i = 0; i < nn; i++)
+            if (sc)
             {
-                if (sc->gnType(i) == CHANNELROOT_ID)
+                for (DWORD nodeID : sc->activeNodeIDs())
                 {
-                    int ch = sc->gnChannel(i);
-                    if (ch >= 0 && ch < 16)
-                        chNames[ch] = sc->gnName(i);
+                    auto* gi = sc->guiNode(nodeID);
+                    if (!gi) continue;
+                    if (gi->Node->id == CHANNELROOT_ID)
+                    {
+                        int ch = gi->FixedChannel;
+                        if (ch >= 0 && ch < 16)
+                            chNames[ch] = gi->Name;
+                    }
                 }
             }
             for (int ch = 0; ch < 16; ch++)

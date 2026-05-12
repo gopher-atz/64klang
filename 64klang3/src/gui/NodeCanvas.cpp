@@ -76,24 +76,26 @@ void NodeCanvas::jumpToChannel(int channel)
 
     bool wantSynthRoot = (channel == -1);
     int n = sc->numGUINodes();
-    for (int i = 0; i < n; i++)
+    for (DWORD _nodeID : sc->activeNodeIDs())
     {
-        int nodeType = sc->gnType(i);
+        auto* gi = sc->guiNode(_nodeID);
+        if (!gi) continue;
+        int nodeType = gi->Node->id;
         bool match = wantSynthRoot ? (nodeType == SYNTHROOT_ID)
-                                   : (nodeType == CHANNELROOT_ID && sc->gnChannel(i) == channel);
+                                   : (nodeType == CHANNELROOT_ID && gi->FixedChannel == channel);
         if (!match)
             continue;
 
-        int nodeID = sc->gnID(i);
+        int nodeID = (int)_nodeID;
 
         // Center the canvas on this node's center point.
-        int   numIn        = effectiveInputCount(i);
-        bool  hasEditBtn   = nodeHasEditButton(i);
-        bool  hasChBtns    = (sc->gnType(i) == CHANNELROOT_ID);
+        int   numIn        = effectiveInputCount(nodeID);
+        bool  hasEditBtn   = nodeHasEditButton(nodeID);
+        bool  hasChBtns    = (nodeType == CHANNELROOT_ID);
         float halfW        = kNodeWidth * 0.5f;
         float halfH        = nodeHeight(numIn, hasEditBtn, /*hasAddInput=*/false, hasChBtns) * 0.5f;
-        float cx = (float)sc->gnX(i) + halfW;
-        float cy = (float)sc->gnY(i) + halfH;
+        float cx = (float)gi->X + halfW;
+        float cy = (float)gi->Y + halfH;
         if (canvasSizeCache.x > 0 && canvasSizeCache.y > 0)
         {
             offsetX = canvasSizeCache.x / (2.f * zoom) - cx;
@@ -109,13 +111,8 @@ void NodeCanvas::jumpToChannel(int channel)
         }
         else
         {
-            // Build O(1) nodeID→guiIndex map once to avoid O(N) scan per node visited.
-            std::unordered_map<int,int> idToGi;
-            idToGi.reserve(n);
-            for (int j = 0; j < n; j++)
-                if (sc->gnIsVisible(j)) idToGi[sc->gnID(j)] = j;
             std::unordered_set<int> visited;
-            recursiveSelect(nodeID, visited, idToGi);
+            recursiveSelect(nodeID, visited);
         }
         bringMultipleToFront(selectedNodeIDs);
         syncSelectionToCore();
@@ -155,12 +152,14 @@ int NodeCanvas::effectiveInputCount(int guiIndex) const
 {
     SynthController* sc = SynthController::instance();
     if (!sc) return 0;
+    auto* gi = sc->guiNode((DWORD)guiIndex);
+    if (!gi) return 0;
     // Input-category nodes (Midi CC, Constant, voice params) have no connectable
     // signal inputs — their numInputs stores Scale/mode constants, not wiring slots.
-    int nt = sc->gnType(guiIndex);
+    int nt = gi->Node->id;
     if (nt == MIDISIGNAL_ID || (nt >= CONSTANT_ID && nt != (int)SIGNAL_VISUALIZER_ID))
         return 0;
-    int maxSignals = sc->gnNodeMaxSignals(guiIndex);
+    int maxSignals = sc->gnNodeMaxSignals((DWORD)guiIndex);
     // For non-variable-input nodes, maxSignals already excludes mode inputs.
     // For variable-input nodes (NoteController, MultiAdd), maxSignals is 0;
     // use gnNodeInputs() which returns the actual live count.
@@ -170,7 +169,7 @@ int NodeCanvas::effectiveInputCount(int guiIndex) const
     // Fixed-input nodes with 0 signal inputs (e.g. GMDLS whose only input is a mode)
     // must return 0 so their mode constant is not drawn as a connectable pin.
     if (nt == MULTIADD_ID || nt == NOTECONTROLLER_ID)
-        return sc->gnNodeInputs(guiIndex);
+        return gi->Node->numInputs;
     return 0;
 }
 
@@ -179,7 +178,7 @@ bool NodeCanvas::nodeHasEditButton(int guiIndex) const
     SynthController* sc = SynthController::instance();
     if (!sc) return false;
 
-    int nodeType = sc->gnType(guiIndex);
+    int nodeType = sc->guiNode(guiIndex)->Node->id;
 
     // Variable-input nodes with nothing to configure
     if (nodeType == NOTECONTROLLER_ID || nodeType == MULTIADD_ID)
@@ -231,8 +230,8 @@ std::string NodeCanvas::buildModeText(int guiIndex) const
     SynthController* sc = SynthController::instance();
     if (!sc) return "";
 
-    int nodeType = sc->gnType(guiIndex);
-    int nodeID = sc->gnID(guiIndex);
+    int nodeType = sc->guiNode(guiIndex)->Node->id;
+    int nodeID = guiIndex;
     const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
     if (!typeDef) return "";
 
@@ -346,16 +345,16 @@ void NodeCanvas::rebuildZOrder()
     std::unordered_set<int> seen;
     for (int nid : old)
     {
-        if (findGuiIndex(nid) >= 0)
+        if (sc->guiNode(nid))
         {
             nodeZOrder.push_back(nid);
             seen.insert(nid);
         }
     }
-    for (int i = 0; i < n; i++)
+    for (DWORD nodeID : sc->activeNodeIDs())
     {
-        if (!sc->gnIsVisible(i)) continue;
-        int nid = sc->gnID(i);
+        if (!sc->guiNode(nodeID)->Visible) continue;
+        int nid = (int)nodeID;
         if (!seen.count(nid))
             nodeZOrder.push_back(nid);
     }
@@ -401,15 +400,13 @@ int NodeCanvas::hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) 
     // Iterate in Z-order (back = frontmost); last match = topmost node.
     for (int nid : nodeZOrder)
     {
-        auto fit = frameIdToGi.find(nid);
-        if (fit == frameIdToGi.end()) continue;
-        int i = fit->second;
-        if (!sc->gnIsVisible(i)) continue;
-        double nx = sc->gnX(i);
-        double ny = sc->gnY(i);
-        int numSignals = effectiveInputCount(i);
-        bool hasEditBtn = nodeHasEditButton(i);
-        int nodeTypeI = sc->gnType(i);
+        auto* gi = sc->guiNode(nid);
+        if (!gi || !gi->Visible) continue;
+        double nx = gi->X;
+        double ny = gi->Y;
+        int numSignals = effectiveInputCount(nid);
+        bool hasEditBtn = nodeHasEditButton(nid);
+        int nodeTypeI = gi->Node->id;
         bool hasAddInput = (nodeTypeI == MULTIADD_ID || nodeTypeI == NOTECONTROLLER_ID);
         bool hasChannelBtnsI = (nodeTypeI == CHANNELROOT_ID);
 
@@ -426,31 +423,17 @@ int NodeCanvas::hitTestNode(const ImVec2& mousePos, const ImVec2& canvasOrigin) 
     return hitID;
 }
 
-int NodeCanvas::findGuiIndex(int nodeID) const
-{
-    SynthController* sc = SynthController::instance();
-    if (!sc) return -1;
-
-    int numNodes = sc->numGUINodes();
-    for (int i = 0; i < numNodes; i++)
-    {
-        if (sc->gnID(i) == nodeID)
-            return i;
-    }
-    return -1;
-}
-
 bool NodeCanvas::nodeOverlapsRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax,
                                   const ImVec2& canvasOrigin) const
 {
     SynthController* sc = SynthController::instance();
     if (!sc) return false;
 
-    double nx = sc->gnX(guiIndex);
-    double ny = sc->gnY(guiIndex);
+    double nx = sc->guiNode(guiIndex)->X;
+    double ny = sc->guiNode(guiIndex)->Y;
     int numSignals = effectiveInputCount(guiIndex);
     bool hasEditBtn = nodeHasEditButton(guiIndex);
-    int nodeTypeRI = sc->gnType(guiIndex);
+    int nodeTypeRI = sc->guiNode(guiIndex)->Node->id;
     bool hasAddInputRI = (nodeTypeRI == MULTIADD_ID || nodeTypeRI == NOTECONTROLLER_ID);
     bool hasChannelBtnsRI = (nodeTypeRI == CHANNELROOT_ID);
 
@@ -468,8 +451,7 @@ bool NodeCanvas::nodeOverlapsRect(int guiIndex, ImVec2 rectMin, ImVec2 rectMax,
            pos.y < rMaxY && pos.y + h > rMinY;
 }
 
-void NodeCanvas::recursiveSelect(int nodeID, std::unordered_set<int>& visited,
-                                  const std::unordered_map<int,int>& idToGi)
+void NodeCanvas::recursiveSelect(int nodeID, std::unordered_set<int>& visited)
 {
     if (visited.count(nodeID))
         return;
@@ -479,16 +461,14 @@ void NodeCanvas::recursiveSelect(int nodeID, std::unordered_set<int>& visited,
     SynthController* sc = SynthController::instance();
     if (!sc) return;
 
-    auto it = idToGi.find(nodeID);
-    if (it == idToGi.end()) return;
-    int gi = it->second;
+    if (!sc->guiNode(nodeID)) return;
 
-    int numSignals = effectiveInputCount(gi);
+    int numSignals = effectiveInputCount(nodeID);
     for (int pin = 0; pin < numSignals; pin++)
     {
-        int srcID = sc->gnInput(gi, pin);
+        int srcID = sc->gnInput(nodeID, pin);
         if (isRealConnection(srcID, sc))
-            recursiveSelect(srcID, visited, idToGi);
+            recursiveSelect(srcID, visited);
     }
 }
 
@@ -516,10 +496,10 @@ void NodeCanvas::deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly)
     SynthController* sc = SynthController::instance();
     if (!sc) return;
 
-    int gi = findGuiIndex(nodeID);
+    int gi = nodeID;
     if (gi < 0) return;
 
-    int nodeType = sc->gnType(gi);
+    int nodeType = sc->guiNode(gi)->Node->id;
     const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
 
     if (singleNodeOnly && typeDef && typeDef->allowSignalInsertion)
@@ -529,17 +509,15 @@ void NodeCanvas::deleteNodeMaybeSmart(int nodeID, bool singleNodeOnly)
         {
             // Collect (toNodeID, pinIndex) where this node is the source
             std::vector<std::pair<int, int>> outputs;
-            int numNodes = sc->numGUINodes();
-            for (int toIdx = 0; toIdx < numNodes; toIdx++)
+            for (DWORD toNodeID : sc->activeNodeIDs())
             {
-                if (!sc->gnIsVisible(toIdx)) continue;
-                int toID = sc->gnID(toIdx);
-                if (toID == nodeID) continue;
-                int numSig = effectiveInputCount(toIdx);
+                if (!sc->guiNode(toNodeID)->Visible) continue;
+                if ((int)toNodeID == nodeID) continue;
+                int numSig = effectiveInputCount(toNodeID);
                 for (int pin = 0; pin < numSig; pin++)
                 {
-                    if (sc->gnInput(toIdx, pin) == nodeID)
-                        outputs.push_back({toID, pin});
+                    if (sc->gnInput(toNodeID, pin) == nodeID)
+                        outputs.push_back({(int)toNodeID, pin});
                 }
             }
             sc->deleteNode((DWORD)nodeID);
@@ -563,11 +541,9 @@ int NodeCanvas::hitTestOutputPin(const ImVec2& mousePos, const ImVec2& canvasOri
 
     for (int nid : nodeZOrder)
     {
-        auto fit = frameIdToGi.find(nid);
-        if (fit == frameIdToGi.end()) continue;
-        int i = fit->second;
-        if (!sc->gnIsVisible(i)) continue;
-        ImVec2 pos = nodeScreenPos(sc->gnX(i), sc->gnY(i), canvasOrigin);
+        auto* gi = sc->guiNode(nid);
+        if (!gi || !gi->Visible) continue;
+        ImVec2 pos = nodeScreenPos(gi->X, gi->Y, canvasOrigin);
         ImVec2 pin = outputPinPos(pos);
 
         float dx = mousePos.x - pin.x;
@@ -588,14 +564,12 @@ NodeCanvas::PinHit NodeCanvas::hitTestInputPin(const ImVec2& mousePos, const ImV
 
     for (int nid : nodeZOrder)
     {
-        auto fit = frameIdToGi.find(nid);
-        if (fit == frameIdToGi.end()) continue;
-        int i = fit->second;
-        if (!sc->gnIsVisible(i)) continue;
-        int numSignals = effectiveInputCount(i);
-        int nodeTypeHT = sc->gnType(i);
-        bool hasEditBtnHT = nodeHasEditButton(i);
-        ImVec2 pos = nodeScreenPos(sc->gnX(i), sc->gnY(i), canvasOrigin);
+        auto* gi = sc->guiNode(nid);
+        if (!gi || !gi->Visible) continue;
+        int numSignals = effectiveInputCount(nid);
+        int nodeTypeHT = gi->Node->id;
+        bool hasEditBtnHT = nodeHasEditButton(nid);
+        ImVec2 pos = nodeScreenPos(gi->X, gi->Y, canvasOrigin);
         float w = kNodeWidth * zoom;
 
         for (int pin = 0; pin < numSignals; pin++)
@@ -643,26 +617,26 @@ NodeCanvas::WireHit NodeCanvas::hitTestWire(const ImVec2& mousePos, const ImVec2
     float hitRadius = kWireThickness * zoom * 3.f;  // generous hit area
     float hitRadiusSq = hitRadius * hitRadius;
 
-    for (int toIdx = 0; toIdx < numNodes; toIdx++)
+    for (DWORD toNodeID : sc->activeNodeIDs())
     {
-        if (!sc->gnIsVisible(toIdx)) continue;
+        auto* toGi = sc->guiNode(toNodeID);
+        if (!toGi || !toGi->Visible) continue;
 
-        int toNodeID = sc->gnID(toIdx);
-        int numSignals = effectiveInputCount(toIdx);
-        double toNX = sc->gnX(toIdx);
-        double toNY = sc->gnY(toIdx);
+        int numSignals = effectiveInputCount(toNodeID);
+        double toNX = toGi->X;
+        double toNY = toGi->Y;
         ImVec2 toPos = nodeScreenPos(toNX, toNY, canvasOrigin);
 
         for (int pin = 0; pin < numSignals; pin++)
         {
-            int srcID = sc->gnInput(toIdx, pin);
+            int srcID = sc->gnInput(toNodeID, pin);
             if (!isRealConnection(srcID, sc)) continue;
 
-            int fromIdx = findGuiIndex(srcID);
-            if (fromIdx < 0 || !sc->gnIsVisible(fromIdx)) continue;
+            auto* fromGi = sc->guiNode(srcID);
+            if (!fromGi || !fromGi->Visible) continue;
 
-            double fromNX = sc->gnX(fromIdx);
-            double fromNY = sc->gnY(fromIdx);
+            double fromNX = fromGi->X;
+            double fromNY = fromGi->Y;
             ImVec2 fromPos = nodeScreenPos(fromNX, fromNY, canvasOrigin);
 
             ImVec2 p0 = outputPinPos(fromPos);
@@ -674,7 +648,7 @@ NodeCanvas::WireHit NodeCanvas::hitTestWire(const ImVec2& mousePos, const ImVec2
             float d2 = distSqPointToSegment(mousePos, p1, p2);
             float d3 = distSqPointToSegment(mousePos, p2, p3);
             if (d1 <= hitRadiusSq || d2 <= hitRadiusSq || d3 <= hitRadiusSq)
-                return {srcID, toNodeID, pin};
+                return {srcID, (int)toNodeID, pin};
         }
     }
     return {-1, -1, -1};
@@ -688,10 +662,10 @@ void NodeCanvas::drawGhostWire(ImDrawList* dl, const ImVec2& canvasOrigin)
     SynthController* sc = SynthController::instance();
     if (!sc) return;
 
-    int gi = findGuiIndex(wireDragFromNodeID);
+    int gi = wireDragFromNodeID;
     if (gi < 0) return;
 
-    ImVec2 fromPos = nodeScreenPos(sc->gnX(gi), sc->gnY(gi), canvasOrigin);
+    ImVec2 fromPos = nodeScreenPos(sc->guiNode(gi)->X, sc->guiNode(gi)->Y, canvasOrigin);
     ImVec2 p0 = outputPinPos(fromPos);
     ImVec2 p3 = wireDragCurrentPos;
     ImVec2 p1 = ImVec2(p0.x + kWireStubLen * zoom, p0.y);
@@ -738,19 +712,19 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             {
                 // Validate connection — self-connections (feedback) are allowed by the engine
                 bool valid = true;
-                int fromGI = findGuiIndex(wireDragFromNodeID);
-                int toGI   = findGuiIndex(target.nodeID);
+                int fromGI = wireDragFromNodeID;
+                int toGI   = target.nodeID;
 
-                if (fromGI >= 0 && toGI >= 0)
+                if (sc->guiNode(fromGI) && sc->guiNode(toGI))
                 {
-                    bool fromGlobal = sc->gnIsGlobal(fromGI);
-                    bool toGlobal   = sc->gnIsGlobal(toGI);
-                    int  fromType   = sc->gnType(fromGI);
-                    int  toType     = sc->gnType(toGI);
+                    bool fromGlobal = sc->guiNode(fromGI)->Node->isGlobal;
+                    bool toGlobal   = sc->guiNode(toGI)->Node->isGlobal;
+                    int  fromType   = sc->guiNode(fromGI)->Node->id;
+                    int  toType     = sc->guiNode(toGI)->Node->id;
 
                     // Case 1: variable-input node at max capacity
                     if ((toType == NOTECONTROLLER_ID || toType == MULTIADD_ID) &&
-                        sc->gnNodeInputs(toGI) >= 16)
+                        sc->guiNode(toGI)->Node->numInputs >= 16)
                     {
                         showToast("No more than 16 inputs are allowed!");
                         valid = false;
@@ -863,8 +837,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
 
             // VoiceManager output can only connect to NoteController — no valid intermediate node exists.
             {
-                int fromGI = findGuiIndex(wireDragFromNodeID);
-                if (fromGI >= 0 && sc->gnType(fromGI) == (int)VOICEMANAGER_ID)
+                int fromGI = wireDragFromNodeID;
+                if (fromGI >= 0 && sc->guiNode(fromGI)->Node->id == (int)VOICEMANAGER_ID)
                 {
                     showToast("VoiceManager can only connect to NoteController!");
                     isWireDragging = false;
@@ -908,13 +882,13 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         {
             // Check if this input is already wired — disconnect it.
             // Guard: skip the "Add Input" pill (pinIndex == numInputs for variable-input nodes).
-            int gi = findGuiIndex(inputHit.nodeID);
+            int gi = inputHit.nodeID;
             if (gi >= 0)
             {
-                int nodeTypeHit = sc->gnType(gi);
+                int nodeTypeHit = sc->guiNode(gi)->Node->id;
                 bool isAddInputPill =
                     (nodeTypeHit == MULTIADD_ID || nodeTypeHit == NOTECONTROLLER_ID) &&
-                    (inputHit.pinIndex >= sc->gnNodeInputs(gi));
+                    (inputHit.pinIndex >= sc->guiNode(gi)->Node->numInputs);
                 if (!isAddInputPill)
                 {
                     int srcID = sc->gnInput(gi, inputHit.pinIndex);
@@ -952,8 +926,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             if (isDoubleClick)
             {
                 // Double-click: mute toggle for ChannelRoot/VoiceManager, rename for others
-                int gi = findGuiIndex(hitID);
-                int nodeType = (gi >= 0) ? sc->gnType(gi) : -1;
+                int gi = hitID;
+                int nodeType = (gi >= 0) ? sc->guiNode(gi)->Node->id : -1;
 
                 if (nodeType == CHANNELROOT_ID || nodeType == VOICEMANAGER_ID)
                 {
@@ -974,14 +948,14 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             {
                 // Single click on node
                 // Skip selection/drag if click lands on channel buttons (Load/Save Channel)
-                int gi = findGuiIndex(hitID);
-                int nodeType = (gi >= 0) ? sc->gnType(gi) : -1;
+                int gi = hitID;
+                int nodeType = (gi >= 0) ? sc->guiNode(gi)->Node->id : -1;
                 bool clickedChannelBtn = false;
                 if (nodeType == CHANNELROOT_ID && gi >= 0)
                 {
                     int numSig = effectiveInputCount(gi);
                     bool hasEdit = nodeHasEditButton(gi);
-                    ImVec2 nodePos = nodeScreenPos(sc->gnX(gi), sc->gnY(gi), canvasPos);
+                    ImVec2 nodePos = nodeScreenPos(sc->guiNode(gi)->X, sc->guiNode(gi)->Y, canvasPos);
                     float btnBaseY = nodePos.y + (kHeaderHeight + (float)numSig * kRowHeight
                                                   + (hasEdit ? kEditButtonHeight : 0.f)) * zoom;
                     float btnTotalH = kEditButtonHeight * zoom * 2.f;
@@ -998,15 +972,9 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                         // Shift+click: recursive upstream select
                         if (!ctrl)
                             selectedNodeIDs.clear();
-                        // Build O(1) nodeID→guiIndex map once to avoid O(N²) traversal.
                         {
-                            int nn = sc->numGUINodes();
-                            std::unordered_map<int,int> idToGi;
-                            idToGi.reserve(nn);
-                            for (int j = 0; j < nn; j++)
-                                if (sc->gnIsVisible(j)) idToGi[sc->gnID(j)] = j;
                             std::unordered_set<int> visited;
-                            recursiveSelect(hitID, visited, idToGi);
+                            recursiveSelect(hitID, visited);
                         }
                         bringMultipleToFront(selectedNodeIDs);
                     }
@@ -1040,10 +1008,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
                     dragStartNodePos.reserve(selectedNodeIDs.size());
                     for (int id : selectedNodeIDs)
                     {
-                        auto fit = frameIdToGi.find(id);
-                        if (fit == frameIdToGi.end()) continue;
-                        int sgi = fit->second;
-                        dragStartNodePos[id] = ImVec2((float)sc->gnX(sgi), (float)sc->gnY(sgi));
+                        if (!sc->guiNode(id)) continue;
+                        dragStartNodePos[id] = ImVec2((float)sc->guiNode(id)->X, (float)sc->guiNode(id)->Y);
                     }
                     isDragging = false;
                 }
@@ -1172,13 +1138,11 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             if (!ctrl)
                 selectedNodeIDs.clear();
 
-            int numNodes = sc->numGUINodes();
-            for (int i = 0; i < numNodes; i++)
+            for (DWORD nodeID : sc->activeNodeIDs())
             {
-                if (nodeOverlapsRect(i, rubberBandStart, rubberBandCurrent, canvasPos))
+                if (nodeOverlapsRect(nodeID, rubberBandStart, rubberBandCurrent, canvasPos))
                 {
-                    int nid = sc->gnID(i);
-                    selectedNodeIDs.insert(nid);
+                    selectedNodeIDs.insert((int)nodeID);
                 }
             }
             // Single O(N) pass to bring all selected nodes to front.
@@ -1209,8 +1173,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
             contextWireToID = wireHit.toID;
             contextWirePinIndex = wireHit.pinIndex;
             // Position new node at the right-click position (upper-left corner at cursor)
-            int fromGI = findGuiIndex(wireHit.fromID);
-            int toGI = findGuiIndex(wireHit.toID);
+            int fromGI = wireHit.fromID;
+            int toGI = wireHit.toID;
             if (fromGI >= 0 && toGI >= 0)
             {
                 contextMenuCanvasPos.x = (float)((mousePos.x - canvasPos.x) / zoom - offsetX);
@@ -1254,8 +1218,8 @@ void NodeCanvas::handleNodeInteraction(const ImVec2& canvasPos, const ImVec2& ca
         std::vector<int> toDelete(selectedNodeIDs.begin(), selectedNodeIDs.end());
         for (int id : toDelete)
         {
-            int gi = findGuiIndex(id);
-            int type = (gi >= 0) ? sc->gnType(gi) : -1;
+            int gi = id;
+            int type = (gi >= 0) ? sc->guiNode(gi)->Node->id : -1;
             // Protect structural nodes (SynthRoot/ChannelRoot/NoteController/VoiceManager)
             if (type >= 0 && type <= (int)VOICEMANAGER_ID)
                 continue;
@@ -1298,10 +1262,10 @@ void NodeCanvas::buildClipboardFromSelection()
     std::vector<int> selIDs;
     for (int id : selectedNodeIDs)
     {
-        int gi = findGuiIndex(id);
+        int gi = id;
         if (gi < 0)
             continue;
-        if (isStructuralNodeType(sc->gnType(gi)))
+        if (isStructuralNodeType(sc->guiNode(gi)->Node->id))
             continue;
         selIDs.push_back(id);
     }
@@ -1312,8 +1276,8 @@ void NodeCanvas::buildClipboardFromSelection()
     double cx = 0, cy = 0;
     for (int id : selIDs)
     {
-        int gi = findGuiIndex(id);
-        if (gi >= 0) { cx += sc->gnX(gi); cy += sc->gnY(gi); }
+        int gi = id;
+        if (gi >= 0) { cx += sc->guiNode(gi)->X; cy += sc->guiNode(gi)->Y; }
     }
     cx /= (double)selIDs.size();
     cy /= (double)selIDs.size();
@@ -1325,16 +1289,16 @@ void NodeCanvas::buildClipboardFromSelection()
 
     for (int id : selIDs)
     {
-        int gi = findGuiIndex(id);
+        int gi = id;
         if (gi < 0)
             continue;
 
         ClipboardNode cn;
-        cn.typeID   = sc->gnType(gi);
-        cn.channel  = sc->gnChannel(gi);
-        cn.isGlobal = sc->gnIsGlobal(gi);
-        cn.relX     = sc->gnX(gi) - cx;
-        cn.relY     = sc->gnY(gi) - cy;
+        cn.typeID   = sc->guiNode(gi)->Node->id;
+        cn.channel  = sc->guiNode(gi)->FixedChannel;
+        cn.isGlobal = sc->guiNode(gi)->Node->isGlobal;
+        cn.relX     = sc->guiNode(gi)->X - cx;
+        cn.relY     = sc->guiNode(gi)->Y - cy;
 
         int numSignals = effectiveInputCount(gi);
         cn.inputs.resize(numSignals);
@@ -1342,9 +1306,9 @@ void NodeCanvas::buildClipboardFromSelection()
 
         for (int p = 0; p < numSignals; p++)
         {
-            cn.inputs[p].valL = sc->gnInputValue(gi, p, 0);
-            cn.inputs[p].valR = sc->gnInputValue(gi, p, 1);
-            cn.inputs[p].mode = sc->gnInputMode(gi, p);
+            cn.inputs[p].valL = sc->getInputValue(gi, p, 0);
+            cn.inputs[p].valR = sc->getInputValue(gi, p, 1);
+            cn.inputs[p].mode = sc->getInputMode(gi, p);
 
             int srcID = sc->gnInput(gi, p);
             if (isRealConnection(srcID, sc))
@@ -1580,16 +1544,16 @@ void NodeCanvas::updateMouseOverEditPanel(const ImVec2& canvasOrigin)
     for (int j = (int)openEditPanels.size() - 1; j >= 0; --j)
     {
         int nodeID = openEditPanels[j];
-        int gi = findGuiIndex(nodeID);
+        int gi = nodeID;
         if (gi < 0) continue;
+        auto* giInfo = sc->guiNode(gi);
+        if (!giInfo) continue;
 
-        int nodeType = sc->gnType(gi);
+        int nodeType = giInfo->Node->id;
         const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
         if (!typeDef) continue;
 
-        double nx = sc->gnX(gi);
-        double ny = sc->gnY(gi);
-        ImVec2 nodePos = nodeScreenPos(nx, ny, canvasOrigin);
+        ImVec2 nodePos = nodeScreenPos(giInfo->X, giInfo->Y, canvasOrigin);
         float px = nodePos.x + kNodeWidth * zoom;
         float py = nodePos.y;
 
@@ -1642,13 +1606,15 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         for (int j = (int)panelIDs.size() - 1; j >= 0; --j)
         {
             int pid = panelIDs[j];
-            int pgi = findGuiIndex(pid);
+            int pgi = pid;
             if (pgi < 0) continue;
-            int ptype = sc->gnType(pgi);
+            auto* pgiInfo = sc->guiNode(pgi);
+            if (!pgiInfo) continue;
+            int ptype = pgiInfo->Node->id;
             const NodeTypeDef* pdef = NodeConfig::instance().getNodeType(ptype);
             if (!pdef) continue;
 
-            ImVec2 np2 = nodeScreenPos(sc->gnX(pgi), sc->gnY(pgi), canvasOrigin);
+            ImVec2 np2 = nodeScreenPos(pgiInfo->X, pgiInfo->Y, canvasOrigin);
             float ppx = np2.x + kNodeWidth * zoom;
             float ppy = np2.y;
             EditPanelSize eps = calcEditPanelSize(pid, ptype, pdef);
@@ -1673,14 +1639,20 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
 
     for (int nodeID : panelIDs)
     {
-        int gi = findGuiIndex(nodeID);
+        int gi = nodeID;
         if (gi < 0)
         {
             closeEditPanel(nodeID);
             continue;
         }
+        auto* giInfo = sc->guiNode(gi);
+        if (!giInfo)
+        {
+            closeEditPanel(nodeID);
+            continue;
+        }
 
-        int nodeType = sc->gnType(gi);
+        int nodeType = giInfo->Node->id;
         const NodeTypeDef* typeDef = NodeConfig::instance().getNodeType(nodeType);
         if (!typeDef)
         {
@@ -1688,8 +1660,8 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             continue;
         }
 
-        double nx = sc->gnX(gi);
-        double ny = sc->gnY(gi);
+        double nx = giInfo->X;
+        double ny = giInfo->Y;
         ImVec2 nodePos = nodeScreenPos(nx, ny, canvasOrigin);
         float nodeW = kNodeWidth * zoom;
         float z = zoom; // shorthand
@@ -1754,7 +1726,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
             {
                 flagsH = kEditLabelH;
-                bool isGlobal = sc->gnIsGlobal(gi);
+                bool isGlobal = sc->guiNode(gi)->Node->isGlobal;
                 for (const auto& mf : modeDef.modeFlags)
                 {
                     if (mf.visible != 0 &&
@@ -1823,7 +1795,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             mousePos.x >= rbMin.x && mousePos.x <= rbMax.x &&
             mousePos.y >= rbMin.y && mousePos.y <= rbMax.y)
         {
-            sc->resetNodeToDefaults((DWORD)nodeID, (DWORD)nodeType, sc->gnIsGlobal(gi));
+            sc->resetNodeToDefaults((DWORD)nodeID, (DWORD)nodeType, sc->guiNode(gi)->Node->isGlobal);
             for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
                 it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
         }
@@ -1931,7 +1903,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                         else
                         {
                             double defL, defR;
-                            sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->gnIsGlobal(gi), defL, defR);
+                            sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->guiNode(gi)->Node->isGlobal, defL, defR);
                             sc->setInputValue((DWORD)nodeID, paramIdx, defL, synced ? defL : (double)rawR);
                         }
                         knobDragNodeID = -1; knobDragParam = -1;
@@ -2003,7 +1975,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                             else
                             {
                                 double defL, defR;
-                                sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->gnIsGlobal(gi), defL, defR);
+                                sc->getNodeInputDefault((DWORD)nodeType, (DWORD)i, sc->guiNode(gi)->Node->isGlobal, defL, defR);
                                 sc->setInputValue((DWORD)nodeID, paramIdx, (double)rawL, defR);
                             }
                             knobDragNodeID = -1; knobDragParam = -1;
@@ -2058,7 +2030,7 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
         if (modeInputIdx >= 0 && modeInputIdx < (int)typeDef->inputs.size())
         {
             const InputDef& modeDef = typeDef->inputs[modeInputIdx];
-            bool isGlobal = sc->gnIsGlobal(gi);
+            bool isGlobal = sc->guiNode(gi)->Node->isGlobal;
 
             if (!modeDef.modeGroups.empty() || !modeDef.modeFlags.empty())
             {
@@ -2395,13 +2367,13 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     SynthController* sc = SynthController::instance();
     if (!sc) return false;
 
-    int nodeID = sc->gnID(guiIndex);
-    double nx = sc->gnX(guiIndex);
-    double ny = sc->gnY(guiIndex);
-    bool isGlobal = sc->gnIsGlobal(guiIndex);
+    int nodeID = guiIndex;
+    double nx = sc->guiNode(guiIndex)->X;
+    double ny = sc->guiNode(guiIndex)->Y;
+    bool isGlobal = sc->guiNode(guiIndex)->Node->isGlobal;
     int numSignals = effectiveInputCount(guiIndex);
     int numReq = sc->gnNodeReqSignals(guiIndex);
-    int nodeType = sc->gnType(guiIndex);
+    int nodeType = sc->guiNode(guiIndex)->Node->id;
     bool hasEditBtn = nodeHasEditButton(guiIndex);
     bool hasAddInput = (nodeType == MULTIADD_ID || nodeType == NOTECONTROLLER_ID);
     bool hasChannelBtns = (nodeType == CHANNELROOT_ID);
@@ -2503,8 +2475,8 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
                     std::vector<int> toDelete(selectedNodeIDs.begin(), selectedNodeIDs.end());
                     for (int id : toDelete)
                     {
-                        int gi = findGuiIndex(id);
-                        int tp = (gi >= 0) ? sc->gnType(gi) : -1;
+                        int gi = id;
+                        int tp = (gi >= 0) ? sc->guiNode(gi)->Node->id : -1;
                         if (tp >= 0 && tp <= (int)NOTECONTROLLER_ID) continue;
                         deleteNodeMaybeSmart(id, (int)toDelete.size() == 1);
                     }
@@ -2527,10 +2499,10 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     const char* displayName = typeDef ? typeDef->name.c_str() : "???";
 
     // ChannelRoot always shows "Channel N"; other nodes use custom name if set
-    std::string customName = sc->gnName(guiIndex);
+    std::string customName = sc->guiNode(guiIndex)->Name;
     if (nodeType == CHANNELROOT_ID)
     {
-        int ch1 = sc->gnChannel(guiIndex) + 1;
+        int ch1 = sc->guiNode(guiIndex)->FixedChannel + 1;
         char buf[32];
         snprintf(buf, sizeof(buf), "Channel %d", ch1);
         displayName = buf;
@@ -2714,7 +2686,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     // ── Load/Save Channel buttons (ChannelRoot only) ──
     if (hasChannelBtns)
     {
-        int ch = sc->gnChannel(guiIndex);
+        int ch = sc->guiNode(guiIndex)->FixedChannel;
         float btnBaseY = pos.y + (kHeaderHeight + (float)numSignals * kRowHeight
                                   + (hasEditBtn ? kEditButtonHeight : 0.f)) * zoom;
         float btnH = kEditButtonHeight * zoom;
@@ -2786,7 +2758,7 @@ bool NodeCanvas::drawNode(ImDrawList* dl, int guiIndex, const ImVec2& canvasOrig
     // ── Channel name label (ChannelRoot only): below Load/Save, centered, as wide as needed ──
     if (hasChannelBtns)
     {
-        std::string channelName = sc->gnName(guiIndex);
+        std::string channelName = sc->guiNode(guiIndex)->Name;
         if (!channelName.empty())
         {
             float labelBaseY = pos.y + (kHeaderHeight + (float)numSignals * kRowHeight
@@ -2861,35 +2833,28 @@ void NodeCanvas::drawWires(ImDrawList* dl, const ImVec2& canvasOrigin)
 
     int numNodes = sc->numGUINodes();
 
-    for (int toIdx = 0; toIdx < numNodes; toIdx++)
+    for (DWORD toNodeID : sc->activeNodeIDs())
     {
-        if (!sc->gnIsVisible(toIdx))
+        auto* toGi = sc->guiNode(toNodeID);
+        if (!toGi || !toGi->Visible)
             continue;
 
-        int toNodeID = sc->gnID(toIdx);
-        int numSignals = effectiveInputCount(toIdx);
-        double toNX = sc->gnX(toIdx);
-        double toNY = sc->gnY(toIdx);
-        ImVec2 toPos = nodeScreenPos(toNX, toNY, canvasOrigin);
+        int numSignals = effectiveInputCount(toNodeID);
+        ImVec2 toPos = nodeScreenPos(toGi->X, toGi->Y, canvasOrigin);
 
-        bool toSelected = selectedNodeIDs.count(toNodeID) > 0;
+        bool toSelected = selectedNodeIDs.count((int)toNodeID) > 0;
 
         for (int pin = 0; pin < numSignals; pin++)
         {
-            int srcID = sc->gnInput(toIdx, pin);
+            int srcID = sc->gnInput(toNodeID, pin);
             if (!isRealConnection(srcID, sc))
                 continue;
 
-            // Find the source node's GUI index using the per-frame O(1) map.
-            auto fit = frameIdToGi.find(srcID);
-            if (fit == frameIdToGi.end()) continue;
-            int fromIdx = fit->second;
-            if (!sc->gnIsVisible(fromIdx))
+            auto* fromGi = sc->guiNode(srcID);
+            if (!fromGi || !fromGi->Visible)
                 continue;
 
-            double fromNX = sc->gnX(fromIdx);
-            double fromNY = sc->gnY(fromIdx);
-            ImVec2 fromPos = nodeScreenPos(fromNX, fromNY, canvasOrigin);
+            ImVec2 fromPos = nodeScreenPos(fromGi->X, fromGi->Y, canvasOrigin);
 
             ImVec2 p0 = outputPinPos(fromPos);
             ImVec2 p3 = inputPinPos(toPos, pin);
@@ -2898,14 +2863,14 @@ void NodeCanvas::drawWires(ImDrawList* dl, const ImVec2& canvasOrigin)
 
             // Wire color: context wire (insertion target) = SpringGreen, selected = gold, else by scope
             ImU32 wireColor;
-            bool isContextWire = (contextWireFromID == (int)srcID && contextWireToID == toNodeID && contextWirePinIndex == pin);
+            bool isContextWire = (contextWireFromID == (int)srcID && contextWireToID == (int)toNodeID && contextWirePinIndex == pin);
             if (isContextWire)
                 wireColor = colorContextWire();
             else if (toSelected)
                 wireColor = colorSelectedWire();
             else
             {
-                bool fromGlobal = sc->gnIsGlobal(fromIdx);
+                bool fromGlobal = fromGi->Node->isGlobal;
                 wireColor = fromGlobal ? colorGlobalWire() : colorVoiceWire();
             }
 
@@ -2986,17 +2951,6 @@ void NodeCanvas::render()
 
     updateMouseOverEditPanel(canvasPos);
 
-    // Build per-frame nodeID→guiIndex map before interaction and drawing.
-    // Both handleNodeInteraction (drag loop) and the draw pass use it for O(1) lookups.
-    if (sc && sc->isInitialized())
-    {
-        int nFrame = sc->numGUINodes();
-        frameIdToGi.clear();
-        frameIdToGi.reserve(nFrame);
-        for (int i = 0; i < nFrame; i++)
-            if (sc->gnIsVisible(i)) frameIdToGi[sc->gnID(i)] = i;
-    }
-
     handleMinimapInput(canvasPos, canvasSize);
     handlePanZoom(canvasPos, canvasSize);
     handleNodeInteraction(canvasPos, canvasSize);
@@ -3024,41 +2978,39 @@ void NodeCanvas::render()
     if (sc && sc->isInitialized())
     {
         // Live signal readback
-        int nNodes = sc->numGUINodes();
-        for (int i = 0; i < nNodes; i++)
+        for (DWORD nid : sc->activeNodeIDs())
         {
-            if (!sc->gnIsVisible(i))
+            auto* gi = sc->guiNode(nid);
+            if (!gi || !gi->Visible)
                 continue;
-            int nodeType = sc->gnType(i);
-            int nid = sc->gnID(i);
+            int nodeType = gi->Node->id;
 
             if (nodeType == SYNTHROOT_ID || nodeType == CHANNELROOT_ID)
             {
-                auto& ld = liveDataCache[nid];
-                float newL = (float)std::abs(sc->getNodeSignal((DWORD)nid, 0, -2));
-                float newR = (float)std::abs(sc->getNodeSignal((DWORD)nid, 1, -2));
+                auto& ld = liveDataCache[(int)nid];
+                float newL = (float)std::abs(sc->getNodeSignal(nid, 0, -2));
+                float newR = (float)std::abs(sc->getNodeSignal(nid, 1, -2));
                 ld.vuL = std::max(ld.vuL * 0.95f, newL);
                 ld.vuR = std::max(ld.vuR * 0.95f, newR);
                 if (nodeType == CHANNELROOT_ID)
-                    ld.channelActive = sc->getChannelActive((DWORD)nid);
+                    ld.channelActive = sc->getChannelActive(nid);
             }
             else if (nodeType == VOICEMANAGER_ID)
             {
-                liveDataCache[nid].voiceCount = sc->getNumActiveVoices((DWORD)nid);
+                liveDataCache[(int)nid].voiceCount = sc->getNumActiveVoices(nid);
             }
         }
 
         // Build set of nodes whose output is connected (for output pin coloring)
         connectedOutputIDs.clear();
         {
-            int nWireNodes = sc->numGUINodes();
-            for (int i = 0; i < nWireNodes; i++)
+            for (DWORD nodeID : sc->activeNodeIDs())
             {
-                if (!sc->gnIsVisible(i)) continue;
-                int nSig = effectiveInputCount(i);
+                if (!sc->guiNode(nodeID)->Visible) continue;
+                int nSig = effectiveInputCount(nodeID);
                 for (int p = 0; p < nSig; p++)
                 {
-                    int srcID = sc->gnInput(i, p);
+                    int srcID = sc->gnInput(nodeID, p);
                     if (isRealConnection(srcID, sc))
                         connectedOutputIDs.insert(srcID);
                 }
@@ -3074,11 +3026,8 @@ void NodeCanvas::render()
         // Draw nodes in Z-order (back-to-front, back = first drawn = behind)
         for (int zid : nodeZOrder)
         {
-            auto fit = frameIdToGi.find(zid);
-            if (fit == frameIdToGi.end()) continue;
-            int i = fit->second;
-            if (!sc->gnIsVisible(i)) continue;
-            if (drawNode(dl, i, canvasPos))
+            if (!sc->guiNode(zid) || !sc->guiNode(zid)->Visible) continue;
+            if (drawNode(dl, zid, canvasPos))
                 break;
         }
 
@@ -3233,25 +3182,25 @@ void NodeCanvas::render()
                                   : (!selectedNodeIDs.empty() ? *selectedNodeIDs.begin() : -1);
                         if (refID >= 0)
                         {
-                            int gi2 = findGuiIndex(refID);
+                            int gi2 = refID;
                             if (gi2 >= 0)
                             {
-                                channel  = sc->gnChannel(gi2);
-                                isGlobal = sc->gnIsGlobal(gi2);
+                                channel  = sc->guiNode(gi2)->FixedChannel;
+                                isGlobal = sc->guiNode(gi2)->Node->isGlobal;
                             }
                         }
                         bool doInsert = (contextWireFromID >= 0 && contextWireToID >= 0 &&
                                          contextWirePinIndex >= 0);
                         if (doInsert)
                         {
-                            int fromGI2 = findGuiIndex(contextWireFromID);
-                            int toGI2   = findGuiIndex(contextWireToID);
+                            int fromGI2 = contextWireFromID;
+                            int toGI2   = contextWireToID;
                             if (fromGI2 < 0 || toGI2 < 0)
                                 doInsert = false;
                             else
                             {
-                                int fromType = sc->gnType(fromGI2);
-                                int toType   = sc->gnType(toGI2);
+                                int fromType = sc->guiNode(fromGI2)->Node->id;
+                                int toType   = sc->guiNode(toGI2)->Node->id;
                                 bool forbidden = (fromType == (int)VOICEROOT_ID && toType == (int)VOICEMANAGER_ID) ||
                                                  (fromType == (int)VOICEMANAGER_ID && toType == (int)NOTECONTROLLER_ID);
                                 if (forbidden)
@@ -3331,11 +3280,11 @@ void NodeCanvas::render()
                                           : (!selectedNodeIDs.empty() ? *selectedNodeIDs.begin() : -1);
                                 if (refID >= 0)
                                 {
-                                    int gi = findGuiIndex(refID);
+                                    int gi = refID;
                                     if (gi >= 0)
                                     {
-                                        channel = sc->gnChannel(gi);
-                                        isGlobal = sc->gnIsGlobal(gi);
+                                        channel = sc->guiNode(gi)->FixedChannel;
+                                        isGlobal = sc->guiNode(gi)->Node->isGlobal;
                                     }
                                 }
                                 // else defaults: voice, channel -2
@@ -3348,12 +3297,12 @@ void NodeCanvas::render()
                                             contextWirePinIndex >= 0 && nodeDef->allowSignalInsertion);
                             if (doInsert)
                             {
-                                int fromGI = findGuiIndex(contextWireFromID);
-                                int toGI = findGuiIndex(contextWireToID);
+                                int fromGI = contextWireFromID;
+                                int toGI = contextWireToID;
                                 if (fromGI >= 0 && toGI >= 0)
                                 {
-                                    int fromType = sc->gnType(fromGI);
-                                    int toType = sc->gnType(toGI);
+                                    int fromType = sc->guiNode(fromGI)->Node->id;
+                                    int toType = sc->guiNode(toGI)->Node->id;
                                     // Don't insert on VoiceRoot→VoiceManager or VoiceManager→NoteController
                                     bool forbidden = (fromType == (int)VOICEROOT_ID && toType == (int)VOICEMANAGER_ID) ||
                                                     (fromType == (int)VOICEMANAGER_ID && toType == (int)NOTECONTROLLER_ID);
@@ -3369,10 +3318,10 @@ void NodeCanvas::render()
                                 bool blockWireDragInsert = false;
                                 if (doWireDragInsert && isGlobal)
                                 {
-                                    int fromGI = findGuiIndex(wireDragFromNodeID);
-                                    if (fromGI >= 0 && !sc->gnIsGlobal(fromGI))
+                                    int fromGI = wireDragFromNodeID;
+                                    if (fromGI >= 0 && !sc->guiNode(fromGI)->Node->isGlobal)
                                     {
-                                        int fromType = sc->gnType(fromGI);
+                                        int fromType = sc->guiNode(fromGI)->Node->id;
                                         // VoiceRoot→VoiceManager is allowed; other voice→global is not
                                         if (fromType != (int)VOICEROOT_ID)
                                         {
@@ -3579,12 +3528,13 @@ void NodeCanvas::handleMinimapInput(const ImVec2& canvasPos, const ImVec2& canva
     // Compute bounding box of all visible nodes in world space.
     float gMinX =  FLT_MAX, gMinY =  FLT_MAX;
     float gMaxX = -FLT_MAX, gMaxY = -FLT_MAX;
-    for (int i = 0; i < nNodes; i++)
+    for (DWORD nodeID : sc->activeNodeIDs())
     {
-        if (!sc->gnIsVisible(i)) continue;
-        float nx = (float)sc->gnX(i);
-        float ny = (float)sc->gnY(i);
-        float nh = nodeHeight(effectiveInputCount(i), nodeHasEditButton(i));
+        auto* gi = sc->guiNode(nodeID);
+        if (!gi || !gi->Visible) continue;
+        float nx = (float)gi->X;
+        float ny = (float)gi->Y;
+        float nh = nodeHeight(effectiveInputCount(nodeID), nodeHasEditButton(nodeID));
         gMinX = std::min(gMinX, nx);
         gMinY = std::min(gMinY, ny);
         gMaxX = std::max(gMaxX, nx + kNodeWidth);
@@ -3672,63 +3622,53 @@ void NodeCanvas::drawMinimap(const ImVec2& canvasPos, const ImVec2& canvasSize)
 
     // Draw wires and nodes, clipped to the panel.
     dl->PushClipRect(mmMin, mmMax, true);
-    int nNodes = sc->numGUINodes();
-
-    // Build nodeID → gui-index map for wire rendering.
-    std::unordered_map<int,int> idToGi;
-    idToGi.reserve(nNodes);
-    for (int i = 0; i < nNodes; i++)
-        if (sc->gnIsVisible(i)) idToGi[sc->gnID(i)] = i;
 
     // Draw wires first (behind nodes).
-    for (int toIdx = 0; toIdx < nNodes; toIdx++)
+    for (DWORD toNodeID : sc->activeNodeIDs())
     {
-        if (!sc->gnIsVisible(toIdx)) continue;
-        int numSig = effectiveInputCount(toIdx);
-        float toNX = (float)sc->gnX(toIdx);
-        float toNY = (float)sc->gnY(toIdx);
-        float toNH = nodeHeight(numSig, nodeHasEditButton(toIdx));
-        // Input-pin side: left edge, vertically centered on node.
+        auto* toGi = sc->guiNode(toNodeID);
+        if (!toGi || !toGi->Visible) continue;
+        int numSig = effectiveInputCount(toNodeID);
+        float toNX = (float)toGi->X;
+        float toNY = (float)toGi->Y;
+        float toNH = nodeHeight(numSig, nodeHasEditButton(toNodeID));
         ImVec2 toPt = worldToMM(toNX, toNY + toNH * 0.5f);
 
         for (int pin = 0; pin < numSig; pin++)
         {
-            int srcID = sc->gnInput(toIdx, pin);
+            int srcID = sc->gnInput(toNodeID, pin);
             if (!isRealConnection(srcID, sc)) continue;
-            auto fit = idToGi.find(srcID);
-            if (fit == idToGi.end()) continue;
-            int fromIdx = fit->second;
-            if (!sc->gnIsVisible(fromIdx)) continue;
+            auto* fromGi = sc->guiNode(srcID);
+            if (!fromGi || !fromGi->Visible) continue;
 
-            float fromNX = (float)sc->gnX(fromIdx);
-            float fromNY = (float)sc->gnY(fromIdx);
-            float fromNH = nodeHeight(effectiveInputCount(fromIdx), nodeHasEditButton(fromIdx));
-            // Output-pin side: right edge, vertically centered on node.
+            float fromNX = (float)fromGi->X;
+            float fromNY = (float)fromGi->Y;
+            float fromNH = nodeHeight(effectiveInputCount(srcID), nodeHasEditButton(srcID));
             ImVec2 fromPt = worldToMM(fromNX + kNodeWidth, fromNY + fromNH * 0.5f);
 
-            bool isGlobal = sc->gnIsGlobal(fromIdx);
-            ImU32 wireCol = isGlobal ? IM_COL32(255, 20, 147, 120)   // DeepPink, translucent
-                                     : IM_COL32(135, 206, 250, 100);  // LightSkyBlue, translucent
+            bool isGlobal = fromGi->Node->isGlobal;
+            ImU32 wireCol = isGlobal ? IM_COL32(255, 20, 147, 120)
+                                     : IM_COL32(135, 206, 250, 100);
             dl->AddLine(fromPt, toPt, wireCol, 1.f);
         }
     }
 
     // Draw nodes on top of wires.
-    for (int i = 0; i < nNodes; i++)
+    for (DWORD nodeID : sc->activeNodeIDs())
     {
-        if (!sc->gnIsVisible(i)) continue;
-        float nx = (float)sc->gnX(i);
-        float ny = (float)sc->gnY(i);
-        float nh = nodeHeight(effectiveInputCount(i), nodeHasEditButton(i));
+        auto* gi = sc->guiNode(nodeID);
+        if (!gi || !gi->Visible) continue;
+        float nx = (float)gi->X;
+        float ny = (float)gi->Y;
+        float nh = nodeHeight(effectiveInputCount(nodeID), nodeHasEditButton(nodeID));
 
         ImVec2 rMin = worldToMM(nx, ny);
         ImVec2 rMax = worldToMM(nx + kNodeWidth, ny + nh);
-        // Ensure at least a 2×2 px dot so every node is always visible.
         if (rMax.x < rMin.x + 2.f) rMax.x = rMin.x + 2.f;
         if (rMax.y < rMin.y + 2.f) rMax.y = rMin.y + 2.f;
 
-        bool isGlobal = sc->gnIsGlobal(i);
-        bool isSel    = selectedNodeIDs.count(sc->gnID(i)) > 0;
+        bool isGlobal = gi->Node->isGlobal;
+        bool isSel    = selectedNodeIDs.count((int)nodeID) > 0;
         ImU32 col = isSel      ? colorSelectedNode()
                   : isGlobal   ? colorGlobalNode()
                                : colorVoiceNode();
