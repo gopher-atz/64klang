@@ -260,7 +260,6 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 
 #ifndef GMDLS_SKIP
 #ifdef _WIN32
-#ifdef COMPILE_VSTI
 	char lpGMDLSName[1024];
 	int len = GetSystemDirectoryA(lpGMDLSName, 1024);
 	SynthMemCopy(lpGMDLSName+len, (void*)lpGMDLSSuffix, 30);
@@ -279,6 +278,7 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 		ReadFile(hFile, lpGMDLSBuffer, GMDLS_FILEBUFFER_SIZE-1, &numbytes, NULL);
 		CloseHandle(hFile);
 
+#ifdef COMPILE_VSTI
 		// ----------------------------------------------------------------
 		// Validate outer RIFF 'DLS ' container
 		// ----------------------------------------------------------------
@@ -669,8 +669,8 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 				p = chNext;
 			}
 		} while (0); // single-pass scope guard (allows early break on malformed file)
-	}
 #endif // COMPILE_VSTI
+	}
 #endif // _WIN32
 #endif // GMDLS_SKIP
 }
