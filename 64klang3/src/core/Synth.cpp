@@ -48,6 +48,7 @@ WAVEFORMATEX pcmFormat =
 #ifndef GMDLS_SKIP
 #ifdef _WIN32
 #include <windows.h>
+#include <math.h>
 #define GMDLS_FILEBUFFER_SIZE 1024*1024*10
 const char*	lpGMDLSSuffix = "\\drivers\\gm.dls";
 char	lpGMDLSBuffer[GMDLS_FILEBUFFER_SIZE]; // 10Mb is enough for reading in
@@ -246,33 +247,414 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 					   OPEN_EXISTING,         // existing file only
 					   FILE_ATTRIBUTE_NORMAL, // normal file
 					   NULL);                 // no attr. template
-	DWORD numbytes = 0;
-	ReadFile(hFile, lpGMDLSBuffer, GMDLS_FILEBUFFER_SIZE-1, &numbytes, NULL);
-	CloseHandle(hFile);
-
-	uint32_t numWaves = 0;
-	for (uint32_t i = 0; i < numbytes; i++)
+	if (hFile != INVALID_HANDLE_VALUE)
 	{
-		uint32_t* data = (uint32_t*)(lpGMDLSBuffer+i);
-		if (*data == MAKEFOURCC('d','a','t','a'))
+		DWORD numbytes = 0;
+		ReadFile(hFile, lpGMDLSBuffer, GMDLS_FILEBUFFER_SIZE-1, &numbytes, NULL);
+		CloseHandle(hFile);
+
+		// ----------------------------------------------------------------
+		// Validate outer RIFF 'DLS ' container
+		// ----------------------------------------------------------------
+		const uint8_t* buf = (const uint8_t*)lpGMDLSBuffer;
+		do
 		{
-			i+=4;
-			// number of data bytes, so samples = numBytes/2 but we need to upsample from 22050 to 44100
-			uint32_t numSamples = *((uint32_t*)(lpGMDLSBuffer+i));
-			i+=4;
-			GMDLS_NumSamples[numWaves] = numSamples;
-			sample_t* buf = (sample_t*)SynthMalloc(numSamples*sizeof(sample_t));
-			GMDLS_SampleBuffer[numWaves] = buf;
-			for (uint32_t s = 0; s < numSamples/2; s++)
+			if (numbytes < 12) break;
+			if (*(uint32_t*)(buf+0) != MAKEFOURCC('R','I','F','F')) break;
+			if (*(uint32_t*)(buf+8) != MAKEFOURCC('D','L','S',' ')) break;
+			uint32_t riffSize = *(uint32_t*)(buf+4);
+			// Clamp riffSize to what was actually read (handles truncated files)
+			if ((uint32_t)8 + riffSize > numbytes)
+				riffSize = numbytes - 8;
+
+			uint32_t riffDataEnd   = 8 + riffSize; // absolute end of RIFF data
+			uint32_t riffDataStart = 12;            // first sub-chunk (skips 'RIFF'+size+'DLS ')
+
+			uint32_t numWaves = 0;
+
+			// ============================================================
+			// Pass 1 – LIST('wvpl'): load wave samples + wave-level loops
+			// Each LIST('wave') in the pool is one instrument sample slot.
+			// Upsampling: input is 22050 Hz 16-bit mono; each raw sample is
+			// duplicated to produce 44100 Hz output (2x factor).
+			// All loop point indices stored in GMDLS_LoopData are already
+			// scaled by this 2x factor.
+			// ============================================================
+			for (uint32_t p = riffDataStart; p + 8 <= riffDataEnd; )
 			{
-				int si = *((short*)(lpGMDLSBuffer+i));
-				sample_t ss = s_toSample(sample_t(si).pi)/SC[S_32768_0];
-				*buf++ = ss;
-				*buf++ = ss; // upsampling by doubling the samples
-				i+=2;
+				uint32_t chId   = *(uint32_t*)(buf + p);
+				uint32_t chSize = *(uint32_t*)(buf + p + 4);
+				uint32_t chData = p + 8;
+				// Clamp malformed chunk size
+				if (chData + chSize > riffDataEnd)
+					chSize = riffDataEnd - chData;
+				uint32_t chNext = chData + ((chSize + 1u) & ~1u); // word-aligned next
+
+				if (chId == MAKEFOURCC('L','I','S','T') && chSize >= 4 &&
+				    *(uint32_t*)(buf + chData) == MAKEFOURCC('w','v','p','l'))
+				{
+					uint32_t wvplEnd = chData + chSize;
+					// Walk LIST('wave') children
+					for (uint32_t wp = chData + 4; wp + 8 <= wvplEnd && numWaves < 512; )
+					{
+						uint32_t wId   = *(uint32_t*)(buf + wp);
+						uint32_t wSize = *(uint32_t*)(buf + wp + 4);
+						uint32_t wData = wp + 8;
+						if (wData + wSize > wvplEnd) wSize = wvplEnd - wData;
+						uint32_t wNext = wData + ((wSize + 1u) & ~1u);
+
+						if (wId == MAKEFOURCC('L','I','S','T') && wSize >= 4 &&
+						    *(uint32_t*)(buf + wData) == MAKEFOURCC('w','a','v','e'))
+						{
+							// Initialise metadata for this slot
+							GMDLS_NumSamples[numWaves]              = 0;
+							GMDLS_SampleBuffer[numWaves]            = NULL;
+							GMDLS_LoopData[numWaves].loopStart      = 0;
+							GMDLS_LoopData[numWaves].loopEnd        = 0;
+							GMDLS_LoopData[numWaves].loopType       = 0;
+							GMDLS_LoopData[numWaves].sourcePriority = 0;
+							GMDLS_EnvData[numWaves].attack          = 0.f;
+							GMDLS_EnvData[numWaves].decay           = 0.f;
+							GMDLS_EnvData[numWaves].sustain         = 1.f;
+							GMDLS_EnvData[numWaves].release         = 0.f;
+							GMDLS_EnvData[numWaves].validMask       = 0;
+
+							bool     wavePCM16    = false;
+							bool     waveLoaded   = false;
+							uint32_t waveEnd      = wData + wSize;
+
+							for (uint32_t cp = wData + 4; cp + 8 <= waveEnd; )
+							{
+								uint32_t cId   = *(uint32_t*)(buf + cp);
+								uint32_t cSize = *(uint32_t*)(buf + cp + 4);
+								uint32_t cData = cp + 8;
+								if (cData + cSize > waveEnd) cSize = waveEnd - cData;
+								uint32_t cNext = cData + ((cSize + 1u) & ~1u);
+
+								if (cId == MAKEFOURCC('f','m','t',' ') && cSize >= 16)
+								{
+									// WAVEFORMATEX: wFormatTag(2) nChannels(2) nSamplesPerSec(4)
+									//               nAvgBytesPerSec(4) nBlockAlign(2) wBitsPerSample(2)
+									uint16_t fmtTag  = *(uint16_t*)(buf + cData + 0);
+									uint16_t nChan   = *(uint16_t*)(buf + cData + 2);
+									uint16_t nBits   = *(uint16_t*)(buf + cData + 14);
+									wavePCM16 = (fmtTag == 1 && nChan == 1 && nBits == 16);
+								}
+								else if (cId == MAKEFOURCC('w','s','m','p') && cSize >= 20)
+								{
+									// WSMPL: cbSize(4) usUnityNote(2) sFineTune(2) lAttenuation(4)
+									//        fulOptions(4) cSampleLoops(4) [WLOOP...]
+									// WLOOPs start at cbSize bytes from cData.
+									uint32_t wsmpCbSize = *(uint32_t*)(buf + cData + 0);
+									uint32_t cLoops     = *(uint32_t*)(buf + cData + 16);
+									if (cLoops > 0 && wsmpCbSize >= 20 &&
+									    cData + wsmpCbSize + 16 <= cData + cSize)
+									{
+										// First WLOOP: cbSize(4) ulType(4) ulStart(4) ulLength(4)
+										uint32_t lb    = cData + wsmpCbSize;
+										uint32_t lType = *(uint32_t*)(buf + lb + 4);
+										uint32_t lSt   = *(uint32_t*)(buf + lb + 8);
+										uint32_t lLen  = *(uint32_t*)(buf + lb + 12);
+										// DLS loop types: 0=forward, 1=release (no-sustain bidi in some impls)
+										if (lType == 0 || lType == 1)
+										{
+											// Scale raw sample indices by 2x upsampling factor
+											GMDLS_LoopData[numWaves].loopStart      = lSt * 2;
+											GMDLS_LoopData[numWaves].loopEnd        = (lSt + lLen) * 2;
+											GMDLS_LoopData[numWaves].loopType       = (lType == 0) ? 1 : 2;
+											GMDLS_LoopData[numWaves].sourcePriority = 1; // wave-level
+										}
+									}
+								}
+								else if (cId == MAKEFOURCC('d','a','t','a') && wavePCM16)
+								{
+									// Load sample data.  Each raw 16-bit sample is duplicated to
+									// produce 44100 Hz output from a 22050 Hz source (legacy gm.dls).
+									uint32_t numRaw      = cSize / 2;
+									uint32_t numStored   = numRaw * 2; // upsampled
+									GMDLS_NumSamples[numWaves]   = numStored;
+									sample_t* sbuf = (sample_t*)SynthMalloc(numStored * sizeof(sample_t));
+									GMDLS_SampleBuffer[numWaves] = sbuf;
+									for (uint32_t s = 0; s < numRaw; s++)
+									{
+										int si = *(const short*)(buf + cData + s * 2);
+										sample_t ss = s_toSample(sample_t(si).pi) / SC[S_32768_0];
+										*sbuf++ = ss;
+										*sbuf++ = ss; // upsampling by duplicating
+									}
+
+									// Clamp and validate wave-level loop bounds now that we know the size
+									if (GMDLS_LoopData[numWaves].sourcePriority > 0)
+									{
+										if (GMDLS_LoopData[numWaves].loopEnd > numStored)
+											GMDLS_LoopData[numWaves].loopEnd = numStored;
+										if (GMDLS_LoopData[numWaves].loopStart >= GMDLS_LoopData[numWaves].loopEnd)
+										{
+											GMDLS_LoopData[numWaves].loopType       = 0;
+											GMDLS_LoopData[numWaves].sourcePriority = 0;
+										}
+									}
+									waveLoaded = true;
+								}
+
+								cp = cNext;
+							}
+
+							if (waveLoaded)
+								numWaves++;
+						}
+
+						wp = wNext;
+					}
+					break; // only one wvpl expected
+				}
+
+				p = chNext;
 			}
-			numWaves++;
-		}
+
+			// ============================================================
+			// Pass 2 – LIST('lins'): region-level loops (higher priority)
+			//          and EG1 volume-envelope data from art1/art2 blocks.
+			//
+			// DLS art1 connection blocks use:
+			//   Time values in timecents  (seconds = 2^(lScale/65536/1200))
+			//   EG1 sustain in hundredths of a percent (0 = silence,
+			//   1000 = 100%; linear = (lScale/65536)/1000)
+			// ============================================================
+			for (uint32_t p = riffDataStart; p + 8 <= riffDataEnd; )
+			{
+				uint32_t chId   = *(uint32_t*)(buf + p);
+				uint32_t chSize = *(uint32_t*)(buf + p + 4);
+				uint32_t chData = p + 8;
+				if (chData + chSize > riffDataEnd)
+					chSize = riffDataEnd - chData;
+				uint32_t chNext = chData + ((chSize + 1u) & ~1u);
+
+				if (chId == MAKEFOURCC('L','I','S','T') && chSize >= 4 &&
+				    *(uint32_t*)(buf + chData) == MAKEFOURCC('l','i','n','s'))
+				{
+					uint32_t linsEnd = chData + chSize;
+
+					// Walk LIST('ins ')
+					for (uint32_t ip = chData + 4; ip + 8 <= linsEnd; )
+					{
+						uint32_t iId   = *(uint32_t*)(buf + ip);
+						uint32_t iSize = *(uint32_t*)(buf + ip + 4);
+						uint32_t iData = ip + 8;
+						if (iData + iSize > linsEnd) iSize = linsEnd - iData;
+						uint32_t iNext = iData + ((iSize + 1u) & ~1u);
+
+						if (iId == MAKEFOURCC('L','I','S','T') && iSize >= 4 &&
+						    *(uint32_t*)(buf + iData) == MAKEFOURCC('i','n','s',' '))
+						{
+							uint32_t insEnd = iData + iSize;
+
+							// Find LIST('lrgn') inside this instrument
+							for (uint32_t lp = iData + 4; lp + 8 <= insEnd; )
+							{
+								uint32_t lId   = *(uint32_t*)(buf + lp);
+								uint32_t lSize = *(uint32_t*)(buf + lp + 4);
+								uint32_t lData = lp + 8;
+								if (lData + lSize > insEnd) lSize = insEnd - lData;
+								uint32_t lNext = lData + ((lSize + 1u) & ~1u);
+
+								if (lId == MAKEFOURCC('L','I','S','T') && lSize >= 4 &&
+								    *(uint32_t*)(buf + lData) == MAKEFOURCC('l','r','g','n'))
+								{
+									uint32_t lrgnEnd = lData + lSize;
+
+									// Walk LIST('rgn ') or LIST('rgn2')
+									for (uint32_t rp = lData + 4; rp + 8 <= lrgnEnd; )
+									{
+										uint32_t rId   = *(uint32_t*)(buf + rp);
+										uint32_t rSize = *(uint32_t*)(buf + rp + 4);
+										uint32_t rData = rp + 8;
+										if (rData + rSize > lrgnEnd) rSize = lrgnEnd - rData;
+										uint32_t rNext = rData + ((rSize + 1u) & ~1u);
+
+										if (rId == MAKEFOURCC('L','I','S','T') && rSize >= 4 &&
+										    (*(uint32_t*)(buf + rData) == MAKEFOURCC('r','g','n',' ') ||
+										     *(uint32_t*)(buf + rData) == MAKEFOURCC('r','g','n','2')))
+										{
+											uint32_t rgnEnd = rData + rSize;
+
+											uint32_t waveIdx   = 0xFFFFFFFFu;
+											bool     hasWlnk   = false;
+
+											// Collected region-level loop
+											uint32_t rLoopStart = 0, rLoopEnd = 0;
+											uint8_t  rLoopType  = 0;
+											bool     rHasLoop   = false;
+
+											// Collected EG1 envelope
+											float    envAttack  = 0.f, envDecay  = 0.f;
+											float    envSustain = 1.f, envRelease = 0.f;
+											uint8_t  envValid   = 0;
+
+											for (uint32_t cp = rData + 4; cp + 8 <= rgnEnd; )
+											{
+												uint32_t cId   = *(uint32_t*)(buf + cp);
+												uint32_t cSize = *(uint32_t*)(buf + cp + 4);
+												uint32_t cData = cp + 8;
+												if (cData + cSize > rgnEnd) cSize = rgnEnd - cData;
+												uint32_t cNext = cData + ((cSize + 1u) & ~1u);
+
+												if (cId == MAKEFOURCC('w','l','n','k') && cSize >= 12)
+												{
+													// WAVELINK: fusOptions(2) usPhaseGroup(2) ulChannel(4) ulTableIndex(4)
+													uint32_t idx = *(uint32_t*)(buf + cData + 8);
+													if (idx < numWaves)
+													{
+														waveIdx = idx;
+														hasWlnk = true;
+													}
+												}
+												else if (cId == MAKEFOURCC('w','s','m','p') && cSize >= 20)
+												{
+													uint32_t wsmpCbSize = *(uint32_t*)(buf + cData + 0);
+													uint32_t cLoops     = *(uint32_t*)(buf + cData + 16);
+													if (cLoops > 0 && wsmpCbSize >= 20 &&
+													    cData + wsmpCbSize + 16 <= cData + cSize)
+													{
+														uint32_t lb    = cData + wsmpCbSize;
+														uint32_t lType = *(uint32_t*)(buf + lb + 4);
+														uint32_t lSt   = *(uint32_t*)(buf + lb + 8);
+														uint32_t lLen  = *(uint32_t*)(buf + lb + 12);
+														if (lType == 0 || lType == 1)
+														{
+															rLoopStart = lSt * 2;
+															rLoopEnd   = (lSt + lLen) * 2;
+															rLoopType  = (lType == 0) ? 1 : 2;
+															rHasLoop   = true;
+														}
+													}
+												}
+												else if (cId == MAKEFOURCC('L','I','S','T') && cSize >= 4 &&
+												         (*(uint32_t*)(buf + cData) == MAKEFOURCC('l','a','r','t') ||
+												          *(uint32_t*)(buf + cData) == MAKEFOURCC('l','a','r','2')))
+												{
+													// Walk art1/art2 connection blocks
+													uint32_t lartEnd = cData + cSize;
+													for (uint32_t ap = cData + 4; ap + 8 <= lartEnd; )
+													{
+														uint32_t aId   = *(uint32_t*)(buf + ap);
+														uint32_t aSize = *(uint32_t*)(buf + ap + 4);
+														uint32_t aData = ap + 8;
+														if (aData + aSize > lartEnd) aSize = lartEnd - aData;
+														uint32_t aNext = aData + ((aSize + 1u) & ~1u);
+
+														if ((aId == MAKEFOURCC('a','r','t','1') ||
+														     aId == MAKEFOURCC('a','r','t','2')) && aSize >= 8)
+														{
+															// ART1 header: cbSize(4) cConnectionBlocks(4)
+															// Connection blocks follow at cbSize offset from aData
+															uint32_t artCbSize = *(uint32_t*)(buf + aData + 0);
+															uint32_t nConns    = *(uint32_t*)(buf + aData + 4);
+															uint32_t connBase  = aData + artCbSize;
+
+															for (uint32_t ci = 0;
+															     ci < nConns && connBase + 12 <= aData + aSize;
+															     ci++, connBase += 12)
+															{
+																// CONNECTION: usSource(2) usControl(2) usDestination(2) usTransform(2) lScale(4)
+																uint16_t src   = *(uint16_t*)(buf + connBase + 0);
+																uint16_t ctrl  = *(uint16_t*)(buf + connBase + 2);
+																uint16_t dst   = *(uint16_t*)(buf + connBase + 4);
+																int32_t  scale = *(int32_t*) (buf + connBase + 8);
+
+																// Only plain (unmodulated) connections
+																if (src != 0 || ctrl != 0)
+																	continue;
+
+																// Time values: timecents -> seconds = 2^(tc/1200)
+																// where tc = lScale/65536 (16.16 fixed-point)
+																double tc;
+																switch (dst)
+																{
+																case 0x0104: // EG1_ATTACK_TIME
+																	tc = (double)scale / 65536.0;
+																	if (tc < -12000.0) tc = -12000.0;
+																	if (tc >  12000.0) tc =  12000.0;
+																	envAttack = (float)pow(2.0, tc / 1200.0);
+																	envValid |= 1;
+																	break;
+																case 0x0105: // EG1_DECAY_TIME
+																	tc = (double)scale / 65536.0;
+																	if (tc < -12000.0) tc = -12000.0;
+																	if (tc >  12000.0) tc =  12000.0;
+																	envDecay = (float)pow(2.0, tc / 1200.0);
+																	envValid |= 2;
+																	break;
+																case 0x010A: // EG1_SUSTAIN_LEVEL
+																	// DLS Level 1: hundredths of a percent
+																	// (0 = silence, 1000 * 65536 = 100% = full)
+																	{
+																		double lin = (double)scale / 65536.0 / 1000.0;
+																		if (lin < 0.0) lin = 0.0;
+																		if (lin > 1.0) lin = 1.0;
+																		envSustain = (float)lin;
+																	}
+																	envValid |= 4;
+																	break;
+																case 0x0107: // EG1_RELEASE_TIME
+																	tc = (double)scale / 65536.0;
+																	if (tc < -12000.0) tc = -12000.0;
+																	if (tc >  12000.0) tc =  12000.0;
+																	envRelease = (float)pow(2.0, tc / 1200.0);
+																	envValid |= 8;
+																	break;
+																}
+															}
+														}
+
+														ap = aNext;
+													}
+												}
+
+												cp = cNext;
+											}
+
+											// Apply collected data to the wave slot
+											if (hasWlnk)
+											{
+												// Region-level wsmp overrides wave-level wsmp
+												if (rHasLoop)
+												{
+													uint32_t numSamp = GMDLS_NumSamples[waveIdx];
+													if (rLoopEnd > numSamp)
+														rLoopEnd = numSamp;
+													if (rLoopStart < rLoopEnd)
+													{
+														GMDLS_LoopData[waveIdx].loopStart      = rLoopStart;
+														GMDLS_LoopData[waveIdx].loopEnd        = rLoopEnd;
+														GMDLS_LoopData[waveIdx].loopType       = rLoopType;
+														GMDLS_LoopData[waveIdx].sourcePriority = 2; // region-level
+													}
+												}
+												// Envelope: last region's valid fields win
+												if (envValid & 1) { GMDLS_EnvData[waveIdx].attack   = envAttack;  GMDLS_EnvData[waveIdx].validMask |= 1; }
+												if (envValid & 2) { GMDLS_EnvData[waveIdx].decay    = envDecay;   GMDLS_EnvData[waveIdx].validMask |= 2; }
+												if (envValid & 4) { GMDLS_EnvData[waveIdx].sustain  = envSustain; GMDLS_EnvData[waveIdx].validMask |= 4; }
+												if (envValid & 8) { GMDLS_EnvData[waveIdx].release  = envRelease; GMDLS_EnvData[waveIdx].validMask |= 8; }
+											}
+										}
+
+										rp = rNext;
+									}
+								}
+
+								lp = lNext;
+							}
+						}
+
+						ip = iNext;
+					}
+					break; // only one lins expected
+				}
+
+				p = chNext;
+			}
+		} while (0); // single-pass scope guard (allows early break on malformed file)
 	}
 #endif // _WIN32
 #endif // GMDLS_SKIP

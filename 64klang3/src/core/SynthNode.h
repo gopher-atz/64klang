@@ -1139,6 +1139,32 @@ void SYNTHCALL SAPI_tick(SynthNode* n);
 extern DWORD		GMDLS_NumSamples[512];
 extern sample_t*	GMDLS_SampleBuffer[512];
 
+// Per-wave loop information extracted from DLS wsmp/WLOOP chunks.
+// loopType: 0=none, 1=forward, 2=bidirectional
+// sourcePriority: 0=none, 1=wave-level wsmp, 2=region-level wsmp (higher overrides)
+// loopStart/loopEnd are sample_t indices after 2x upsampling (22050 -> 44100)
+struct GMDLS_LoopInfo {
+	uint32_t loopStart;       // first sample of the loop
+	uint32_t loopEnd;         // one-past-last sample of the loop
+	uint8_t  loopType;        // 0=none, 1=forward, 2=bidi
+	uint8_t  sourcePriority;  // 0=none, 1=wave, 2=region
+};
+
+// Per-wave EG1 (volume) envelope extracted from DLS art1/art2 connection blocks.
+// validMask bits: 0=attack, 1=decay, 2=sustain, 3=release
+// Times are in seconds; sustain is a linear amplitude [0..1].
+// Fields with the corresponding bit unset in validMask were not present in the file.
+struct GMDLS_EnvInfo {
+	float   attack;     // seconds
+	float   decay;      // seconds
+	float   sustain;    // linear amplitude 0..1
+	float   release;    // seconds
+	uint8_t validMask;  // bitmask of valid fields
+};
+
+extern GMDLS_LoopInfo GMDLS_LoopData[512];
+extern GMDLS_EnvInfo  GMDLS_EnvData[512];
+
 enum GMDLS_INPUT
 {
 	GMDLS_MODE,
