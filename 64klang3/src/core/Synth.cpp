@@ -52,6 +52,29 @@ WAVEFORMATEX pcmFormat =
 #define GMDLS_FILEBUFFER_SIZE 1024*1024*10
 const char*	lpGMDLSSuffix = "\\drivers\\gm.dls";
 char	lpGMDLSBuffer[GMDLS_FILEBUFFER_SIZE]; // 10Mb is enough for reading in
+
+// Convert a DLS Level 1 timecent value (16.16 fixed-point lScale) to seconds.
+// timecents = lScale / 65536;  seconds = 2 ^ (timecents / 1200)
+// Clamped to ±10 octaves to guard against extreme / garbage values.
+static inline float gmdls_tc_to_sec(int32_t lScale)
+{
+	double tc = (double)lScale / 65536.0;
+	if (tc < -12000.0) tc = -12000.0;
+	if (tc >  12000.0) tc =  12000.0;
+	return (float)pow(2.0, tc / 1200.0);
+}
+
+// Map a DLS WLOOP ulType to the internal loopType convention:
+//   DLS 0 (forward)          -> 1
+//   DLS 1 (release/bidi)     -> 2
+// Returns 0 for unsupported types (caller should reject such loops).
+static inline uint8_t gmdls_loop_type(uint32_t dlsType)
+{
+	if (dlsType == 0) return 1; // forward loop
+	if (dlsType == 1) return 2; // release / bidirectional loop
+	return 0;
+}
+
 #endif // _WIN32
 #endif // GMDLS_SKIP
 
@@ -355,13 +378,13 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 										uint32_t lType = *(uint32_t*)(buf + lb + 4);
 										uint32_t lSt   = *(uint32_t*)(buf + lb + 8);
 										uint32_t lLen  = *(uint32_t*)(buf + lb + 12);
-										// DLS loop types: 0=forward, 1=release (no-sustain bidi in some impls)
+										// DLS loop type 0 = forward, 1 = release/bidirectional
 										if (lType == 0 || lType == 1)
 										{
 											// Scale raw sample indices by 2x upsampling factor
 											GMDLS_LoopData[numWaves].loopStart      = lSt * 2;
 											GMDLS_LoopData[numWaves].loopEnd        = (lSt + lLen) * 2;
-											GMDLS_LoopData[numWaves].loopType       = (lType == 0) ? 1 : 2;
+											GMDLS_LoopData[numWaves].loopType       = gmdls_loop_type(lType);
 											GMDLS_LoopData[numWaves].sourcePriority = 1; // wave-level
 										}
 									}
@@ -524,7 +547,7 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 														{
 															rLoopStart = lSt * 2;
 															rLoopEnd   = (lSt + lLen) * 2;
-															rLoopType  = (lType == 0) ? 1 : 2;
+															rLoopType  = gmdls_loop_type(lType); // 1=forward, 2=release/bidi
 															rHasLoop   = true;
 														}
 													}
@@ -566,24 +589,15 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 																if (src != 0 || ctrl != 0)
 																	continue;
 
-																// Time values: timecents -> seconds = 2^(tc/1200)
-																// where tc = lScale/65536 (16.16 fixed-point)
-																double tc;
 																switch (dst)
 																{
 																case 0x0104: // EG1_ATTACK_TIME
-																	tc = (double)scale / 65536.0;
-																	if (tc < -12000.0) tc = -12000.0;
-																	if (tc >  12000.0) tc =  12000.0;
-																	envAttack = (float)pow(2.0, tc / 1200.0);
-																	envValid |= 1;
+																	envAttack  = gmdls_tc_to_sec(scale);
+																	envValid  |= 1;
 																	break;
 																case 0x0105: // EG1_DECAY_TIME
-																	tc = (double)scale / 65536.0;
-																	if (tc < -12000.0) tc = -12000.0;
-																	if (tc >  12000.0) tc =  12000.0;
-																	envDecay = (float)pow(2.0, tc / 1200.0);
-																	envValid |= 2;
+																	envDecay   = gmdls_tc_to_sec(scale);
+																	envValid  |= 2;
 																	break;
 																case 0x010A: // EG1_SUSTAIN_LEVEL
 																	// DLS Level 1: hundredths of a percent
@@ -594,14 +608,11 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 																		if (lin > 1.0) lin = 1.0;
 																		envSustain = (float)lin;
 																	}
-																	envValid |= 4;
+																	envValid  |= 4;
 																	break;
 																case 0x0107: // EG1_RELEASE_TIME
-																	tc = (double)scale / 65536.0;
-																	if (tc < -12000.0) tc = -12000.0;
-																	if (tc >  12000.0) tc =  12000.0;
-																	envRelease = (float)pow(2.0, tc / 1200.0);
-																	envValid |= 8;
+																	envRelease = gmdls_tc_to_sec(scale);
+																	envValid  |= 8;
 																	break;
 																}
 															}
