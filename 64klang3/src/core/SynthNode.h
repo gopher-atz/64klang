@@ -1139,6 +1139,7 @@ void SYNTHCALL SAPI_tick(SynthNode* n);
 extern DWORD		GMDLS_NumSamples[512];
 extern sample_t*	GMDLS_SampleBuffer[512];
 
+#ifdef COMPILE_VSTI
 // Per-wave loop information extracted from DLS wsmp/WLOOP chunks.
 // loopType: 0=none, 1=forward, 2=bidirectional
 // sourcePriority: 0=none, 1=wave-level wsmp, 2=region-level wsmp (higher overrides)
@@ -1164,6 +1165,7 @@ struct GMDLS_EnvInfo {
 
 extern GMDLS_LoopInfo GMDLS_LoopData[512];
 extern GMDLS_EnvInfo  GMDLS_EnvData[512];
+#endif // COMPILE_VSTI
 
 enum GMDLS_INPUT
 {
