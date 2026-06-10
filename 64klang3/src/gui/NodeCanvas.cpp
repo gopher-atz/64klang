@@ -63,6 +63,17 @@ static inline bool isShiftHeld()
 #endif
 }
 
+// Converts a GMDLS envelope time (seconds) to the ADSR internal raw value [0..1].
+// Forward formula (mapping 1): ms = (norm^3 * 418381.824 + 1) / 44.1
+// Inverse: norm = cbrt((seconds * 44100 - 1) / 418381.824)
+static inline double adsrSecondsToRaw(float seconds)
+{
+    double samples = (double)seconds * 44100.0;
+    double inside  = (samples - 1.0) / 418381.824;
+    if (inside <= 0.0) return 0.0;
+    return std::max(0.0, std::min(1.0, std::cbrt(inside)));
+}
+
 NodeCanvas::NodeCanvas() {}
 NodeCanvas::~NodeCanvas() {}
 
@@ -1798,6 +1809,148 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
             sc->resetNodeToDefaults((DWORD)nodeID, (DWORD)nodeType, sc->guiNode(gi)->Node->isGlobal);
             for (auto it = paramSyncState.begin(); it != paramSyncState.end(); )
                 it = ((uint32_t)(it->first >> 32) == (uint32_t)nodeID) ? paramSyncState.erase(it) : std::next(it);
+        }
+
+        // ── Node-type-specific header buttons (left of "0") ──────────────────
+        // GMDLS: "E" copies envelope data, "L" copies loop data to internal clipboard.
+        // ADSR:  "E" pastes envelope data.
+        // Sampler: "L" pastes loop data.
+        {
+            float hbSz = rbSz;   // same height/width as the reset ("0") button
+            float hbX  = rbMin.x; // we walk left from the left edge of "0"
+
+            if (nodeType == GMDLS_ID)
+            {
+                int sampleIdx  = currentMode & 0xffff;
+
+                // "L" – copy loop data for the currently selected GMDLS sample
+                hbX -= hbSz + 3.f * z;
+                ImVec2 lbMin(hbX, py + 2.f * z);
+                ImVec2 lbMax(lbMin.x + hbSz, lbMin.y + hbSz);
+                dl->AddRectFilled(lbMin, lbMax, IM_COL32(30, 160, 80, 255));
+                if (fontSize >= 6.f)
+                {
+                    float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, "L").x;
+                    dl->AddText(pickFont(fontSize), fontSize,
+                                ImVec2(lbMin.x + (hbSz - fw) * 0.5f, lbMin.y + (hbSz - fontSize) * 0.5f),
+                                IM_COL32(255, 255, 255, 255), "L");
+                }
+
+                // "E" – copy envelope data for the currently selected GMDLS sample
+                hbX -= hbSz + 3.f * z;
+                ImVec2 ebMin(hbX, py + 2.f * z);
+                ImVec2 ebMax(ebMin.x + hbSz, ebMin.y + hbSz);
+                dl->AddRectFilled(ebMin, ebMax, IM_COL32(30, 160, 80, 255));
+                if (fontSize >= 6.f)
+                {
+                    float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, "E").x;
+                    dl->AddText(pickFont(fontSize), fontSize,
+                                ImVec2(ebMin.x + (hbSz - fw) * 0.5f, ebMin.y + (hbSz - fontSize) * 0.5f),
+                                IM_COL32(255, 255, 255, 255), "E");
+                }
+
+                if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+                {
+                    if (mousePos.x >= lbMin.x && mousePos.x <= lbMax.x &&
+                        mousePos.y >= lbMin.y && mousePos.y <= lbMax.y)
+                    {
+                        const auto& ld       = GMDLS_LoopData[sampleIdx];
+                        gmdlsLoopClip.loopStart  = ld.loopStart;
+                        gmdlsLoopClip.loopEnd    = ld.loopEnd;
+                        gmdlsLoopClip.loopType   = ld.loopType;
+                        gmdlsLoopClip.bufferSize = (GMDLS_NumSamples[sampleIdx] > 0) ? GMDLS_NumSamples[sampleIdx] : 1;
+                        gmdlsLoopClip.hasData    = true;
+                    }
+                    if (mousePos.x >= ebMin.x && mousePos.x <= ebMax.x &&
+                        mousePos.y >= ebMin.y && mousePos.y <= ebMax.y)
+                    {
+                        const auto& ed       = GMDLS_EnvData[sampleIdx];
+                        gmdlsEnvClip.attack    = ed.attack;
+                        gmdlsEnvClip.decay     = ed.decay;
+                        gmdlsEnvClip.sustain   = ed.sustain;
+                        gmdlsEnvClip.release   = ed.release;
+                        gmdlsEnvClip.hasData   = true;
+                    }
+                }
+            }
+            else if (nodeType == ADSR_ID)
+            {
+                // "E" – paste GMDLS envelope into Attack / Decay / Sustain / Release
+                ImU32 btnCol = gmdlsEnvClip.hasData ? IM_COL32(30, 160, 80, 255) : IM_COL32(100, 100, 100, 180);
+                hbX -= hbSz + 3.f * z;
+                ImVec2 pebMin(hbX, py + 2.f * z);
+                ImVec2 pebMax(pebMin.x + hbSz, pebMin.y + hbSz);
+                dl->AddRectFilled(pebMin, pebMax, btnCol);
+                if (fontSize >= 6.f)
+                {
+                    float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, "E").x;
+                    dl->AddText(pickFont(fontSize), fontSize,
+                                ImVec2(pebMin.x + (hbSz - fw) * 0.5f, pebMin.y + (hbSz - fontSize) * 0.5f),
+                                IM_COL32(255, 255, 255, 255), "E");
+                }
+                if (gmdlsEnvClip.hasData && canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                    mousePos.x >= pebMin.x && mousePos.x <= pebMax.x &&
+                    mousePos.y >= pebMin.y && mousePos.y <= pebMax.y)
+                {
+                    double rawAttack  = adsrSecondsToRaw(gmdlsEnvClip.attack);
+                    double rawDecay   = adsrSecondsToRaw(gmdlsEnvClip.decay);
+                    double rawSustain = (double)gmdlsEnvClip.sustain;
+                    double rawRelease = adsrSecondsToRaw(gmdlsEnvClip.release);
+                    sc->setInputValue((DWORD)nodeID, ADSR_ATTACK,  rawAttack,  rawAttack);
+                    sc->setInputValue((DWORD)nodeID, ADSR_DECAY,   rawDecay,   rawDecay);
+                    sc->setInputValue((DWORD)nodeID, ADSR_SUSTAIN, rawSustain, rawSustain);
+                    sc->setInputValue((DWORD)nodeID, ADSR_RELEASE, rawRelease, rawRelease);
+                    // Invalidate sync state so the knobs refresh from new L/R values
+                    const DWORD adsrParams[] = { ADSR_ATTACK, ADSR_DECAY, ADSR_SUSTAIN, ADSR_RELEASE };
+                    for (DWORD pi : adsrParams)
+                    {
+                        uint64_t key = ((uint64_t)(uint32_t)nodeID << 32) | (uint64_t)pi;
+                        paramSyncState.erase(key);
+                    }
+                    gmdlsEnvClip.hasData = false;
+                }
+            }
+            else if (nodeType == SAMPLER_ID)
+            {
+                // "L" – paste GMDLS loop points into Loop Start / Loop End, update loop flag
+                ImU32 btnCol = gmdlsLoopClip.hasData ? IM_COL32(30, 160, 80, 255) : IM_COL32(100, 100, 100, 180);
+                hbX -= hbSz + 3.f * z;
+                ImVec2 plbMin(hbX, py + 2.f * z);
+                ImVec2 plbMax(plbMin.x + hbSz, plbMin.y + hbSz);
+                dl->AddRectFilled(plbMin, plbMax, btnCol);
+                if (fontSize >= 6.f)
+                {
+                    float fw = pickFont(fontSize)->CalcTextSizeA(fontSize, FLT_MAX, 0.f, "L").x;
+                    dl->AddText(pickFont(fontSize), fontSize,
+                                ImVec2(plbMin.x + (hbSz - fw) * 0.5f, plbMin.y + (hbSz - fontSize) * 0.5f),
+                                IM_COL32(255, 255, 255, 255), "L");
+                }
+                if (gmdlsLoopClip.hasData && canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                    mousePos.x >= plbMin.x && mousePos.x <= plbMax.x &&
+                    mousePos.y >= plbMin.y && mousePos.y <= plbMax.y)
+                {
+                    uint32_t bsz    = (gmdlsLoopClip.bufferSize > 0) ? gmdlsLoopClip.bufferSize : 1u;
+                    double rawStart = std::max(0.0, std::min(1.0, (double)gmdlsLoopClip.loopStart / (double)bsz));
+                    // Snap to 1.0 when the loop end reaches the last original sample (loopEnd+2 >= bufferSize).
+                    // The Sampler core clamps the position to length-1 anyway, so this is safe and
+                    // produces a shared 1.0 constant rather than many buffer-size-dependent 0.999x values.
+                    double rawEnd = (gmdlsLoopClip.loopEnd + 2 >= bsz)
+                        ? 1.0
+                        : std::max(0.0, std::min(1.0, (double)gmdlsLoopClip.loopEnd / (double)bsz));
+                    sc->setInputValue((DWORD)nodeID, SAMPLER_LOOPSTART, rawStart, rawStart);
+                    sc->setInputValue((DWORD)nodeID, SAMPLER_LOOPEND,   rawEnd,   rawEnd);
+                    DWORD loopFlag = (gmdlsLoopClip.loopType != 0) ? (DWORD)SAMPLER_LOOP : 0u;
+                    sc->setInputMode((DWORD)nodeID, SAMPLER_MODE, loopFlag, (DWORD)SAMPLER_LOOP);
+                    // Invalidate sync state so the knobs refresh from new values
+                    const DWORD samplerParams[] = { SAMPLER_LOOPSTART, SAMPLER_LOOPEND };
+                    for (DWORD pi : samplerParams)
+                    {
+                        uint64_t key = ((uint64_t)(uint32_t)nodeID << 32) | (uint64_t)pi;
+                        paramSyncState.erase(key);
+                    }
+                    gmdlsLoopClip.hasData = false;
+                }
+            }
         }
 
         // Separator line under header

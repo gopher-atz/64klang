@@ -4215,6 +4215,10 @@ void SYNTHCALL SAPI_tick(SynthNode* n)
 
 DWORD		GMDLS_NumSamples[512];
 sample_t*	GMDLS_SampleBuffer[512];
+#ifdef COMPILE_VSTI
+GMDLS_LoopInfo GMDLS_LoopData[512];
+GMDLS_EnvInfo  GMDLS_EnvData[512];
+#endif // COMPILE_VSTI
 #ifndef GMDLS_SKIP
 #ifdef CODE_SECTIONS
 K64_CODE_SECTION(".sn40")
