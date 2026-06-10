@@ -49,7 +49,6 @@ WAVEFORMATEX pcmFormat =
 #ifdef _WIN32
 #ifdef COMPILE_VSTI
 #include <windows.h>
-#include <math.h>
 #define GMDLS_FILEBUFFER_SIZE 1024*1024*10
 const char*	lpGMDLSSuffix = "\\drivers\\gm.dls";
 char	lpGMDLSBuffer[GMDLS_FILEBUFFER_SIZE]; // 10Mb is enough for reading in
@@ -343,7 +342,6 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 							GMDLS_EnvData[numWaves].decay           = 0.f;
 							GMDLS_EnvData[numWaves].sustain         = 1.f;
 							GMDLS_EnvData[numWaves].release         = 0.f;
-							GMDLS_EnvData[numWaves].validMask       = 0;
 
 							bool     wavePCM16    = false;
 							bool     waveLoaded   = false;
@@ -425,16 +423,13 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 
 								cp = cNext;
 							}
-
 							if (waveLoaded)
 								numWaves++;
 						}
-
 						wp = wNext;
 					}
 					break; // only one wvpl expected
 				}
-
 				p = chNext;
 			}
 
@@ -442,10 +437,12 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 			// Pass 2 – LIST('lins'): region-level loops (higher priority)
 			//          and EG1 volume-envelope data from art1/art2 blocks.
 			//
-			// DLS art1 connection blocks use:
-			//   Time values in timecents  (seconds = 2^(lScale/65536/1200))
-			//   EG1 sustain in hundredths of a percent (0 = silence,
-			//   1000 = 100%; linear = (lScale/65536)/1000)
+			// DLS art1 connection blocks use (from Windows SDK dls1.h):
+			//   CONN_DST_EG1_ATTACKTIME  = 0x0206 (timecents, seconds = 2^(lScale/65536/1200))
+			//   CONN_DST_EG1_DECAYTIME   = 0x0207 (timecents)
+			//   CONN_DST_EG1_RELEASETIME = 0x0209 (timecents)
+			//   CONN_DST_EG1_SUSTAINLEVEL= 0x020A (tenths of percent in 16.16 fixed-point;
+			//                                       0=silence, 1000*65536=100%; linear=(lScale/65536)/1000)
 			// ============================================================
 			for (uint32_t p = riffDataStart; p + 8 <= riffDataEnd; )
 			{
@@ -475,7 +472,80 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 						{
 							uint32_t insEnd = iData + iSize;
 
-							// Find LIST('lrgn') inside this instrument
+							// Read insh to determine bank (bit 31 set = drum/percussion kit).
+							// Drum instruments have no explicit EG1 sustain on most regions;
+							// the sustain level defaults to 0 (percussive decay-to-silence).
+							bool isDrumKit = false;
+							for (uint32_t lp = iData + 4; lp + 8 <= insEnd; )
+							{
+								uint32_t lId   = *(uint32_t*)(buf + lp);
+								uint32_t lSize = *(uint32_t*)(buf + lp + 4);
+								uint32_t lData = lp + 8;
+								if (lId == MAKEFOURCC('i','n','s','h') && lSize >= 12)
+								{
+									uint32_t bank = *(uint32_t*)(buf + lData + 4);
+									isDrumKit = (bank & 0x80000000u) != 0;
+									break;
+								}
+								lp += 8 + lSize + (lSize & 1u);
+							}
+
+							// ── Step 1: collect instrument-level articulation (lart/lar2) ────
+							// In GM.DLS the EG1 envelope is almost always here, not in regions.
+							float   insAttack = 0.f, insDecay = 0.f;
+							// Drum kits (bank bit 31) default sustain to 0: percussive decay-to-silence.
+							// Melodic instruments default sustain to 1 (hold until note-off).
+							float   insSustain = isDrumKit ? 0.f : 1.f, insRelease = 0.f;
+							uint8_t insEnvValid = 0;
+
+							for (uint32_t lp = iData + 4; lp + 8 <= insEnd; )
+							{
+								uint32_t lId   = *(uint32_t*)(buf + lp);
+								uint32_t lSize = *(uint32_t*)(buf + lp + 4);
+								uint32_t lData = lp + 8;
+								if (lData + lSize > insEnd) lSize = insEnd - lData;
+								uint32_t lNext = lData + ((lSize + 1u) & ~1u);
+
+								if (lId == MAKEFOURCC('L','I','S','T') && lSize >= 4 &&
+								    (*(uint32_t*)(buf + lData) == MAKEFOURCC('l','a','r','t') ||
+								     *(uint32_t*)(buf + lData) == MAKEFOURCC('l','a','r','2')))
+								{
+									uint32_t lartEnd = lData + lSize;
+									for (uint32_t ap = lData + 4; ap + 8 <= lartEnd; )
+									{
+										uint32_t aId   = *(uint32_t*)(buf + ap);
+										uint32_t aSize = *(uint32_t*)(buf + ap + 4);
+										uint32_t aData = ap + 8;
+										if (aData + aSize > lartEnd) aSize = lartEnd - aData;
+										uint32_t aNext = aData + ((aSize + 1u) & ~1u);
+										if ((aId == MAKEFOURCC('a','r','t','1') || aId == MAKEFOURCC('a','r','t','2')) && aSize >= 8)
+										{
+											uint32_t artCbSize = *(uint32_t*)(buf + aData + 0);
+											uint32_t nConns    = *(uint32_t*)(buf + aData + 4);
+											uint32_t connBase  = aData + artCbSize;
+											for (uint32_t ci = 0; ci < nConns && connBase + 12 <= aData + aSize; ci++, connBase += 12)
+											{
+												uint16_t src   = *(uint16_t*)(buf + connBase + 0);
+												uint16_t ctrl  = *(uint16_t*)(buf + connBase + 2);
+												uint16_t dst   = *(uint16_t*)(buf + connBase + 4);
+												int32_t  scale = *(int32_t*) (buf + connBase + 8);
+												if (src != 0 || ctrl != 0) continue;
+												switch (dst)
+												{
+												case 0x0206: insAttack  = gmdls_tc_to_sec(scale); insEnvValid |= 1; break; // CONN_DST_EG1_ATTACKTIME
+												case 0x0207: insDecay   = gmdls_tc_to_sec(scale); insEnvValid |= 2; break; // CONN_DST_EG1_DECAYTIME
+												case 0x020A: { double lin = (double)scale/65536.0/1000.0; insSustain=(float)std::max(0.0,std::min(1.0,lin)); insEnvValid|=4; } break; // CONN_DST_EG1_SUSTAINLEVEL
+												case 0x0209: insRelease = gmdls_tc_to_sec(scale); insEnvValid |= 8; break; // CONN_DST_EG1_RELEASETIME
+												}
+											}
+										}
+										ap = aNext;
+									}
+								}
+								lp = lNext;
+							}
+
+							// ── Step 2: walk regions, apply instrument envelope then override with region-level ──
 							for (uint32_t lp = iData + 4; lp + 8 <= insEnd; )
 							{
 								uint32_t lId   = *(uint32_t*)(buf + lp);
@@ -512,10 +582,10 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 											uint8_t  rLoopType  = 0;
 											bool     rHasLoop   = false;
 
-											// Collected EG1 envelope
-											float    envAttack  = 0.f, envDecay  = 0.f;
-											float    envSustain = 1.f, envRelease = 0.f;
-											uint8_t  envValid   = 0;
+											// Collected EG1 envelope — seed with instrument-level values
+											float    envAttack  = insAttack,  envDecay   = insDecay;
+											float    envSustain = insSustain, envRelease = insRelease;
+											uint8_t  envValid   = insEnvValid;
 
 											for (uint32_t cp = rData + 4; cp + 8 <= rgnEnd; )
 											{
@@ -594,17 +664,17 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 
 																switch (dst)
 																{
-																case 0x0104: // EG1_ATTACK_TIME
+																case 0x0206: // CONN_DST_EG1_ATTACKTIME
 																	envAttack  = gmdls_tc_to_sec(scale);
 																	envValid  |= 1;
 																	break;
-																case 0x0105: // EG1_DECAY_TIME
+																case 0x0207: // CONN_DST_EG1_DECAYTIME
 																	envDecay   = gmdls_tc_to_sec(scale);
 																	envValid  |= 2;
 																	break;
-																case 0x010A: // EG1_SUSTAIN_LEVEL
-																	// DLS Level 1: hundredths of a percent
-																	// (0 = silence, 1000 * 65536 = 100% = full)
+																case 0x020A: // CONN_DST_EG1_SUSTAINLEVEL
+																	// DLS Level 1: tenths of percent in 16.16 fixed-point
+																	// (0 = silence, 1000*65536 = 100% = full level)
 																	{
 																		double lin = (double)scale / 65536.0 / 1000.0;
 																		if (lin < 0.0) lin = 0.0;
@@ -613,7 +683,7 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 																	}
 																	envValid  |= 4;
 																	break;
-																case 0x0107: // EG1_RELEASE_TIME
+																case 0x0209: // CONN_DST_EG1_RELEASETIME
 																	envRelease = gmdls_tc_to_sec(scale);
 																	envValid  |= 8;
 																	break;
@@ -624,10 +694,8 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 														ap = aNext;
 													}
 												}
-
 												cp = cNext;
 											}
-
 											// Apply collected data to the wave slot
 											if (hasWlnk)
 											{
@@ -645,27 +713,22 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 														GMDLS_LoopData[waveIdx].sourcePriority = 2; // region-level
 													}
 												}
-												// Envelope: last region's valid fields win
-												if (envValid & 1) { GMDLS_EnvData[waveIdx].attack   = envAttack;  GMDLS_EnvData[waveIdx].validMask |= 1; }
-												if (envValid & 2) { GMDLS_EnvData[waveIdx].decay    = envDecay;   GMDLS_EnvData[waveIdx].validMask |= 2; }
-												if (envValid & 4) { GMDLS_EnvData[waveIdx].sustain  = envSustain; GMDLS_EnvData[waveIdx].validMask |= 4; }
-												if (envValid & 8) { GMDLS_EnvData[waveIdx].release  = envRelease; GMDLS_EnvData[waveIdx].validMask |= 8; }
+												GMDLS_EnvData[waveIdx].attack = isDrumKit ? 0 : envAttack;
+												GMDLS_EnvData[waveIdx].decay = envDecay;
+												GMDLS_EnvData[waveIdx].sustain = envSustain;
+												GMDLS_EnvData[waveIdx].release = envRelease;
 											}
 										}
-
 										rp = rNext;
 									}
 								}
-
 								lp = lNext;
 							}
 						}
-
 						ip = iNext;
 					}
 					break; // only one lins expected
 				}
-
 				p = chNext;
 			}
 		} while (0); // single-pass scope guard (allows early break on malformed file)

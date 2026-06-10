@@ -142,6 +142,24 @@ private:
     };
     std::vector<ClipboardNode> clipboard;
 
+    // GMDLS env/loop clipboard: copied from a GM.DLS panel, pasted into ADSR / Sample Player
+    struct GMDLSEnvClipboard {
+        float   attack    = 0.f;
+        float   decay     = 0.f;
+        float   sustain   = 1.f;
+        float   release   = 0.f;
+        uint8_t validMask = 0;
+        bool    hasData   = false;
+    };
+    struct GMDLSLoopClipboard {
+        uint32_t loopStart  = 0;
+        uint32_t loopEnd    = 0;
+        uint8_t  loopType   = 0;  // 0=none, 1=forward, 2=bidi
+        uint32_t bufferSize = 1;
+        bool     hasData    = false;
+    };
+    GMDLSEnvClipboard  gmdlsEnvClip;
+    GMDLSLoopClipboard gmdlsLoopClip;
 
     // Double-click detection
     double lastClickTime = 0.0;
