@@ -2254,35 +2254,44 @@ void NodeCanvas::drawEditPanel(ImDrawList* dl, const ImVec2& canvasOrigin)
                     if (canClick && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && hov)
                         ImGui::OpenPopup(popupID);
 
-                    // Popup list — capped at 8 visible items, scrollbar if more
+                    // Popup list — capped at max 8 visible items, scrollbar if more.
+                    ImGui::PushFont(pickFont(fontSize));
                     {
-                        float itemH   = fontSize * 1.35f;
-                        float padY    = ImGui::GetStyle().WindowPadding.y * 2.f;
-                        float maxH    = itemH * 8.f + padY;
-                        ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(FLT_MAX, maxH));
-                        // When maxH won't fit below the button, anchor the bottom of the popup
-                        // to the top of the button (pivot Y=1) instead of dropping it down.
+                        float fontScale = fontSize / ImGui::GetFont()->FontSize;
+                        float itemH = fontSize + ImGui::GetStyle().ItemSpacing.y * fontScale;
+                        float padY  = ImGui::GetStyle().WindowPadding.y * 2.f;
+                        float scrollW = ImGui::GetStyle().ScrollbarSize;
+                        float popupW  = btnW + scrollW;
+                        float popupH  = itemH * std::min(8, (int)mg.items.size()) + padY;
+                        ImGui::SetNextWindowSize(ImVec2(popupW, popupH), ImGuiCond_Always);
                         float screenH = ImGui::GetIO().DisplaySize.y;
-                        if (btnMax.y + maxH > screenH)
+                        if (btnMax.y + popupH > screenH)
                             ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMin.y), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
                         else
                             ImGui::SetNextWindowPos(ImVec2(btnMin.x, btnMax.y), ImGuiCond_Always, ImVec2(0.0f, 0.0f));
                     }
-                    ImGui::PushFont(pickFont(fontSize));
                     if (ImGui::BeginPopup(popupID))
                     {
-                        ImGui::SetWindowFontScale(fontSize / ImGui::GetFont()->FontSize);
-                        for (int j = 0; j < (int)mg.items.size(); j++)
+                        float fontScale = fontSize / ImGui::GetFont()->FontSize;
+                        ImGui::SetWindowFontScale(fontScale);
+                        float itemH = fontSize + ImGui::GetStyle().ItemSpacing.y * fontScale;
+                        ImGuiListClipper clipper;
+                        clipper.Begin((int)mg.items.size(), itemH);
+                        clipper.IncludeItemByIndex(activeIdx); // always render selected item
+                        while (clipper.Step())
                         {
-                            bool selected = (j == activeIdx);
-                            if (ImGui::Selectable(mg.items[j].name.c_str(), selected, 0, ImVec2(btnW, 0)))
+                            for (int j = clipper.DisplayStart; j < clipper.DisplayEnd; j++)
                             {
-                                int newBits = (currentBits & ~(int)mg.mask) | (mg.items[j].value << mg.shift);
-                                sc->setInputMode((DWORD)nodeID, (DWORD)modeInputIdx, (DWORD)newBits, (DWORD)mg.mask);
-                                currentBits = newBits;
+                                bool selected = (j == activeIdx);
+                                if (ImGui::Selectable(mg.items[j].name.c_str(), selected, 0, ImVec2(btnW, 0)))
+                                {
+                                    int newBits = (currentBits & ~(int)mg.mask) | (mg.items[j].value << mg.shift);
+                                    sc->setInputMode((DWORD)nodeID, (DWORD)modeInputIdx, (DWORD)newBits, (DWORD)mg.mask);
+                                    currentBits = newBits;
+                                }
+                                if (selected)
+                                    ImGui::SetItemDefaultFocus(); // focus/center the selected item
                             }
-                            if (selected)
-                                ImGui::SetItemDefaultFocus();
                         }
                         ImGui::EndPopup();
                     }
