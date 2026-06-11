@@ -713,10 +713,11 @@ void _64klang_Init(uint8_t* songStream, void* patchData, uint32_t const1Offset, 
 														GMDLS_LoopData[waveIdx].sourcePriority = 2; // region-level
 													}
 												}
-												GMDLS_EnvData[waveIdx].attack = isDrumKit ? 0 : envAttack;
-												GMDLS_EnvData[waveIdx].decay = envDecay;
-												GMDLS_EnvData[waveIdx].sustain = envSustain;
-												GMDLS_EnvData[waveIdx].release = envRelease;
+												// map drumkit envelope settings so it makes more sense for us (gm.dls has looon decay time, we map to sustain = 1)
+												GMDLS_EnvData[waveIdx].attack =  isDrumKit ? 0 : envAttack;
+												GMDLS_EnvData[waveIdx].decay =   isDrumKit ? 0 : envDecay;
+												GMDLS_EnvData[waveIdx].sustain = isDrumKit ? 1 : envSustain;
+												GMDLS_EnvData[waveIdx].release = isDrumKit ? 0 : envRelease;
 											}
 										}
 										rp = rNext;
