@@ -4,6 +4,8 @@ Official 64klang repository
 
 [Get the latest prebuilt VST3 plugins](https://github.com/gopher-atz/64klang/releases)
 
+[You might also need the Microsoft VC redistributable libraries](https://aka.ms/vc14/vc_redist.x64.exe)
+
 For discussion or feedback please use our **#64klang** channel on [Discord](https://discord.gg/bH7QBxq4Ts)
 
 ---
